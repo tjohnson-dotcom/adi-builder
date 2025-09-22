@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Streamlit, Branded + Upload + Lesson/Week Extractor + Bloom Verbs + Clean Exports)
+# app.py — ADI Builder (Streamlit, Branded + Upload + Lesson/Week Extractor + Bloom Verbs + Full Exports)
 # Sleek, professional, and staff-friendly. Upload eBook/Plan/PPT → pick Lesson/Week → edit in white box → export.
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ h1, h2, h3 {{ font-weight: 700; color: {ADI_GREEN}; }}
 /* Banner */
 .banner {{ background: {ADI_GREEN}; color: white; padding: 18px 28px; border-radius: 0 0 12px 12px; display: flex; align-items: center; justify-content: flex-start; gap:12px; margin-bottom: 18px; }}
 .banner h1 {{ color: white !important; font-size: 1.6rem; margin: 0; }}
-.banner img {{ height: 44px; }}
 
 /* Cards */
 .card {{ background:#fff; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:20px; margin:14px 0; border-left:6px solid {ADI_GREEN}; }}
@@ -67,7 +66,8 @@ h1, h2, h3 {{ font-weight: 700; color: {ADI_GREEN}; }}
 .stButton>button:hover {{ background:{ADI_BROWN}; }}
 
 /* White editable areas */
-textarea {{ border:1px solid #bbb !important; border-radius:8px !important; padding:10px !important; background:#fff !important; }}
+textarea {{ border:1.5px solid #bbb !important; border-radius:10px !important; padding:10px !important; background:#fff !important; }}
+textarea:focus {{ outline:none !important; border-color:{ADI_GREEN} !important; box-shadow:0 0 0 2px rgba(0,108,53,0.15); }}
 
 /* Badges + Chips */
 .badge {{ display:inline-block; padding:4px 8px; background:{ADI_BEIGE}; border-radius:8px; font-size:.8rem; color:#333; }}
@@ -94,11 +94,11 @@ textarea {{ border:1px solid #bbb !important; border-radius:8px !important; padd
 
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# === Banner with ADI logo (fixed link, no broken imgur) ===
+# === Banner with ADI logo (sidebar only) ===
+st.sidebar.image("https://i.ibb.co/7y6h3F2/adi-logo.png", width=180)
 st.markdown(
     f"""
     <div class='banner'>
-        <img src='https://i.ibb.co/7y6h3F2/adi-logo.png' alt='ADI Logo'>
         <h1>🎓 ADI Builder — Lesson Activities & Questions <span class='badge'>Branded</span></h1>
     </div>
     """,
@@ -107,7 +107,7 @@ st.markdown(
 
 st.caption("Professional, branded, editable and export-ready.")
 
-# === Bloom's Taxonomy ===
+# === Bloom's Taxonomy (verbs catalog) ===
 VERBS_CATALOG = {
     "Remember": ["define","duplicate","label","list","match","memorize","name","omit","recall","recognize","record","repeat","reproduce","state"],
     "Understand": ["classify","convert","defend","describe","discuss","distinguish","estimate","explain","express","identify","indicate","locate","report","restate","review","select","translate","summarize"],
@@ -117,8 +117,67 @@ VERBS_CATALOG = {
     "Create": ["arrange","assemble","categorize","collect","combine","compose","construct","create","design","develop","explain solution","formulate","generate","manage","organize","plan","prepare","propose","rearrange","reconstruct","relate","rewrite","set up","summarize","write"],
 }
 
-# === Notes ===
-# - Logo uses a stable i.ibb.co link so no broken image icons.
-# - Textareas now have clear outlines.
-# - Buttons and chips styled consistently.
-# - Question templates (elsewhere in code) must avoid True/False or All/None of the above — ensure only meaningful distractors.
+# === Export: Full Pack (MCQs + Activities) ===
+if DOCX_AVAILABLE:
+    if st.session_state.get("mcq_blocks") or st.session_state.get("activities_list"):
+        st.markdown("<hr>")
+        st.subheader("Export — Full Pack")
+        st.caption("One Word document containing MCQs and Activities, ready to use or upload to Moodle.")
+
+        def build_full_pack_docx(mcq_blocks, activities_list):
+            doc = Document()
+            s = doc.styles['Normal']; s.font.name='Calibri'; s.font.size = Pt(11)
+            doc.add_heading('ADI Builder — Lesson Pack', level=1)
+            doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
+
+            # MCQs section
+            if mcq_blocks:
+                doc.add_heading('Section A — Knowledge MCQs', level=1)
+                for idx, blk in enumerate(mcq_blocks, 1):
+                    lines = [l.rstrip() for l in blk.splitlines() if l.strip()]
+                    if not lines:
+                        continue
+                    stem = lines[0]
+                    options = [l for l in lines[1:] if re.match(r'^[A-D]\)', l)]
+                    ans_line = next((l for l in lines if l.lower().startswith('answer:')), '')
+                    doc.add_heading(f'Question {idx}', level=2)
+                    doc.add_paragraph(stem)
+                    for opt in options:
+                        doc.add_paragraph(opt, style='List Bullet')
+                    if ans_line:
+                        p = doc.add_paragraph(ans_line)
+                        if p.runs:
+                            p.runs[0].italic = True
+                    doc.add_paragraph('')
+
+            # Activities section
+            if activities_list:
+                doc.add_heading('Section B — Skills Activities', level=1)
+                for block in activities_list:
+                    lines = [l.rstrip() for l in block.split('\n')]
+                    title = next((l for l in lines if l.startswith('Activity ')), 'Activity')
+                    doc.add_heading(title, level=2)
+                    def add_sec(label):
+                        try:
+                            idx = next(i for i,l in enumerate(lines) if l.lower().startswith(label))
+                        except StopIteration:
+                            return
+                        doc.add_heading(label[:-1].title(), level=3)
+                        i = idx+1
+                        while i < len(lines) and lines[i].strip():
+                            txt = lines[i].strip()
+                            if re.match(r'^(\d+\)|- )', txt):
+                                style = 'List Number' if txt[0].isdigit() else 'List Bullet'
+                                doc.add_paragraph(re.sub(r'^(\d+\)|- )\s*','',txt), style=style)
+                            else:
+                                doc.add_paragraph(txt)
+                            i += 1
+                    for sec in ['context:','steps:','output:','evidence:','success criteria:']:
+                        add_sec(sec)
+                    doc.add_paragraph('')
+            bio = BytesIO(); doc.save(bio); bio.seek(0)
+            return bio.getvalue()
+
+        full_docx = build_full_pack_docx(st.session_state.get('mcq_blocks', []), st.session_state.get('activities_list', []))
+        if full_docx:
+            st.download_button("🧾 Full Pack (.docx)", full_docx, file_name="adi_lesson_pack.docx")
