@@ -2,7 +2,7 @@ import streamlit as st
 import random, re
 from io import BytesIO
 
-# Optional dependencies (app still runs if missing)
+# Optional dependencies
 try:
     from docx import Document
 except Exception:
@@ -17,7 +17,7 @@ except Exception:
     fitz = None
 
 # -------------------------------
-# Page & Styling (ADI palette, no reds)
+# Page & Styling (ADI palette with outlines)
 # -------------------------------
 st.set_page_config(page_title="ADI Builder", page_icon="🧩", layout="wide")
 
@@ -28,31 +28,29 @@ st.markdown("""
     --adi-accent:#b79e82;     /* light brown */
     --adi-bg:#f6f4f1;         /* soft beige bg */
     --adi-ink:#1d2724;        /* text */
-    --adi-soft:#efeae3;       /* softer beige for chips/badges */
+    --adi-soft:#efeae3;       /* softer beige */
   }
   html, body, .stApp {background: var(--adi-bg); color: var(--adi-ink);}
   .block-container {max-width: 1040px; padding-top: 1.1rem; padding-bottom: 3.2rem;}
 
   h1,h2,h3{color:var(--adi-green); font-weight:800; letter-spacing:.2px;}
-  h1{font-size:2.0rem} h2{font-size:1.45rem} h3{font-size:1.12rem}
-
-  /* Hero */
   .hero{
     margin:-.4rem 0 1rem 0; padding:16px 18px; border-radius:14px;
     background: linear-gradient(90deg, var(--adi-green), #0e3d2a 60%, var(--adi-accent));
     color:#fff; box-shadow: 0 10px 24px rgba(0,0,0,.08);
   }
 
-  /* Toolbar */
   .toolbar{
     display:flex; gap:.75rem; flex-wrap:wrap; align-items:end;
-    background:#fff; border:1px solid rgba(0,0,0,.08); padding:.75rem .8rem; border-radius:14px;
+    background:#fff; border:1px solid var(--adi-accent); padding:.75rem .8rem; border-radius:14px;
     box-shadow: 0 6px 16px rgba(0,0,0,.05); margin-bottom:.7rem;
   }
-  .toolbar .cell{min-width:220px;}
 
-  /* Tabs */
-  .stTabs [data-baseweb="tab-list"]{gap:.25rem;}
+  .card{
+    border:2px solid var(--adi-accent); border-radius:14px; padding:14px 16px; background:#fff;
+    box-shadow:0 6px 18px rgba(0,0,0,.05); margin-bottom:12px;
+  }
+
   .stTabs [data-baseweb="tab"]{
     background:#e8e4df; color:#2e2e2e; border-radius:12px 12px 0 0; padding:.55rem .9rem; font-weight:800;
   }
@@ -60,13 +58,6 @@ st.markdown("""
     background:#fff; color:var(--adi-green); border-bottom:3px solid var(--adi-accent);
   }
 
-  /* Cards */
-  .card{
-    border:1px solid rgba(0,0,0,.08); border-radius:14px; padding:14px 16px; background:#fff;
-    box-shadow:0 6px 18px rgba(0,0,0,.05); margin-bottom:12px;
-  }
-
-  /* Buttons */
   .stButton>button{
     background:var(--adi-green); color:#fff; font-weight:800; border:0; border-radius:12px; padding:.65rem 1rem;
     box-shadow:0 8px 18px rgba(21,86,61,.20);
@@ -74,25 +65,24 @@ st.markdown("""
   .stButton>button:hover{filter:brightness(.96); transform: translateY(-1px);}
   .stButton>button:active{transform: translateY(0);}
 
-  /* Inputs */
+  /* Inputs with ADI outline */
   .stSelectbox > div > div,
   .stMultiSelect > div > div,
   .stTextInput > div > div > input,
   .stNumberInput input,
   .stTextArea textarea{
-    border-radius:12px !important; border-color: rgba(0,0,0,.18) !important;
+    border-radius:12px !important;
+    border:2px solid var(--adi-accent) !important;
+    box-shadow:none !important;
   }
 
-  /* Multiselect chips (neutral beige, not red/blue) */
   .stMultiSelect [data-baseweb="tag"]{
     background: var(--adi-soft) !important; color: #2b2b2b !important; border-radius: 999px !important;
   }
 
-  /* Sliders */
   .stSlider [data-baseweb="slider"]>div>div{background:var(--adi-green);}
   .stSlider [role="slider"]{ box-shadow:0 0 0 4px rgba(21,86,61,.15) !important; }
 
-  /* Footer */
   .adi-footer{
     position: fixed; left: 0; right: 0; bottom: 0;
     background: linear-gradient(90deg, var(--adi-accent), var(--adi-green));
@@ -108,7 +98,7 @@ st.markdown("""<div class="hero">
 </div>""", unsafe_allow_html=True)
 
 # -------------------------------
-# Bloom levels & verbs
+# Bloom’s levels & verbs
 # -------------------------------
 BLOOMS = {
     "Remember":   ["define", "list", "recall", "identify"],
@@ -129,34 +119,25 @@ def extract_text_from_pdf(data: bytes) -> str:
     if not fitz: return ""
     out = []
     with fitz.open(stream=data, filetype="pdf") as doc:
-        for p in doc:
-            out.append(p.get_text("text"))
+        for p in doc: out.append(p.get_text("text"))
     return "\n".join(out)
 
 def extract_text_from_docx(data: bytes) -> str:
     if not Document: return ""
-    bio = BytesIO(data)
-    doc = Document(bio)
+    bio = BytesIO(data); doc = Document(bio)
     return "\n".join(p.text for p in doc.paragraphs)
 
 def extract_text_from_pptx(data: bytes) -> str:
     if not Presentation: return ""
-    bio = BytesIO(data)
-    prs = Presentation(bio)
-    lines = []
-    for slide in prs.slides:
-        for shp in slide.shapes:
-            if hasattr(shp, "text") and shp.text:
-                lines.append(shp.text)
-    return "\n".join(lines)
+    bio = BytesIO(data); prs = Presentation(bio)
+    return "\n".join(shp.text for slide in prs.slides for shp in slide.shapes if hasattr(shp, "text") and shp.text)
 
 def extract_text(uploaded) -> str:
     if not uploaded: return ""
-    data = uploaded.read()
-    name = uploaded.name.lower()
-    if   name.endswith(".pdf"):  return extract_text_from_pdf(data)
-    elif name.endswith(".docx"): return extract_text_from_docx(data)
-    elif name.endswith(".pptx"): return extract_text_from_pptx(data)
+    data = uploaded.read(); name = uploaded.name.lower()
+    if name.endswith(".pdf"): return extract_text_from_pdf(data)
+    if name.endswith(".docx"): return extract_text_from_docx(data)
+    if name.endswith(".pptx"): return extract_text_from_pptx(data)
     return ""
 
 # -------------------------------
@@ -169,113 +150,73 @@ def carve_topics(raw_text: str, want: int = 30) -> list[str]:
     seen, out = set(), []
     for L in lines:
         k = L.lower()
-        if k not in seen:
-            seen.add(k); out.append(L)
+        if k not in seen: seen.add(k); out.append(L)
     random.shuffle(out)
     return out[:want]
 
 # -------------------------------
-# MCQ builder/export
+# MCQ builder
 # -------------------------------
 def clean_option(s: str) -> str:
     s2 = s
-    for bad in FORBIDDEN:
-        s2 = re.sub(rf"\b{re.escape(bad)}\b", "", s2, flags=re.I)
-    s2 = re.sub(r"\s{2,}", " ", s2).strip()
-    return s2 or "—"
+    for bad in FORBIDDEN: s2 = re.sub(rf"\b{re.escape(bad)}\b", "", s2, flags=re.I)
+    return re.sub(r"\s{2,}", " ", s2).strip() or "—"
 
 def build_mcq(topic: str, verb: str, distractor_pool: list[str]) -> dict:
     stem = f"{verb.capitalize()} the key idea: **{topic}**."
     correct = clean_option(f"A concise {verb} of {topic}")
-    d = []
-    for t in distractor_pool:
-        if t != topic and len(d) < 3:
-            d.append(clean_option(f"{verb.capitalize()} of {t}"))
-    while len(d) < 3:
-        d.append("A plausible but incorrect statement")
-    options = [correct] + d
-    random.shuffle(options)
-    letters = "abcd"
-    return {"stem": stem, "options": options, "correct": letters[options.index(correct)]}
+    d = [clean_option(f"{verb.capitalize()} of {t}") for t in distractor_pool if t != topic][:3]
+    while len(d) < 3: d.append("A plausible but incorrect statement")
+    options = [correct] + d; random.shuffle(options)
+    return {"stem": stem, "options": options, "correct": "abcd"[options.index(correct)]}
 
 def export_docx_mcqs(mcqs, title):
     if not Document: return None
     doc = Document(); doc.add_heading(title, 1)
-    letters = "abcd"
     for i, q in enumerate(mcqs, 1):
         doc.add_paragraph(f"Q{i}. {q['stem']}")
-        for j, opt in enumerate(q["options"]):
-            doc.add_paragraph(f"{letters[j]}) {opt}", style="List Bullet")
-        doc.add_paragraph(f"Correct: {q['correct']}")
-        doc.add_paragraph("")
+        for j, opt in enumerate(q["options"]): doc.add_paragraph(f"{'abcd'[j]}) {opt}", style="List Bullet")
+        doc.add_paragraph(f"Correct: {q['correct']}"); doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
 # -------------------------------
-# Activity builder/export
+# Activity builder
 # -------------------------------
 ACTIVITY_TEMPLATES = [
     ("Guided Practice", "Individually complete a short, authentic task.",
-     ["Read the brief and success criteria.",
-      "Complete the task step-by-step.",
-      "Self-check against the criteria.",
-      "Submit for quick feedback."]),
+     ["Read the brief and success criteria.","Complete the task step-by-step.","Self-check against the criteria.","Submit for quick feedback."]),
     ("Pair & Share", "Work in pairs to apply knowledge.",
-     ["Agree roles (Speaker / Notetaker).",
-      "Discuss the prompt and capture key points.",
-      "Swap roles and refine the output.",
-      "Share one insight with another pair."]),
+     ["Agree roles (Speaker / Notetaker).","Discuss the prompt and capture key points.","Swap roles and refine the output.","Share one insight with another pair."]),
     ("Mini Case", "Analyse a short scenario and recommend actions.",
-     ["Read the case and highlight key facts.",
-      "Identify risks or constraints.",
-      "Recommend two actions and justify them.",
-      "Prepare a 60-second summary."]),
+     ["Read the case and highlight key facts.","Identify risks or constraints.","Recommend two actions and justify them.","Prepare a 60-second summary."]),
     ("Procedure Drill", "Follow a procedure safely and accurately.",
-      ["Review the SOP steps together.",
-       "Perform steps in order while a peer observes.",
-       "Record deviations and fix them.",
-       "Reflect on one improvement."]),
+     ["Review the SOP steps together.","Perform steps in order while a peer observes.","Record deviations and fix them.","Reflect on one improvement."]),
     ("Reflect & Improve", "Evaluate your output and plan improvements.",
-     ["Compare against the success criteria.",
-      "Identify one strength and one area to improve.",
-      "Write a short improvement plan.",
-      "Share your plan with the group."]),
+     ["Compare against the success criteria.","Identify one strength and one area to improve.","Write a short improvement plan.","Share your plan with the group."]),
 ]
 
 def build_activity(level: str, verbs: list[str], topic: str, minutes: int) -> dict:
     name, brief, steps = random.choice(ACTIVITY_TEMPLATES)
     v = random.choice(verbs) if verbs else "apply"
-    outcome = f"{v.capitalize()} learning about {topic} at {level} level."
-    return {
-        "title": f"{name} — {level}",
-        "brief": brief,
-        "outcome": outcome,
-        "steps": steps,
-        "resources": ["Slides/eBook extract", "Worksheet/template", "Pens"],
-        "assessment": random.choice(["Tutor check", "Peer feedback", "Self checklist"]),
-        "timing": minutes
-    }
+    return {"title": f"{name} — {level}","brief": brief,"outcome": f"{v.capitalize()} learning about {topic} at {level} level.","steps": steps,
+            "resources": ["Slides/eBook extract","Worksheet/template","Pens"],"assessment": random.choice(["Tutor check","Peer feedback","Self checklist"]),"timing": minutes}
 
 def export_docx_activities(acts, title):
     if not Document: return None
     doc = Document(); doc.add_heading(title, 1)
     for i, a in enumerate(acts, 1):
         doc.add_heading(f"Activity {i}: {a['title']}", 2)
-        doc.add_paragraph(a["brief"])
-        doc.add_paragraph(f"Outcome: {a['outcome']}")
-        doc.add_paragraph("Steps:")
-        for s in a["steps"]:
-            doc.add_paragraph(s, style="List Number")
+        doc.add_paragraph(a["brief"]); doc.add_paragraph(f"Outcome: {a['outcome']}"); doc.add_paragraph("Steps:")
+        for s in a["steps"]: doc.add_paragraph(s, style="List Number")
         doc.add_paragraph("Resources: " + ", ".join(a["resources"]))
-        doc.add_paragraph(f"Assessment: {a['assessment']}")
-        doc.add_paragraph(f"Timing: {a['timing']} minutes")
-        doc.add_paragraph("")
+        doc.add_paragraph(f"Assessment: {a['assessment']}"); doc.add_paragraph(f"Timing: {a['timing']} minutes"); doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
 # -------------------------------
 # Toolbar
 # -------------------------------
 st.markdown("<div class='toolbar'>", unsafe_allow_html=True)
-uploaded = st.file_uploader("Upload PDF / DOCX / PPTX", type=["pdf","docx","pptx"], help="Drag & drop your lesson or eBook.")
+uploaded = st.file_uploader("Upload PDF / DOCX / PPTX", type=["pdf","docx","pptx"])
 col1, col2 = st.columns(2)
 with col1: week = st.selectbox("Week", list(range(1,15)), index=0)
 with col2: lesson = st.selectbox("Lesson", list(range(1,5)), index=0)
@@ -289,109 +230,56 @@ topics_pool = carve_topics(raw_text, want=40)
 # -------------------------------
 tab_mcq, tab_act = st.tabs(["🧠 Knowledge MCQs", "🛠 Skills Activities"])
 
-# ===== MCQs =====
 with tab_mcq:
     st.subheader("Knowledge MCQs")
-
-    c1, c2 = st.columns([1.2, 1])
-    with c1:
-        chosen_levels = st.multiselect("Bloom’s levels", LEVELS, default=DEFAULT_MIX)
-        if not chosen_levels: chosen_levels = DEFAULT_MIX
-    with c2:
-        total_mcqs = st.slider("Number of questions", 5, 10, 6)
-
-    # Auto verbs toggle (DEFAULT OFF so verb boxes are visible)
-    auto_verbs_mcq = st.checkbox("Automatically choose suitable verbs (balanced rotation)", value=False)
-
+    chosen_levels = st.multiselect("Bloom’s levels", LEVELS, default=DEFAULT_MIX)
+    if not chosen_levels: chosen_levels = DEFAULT_MIX
+    total_mcqs = st.slider("Number of questions", 5, 10, 6)
     verb_bank = []
-    if auto_verbs_mcq:
-        for lvl in chosen_levels:
-            verb_bank.extend(BLOOMS[lvl][:2])
-    else:
-        # Visible tidy verb boxes
-        for lvl in chosen_levels:
-            default = BLOOMS[lvl][:2]
-            picks = st.multiselect(f"Verbs for {lvl}", BLOOMS[lvl], default=default, key=f"verbs_{lvl}_mcq")
-            verb_bank.extend(picks)
-
-    if not verb_bank:
-        verb_bank = sum((BLOOMS[l] for l in chosen_levels), [])
-
+    for lvl in chosen_levels:
+        picks = st.multiselect(f"Verbs for {lvl}", BLOOMS[lvl], default=BLOOMS[lvl][:2], key=f"verbs_{lvl}_mcq")
+        verb_bank.extend(picks)
+    if not verb_bank: verb_bank = sum((BLOOMS[l] for l in chosen_levels), [])
     if st.button("Generate MCQs", type="primary"):
-        if not topics_pool:
-            st.info("Please upload a lesson file with readable text.")
+        if not topics_pool: st.info("Please upload a lesson file.")
         else:
             random.shuffle(topics_pool)
             topics = topics_pool[:total_mcqs]
-            mcqs = [build_mcq(t, verb_bank[i % len(verb_bank)], topics_pool) for i, t in enumerate(topics)]
-
-            letters = "abcd"
-            for i, q in enumerate(mcqs, 1):
+            mcqs = [build_mcq(t, verb_bank[i % len(verb_bank)], topics_pool) for i,t in enumerate(topics)]
+            for i,q in enumerate(mcqs,1):
                 st.markdown(f"<div class='card'><b>Q{i}.</b> {q['stem']}<br>", unsafe_allow_html=True)
-                for j, opt in enumerate(q["options"]):
-                    st.markdown(f"&nbsp;&nbsp;&nbsp;{letters[j]}) {opt}")
+                for j,opt in enumerate(q["options"]): st.markdown(f"&nbsp;&nbsp;&nbsp;{'abcd'[j]}) {opt}")
                 st.markdown(f"<span class='muted'>Correct: {q['correct']}</span></div>", unsafe_allow_html=True)
-
             docx = export_docx_mcqs(mcqs, f"ADI MCQs — Week {week}, Lesson {lesson}")
-            if docx:
-                st.download_button("⬇ Download MCQs (DOCX)", data=docx,
-                    file_name=f"ADI_MCQs_W{week}_L{lesson}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            if docx: st.download_button("⬇ Download MCQs (DOCX)", data=docx, file_name=f"ADI_MCQs_W{week}_L{lesson}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# ===== Activities =====
 with tab_act:
     st.subheader("Skills Activities")
-
-    cA, cB, cC = st.columns([1, 1, 1.2])
-    with cA:
-        timing = st.selectbox("Activity timing (minutes)", list(range(10, 65, 5)), index=2)
-    with cB:
-        num_acts = st.slider("Number of activities", 1, 4, 2)
-    with cC:
-        chosen_levels_act = st.multiselect("Bloom’s levels", LEVELS, default=["Apply","Understand"])
-        if not chosen_levels_act: chosen_levels_act = ["Apply","Understand"]
-
-    auto_verbs_act = st.checkbox("Automatically choose suitable verbs (balanced rotation)", value=False, key="auto_act")
-
+    timing = st.selectbox("Activity timing (minutes)", list(range(10,65,5)), index=2)
+    num_acts = st.slider("Number of activities", 1, 4, 2)
+    chosen_levels_act = st.multiselect("Bloom’s levels", LEVELS, default=["Apply","Understand"])
+    if not chosen_levels_act: chosen_levels_act = ["Apply","Understand"]
     verb_bank_act = []
-    if auto_verbs_act:
-        for lvl in chosen_levels_act:
-            verb_bank_act.extend(BLOOMS[lvl][:2])
-    else:
-        for lvl in chosen_levels_act:
-            default = BLOOMS[lvl][:1]
-            picks = st.multiselect(f"Verbs for {lvl}", BLOOMS[lvl], default=default, key=f"verbs_{lvl}_act")
-            verb_bank_act.extend(picks)
-
-    if not verb_bank_act:
-        verb_bank_act = sum((BLOOMS[l] for l in chosen_levels_act), [])
-
-    if st.button("Generate Activities", type="primary", key="gen_act"):
-        if not topics_pool:
-            st.info("Please upload a lesson file with readable text.")
+    for lvl in chosen_levels_act:
+        picks = st.multiselect(f"Verbs for {lvl}", BLOOMS[lvl], default=BLOOMS[lvl][:1], key=f"verbs_{lvl}_act")
+        verb_bank_act.extend(picks)
+    if not verb_bank_act: verb_bank_act = sum((BLOOMS[l] for l in chosen_levels_act), [])
+    if st.button("Generate Activities", type="primary"):
+        if not topics_pool: st.info("Please upload a lesson file.")
         else:
             random.shuffle(topics_pool)
             topics = topics_pool[:num_acts]
-            acts = [build_activity(chosen_levels_act[i % len(chosen_levels_act)], verb_bank_act, topics[i], timing)
-                    for i in range(num_acts)]
-
-            for i, a in enumerate(acts, 1):
+            acts = [build_activity(chosen_levels_act[i % len(chosen_levels_act)], verb_bank_act, topics[i], timing) for i in range(num_acts)]
+            for i,a in enumerate(acts,1):
                 st.markdown(f"<div class='card'><b>Activity {i}: {a['title']}</b><br>", unsafe_allow_html=True)
-                st.markdown(f"**Brief:** {a['brief']}")
-                st.markdown(f"**Outcome:** {a['outcome']}")
-                st.markdown("**Steps:**")
-                for s in a["steps"]:
-                    st.markdown(f"- {s}")
+                st.markdown(f"**Brief:** {a['brief']}"); st.markdown(f"**Outcome:** {a['outcome']}"); st.markdown("**Steps:**")
+                for s in a["steps"]: st.markdown(f"- {s}")
                 st.markdown(f"**Resources:** {', '.join(a['resources'])}")
                 st.markdown(f"<span class='muted'>Assessment: {a['assessment']} • Timing: {a['timing']} min</span></div>", unsafe_allow_html=True)
-
             docx = export_docx_activities(acts, f"ADI Activities — Week {week}, Lesson {lesson}")
-            if docx:
-                st.download_button("⬇ Download Activities (DOCX)", data=docx,
-                    file_name=f"ADI_Activities_W{week}_L{lesson}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            if docx: st.download_button("⬇ Download Activities (DOCX)", data=docx, file_name=f"ADI_Activities_W{week}_L{lesson}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# -------------------------------
 # Footer
-# -------------------------------
 st.markdown("<div class='adi-footer'>ADI | Teaching & Learning Tools</div>", unsafe_allow_html=True)
