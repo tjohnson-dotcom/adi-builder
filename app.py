@@ -1,5 +1,6 @@
-# app.py — ADI Builder (Streamlit, Branded + Upload + Lesson/Week Extractor + Bloom Verbs + Auto‑Select + Tips/Chips)
-# Sleek, professional, and staff‑friendly. Upload eBook/Plan/PPT → pick Lesson/Week → edit in white box → export.
+# app.py — ADI Builder (Streamlit, Branded + Upload + Lesson/Week Extractor + Bloom Verbs)
+# Sleek, professional, and staff-friendly.
+# Upload eBook/Plan/PPT → pick Lesson/Week → edit in white box → export.
 
 from __future__ import annotations
 import streamlit as st
@@ -51,7 +52,6 @@ h1, h2, h3 {{ font-weight: 700; color: {ADI_GREEN}; }}
 /* Banner */
 .banner {{ background: {ADI_GREEN}; color: white; padding: 18px 28px; border-radius: 0 0 12px 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }}
 .banner h1 {{ color: white !important; font-size: 1.6rem; margin: 0; }}
-.banner img {{ height: 40px; }}
 
 /* Cards */
 .card {{ background:#fff; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,0.08); padding:20px; margin:14px 0; border-left:6px solid {ADI_GREEN}; }}
@@ -63,8 +63,12 @@ h1, h2, h3 {{ font-weight: 700; color: {ADI_GREEN}; }}
 .toolbar {{ display:flex; justify-content:flex-end; gap:12px; margin:16px 0; flex-wrap: wrap; }}
 
 /* Buttons */
-.stButton>button { background:"+ "{ADI_GREEN}" +"; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-weight:600; font-size:0.9rem; white-space:nowrap; transition:background .2s; }; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-weight:600; transition:background .2s; }}
+.stButton>button {{ background:{ADI_GREEN}; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-weight:600; font-size:0.9rem; white-space:nowrap; transition:background .2s; }}
 .stButton>button:hover {{ background:{ADI_BROWN}; }}
+
+/* Pill buttons row */
+.btn-row {{ display:flex; gap:10px; margin: 6px 0 4px; }}
+.btn-row .stButton>button {{ border-radius:999px; padding:6px 12px; }}
 
 /* White editable areas */
 textarea.output-box {{ width:100%; height:240px; border-radius:10px; padding:12px; font-size:.95rem; line-height:1.45; border:1px solid #ccc; background:#fff; }}
@@ -74,6 +78,13 @@ textarea.output-box {{ width:100%; height:240px; border-radius:10px; padding:12p
 .chips {{ margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; }}
 .chip {{ background:{ADI_SAND}; color:{ADI_BROWN}; border:1px solid #e7ddd2; padding:4px 8px; border-radius:999px; font-size:.8rem; }}
 .chip.more {{ background:#f0ebe4; color:#555; }}
+
+/* Answer badge */
+.answer-badge {{ display:inline-block; background:{ADI_GREEN}; color:#fff; padding:2px 8px; border-radius:999px; font-size:0.8rem; }}
+
+/* Make multiselect tags ADI green */
+.stMultiSelect [data-baseweb="tag"] {{ background:{ADI_GREEN}; color:#fff; border-radius:999px; }}
+.stMultiSelect [data-baseweb="tag"] svg {{ display:none; }}
 </style>
 """
 
@@ -84,13 +95,12 @@ st.markdown(
     f"""
     <div class='banner'>
         <h1>🎓 ADI Builder — Lesson Activities & Questions <span class='badge'>Branded</span></h1>
-        <img src='https://i.imgur.com/F4P6o5D.png' alt='ADI Logo'>
+        <div></div>
     </div>
     """,
     unsafe_allow_html=True,
 )
-
-st.caption("Professional, branded, editable and export‑ready.")
+st.caption("Professional, branded, editable and export-ready.")
 
 # === Bloom's Taxonomy ===
 VERBS_CATALOG = {
@@ -118,7 +128,10 @@ VERBS_DEFAULT = {
     "Create":["design","compose","develop"],
 }
 
-# === Sidebar: Upload + Extractor + Controls ===
+# === Sidebar: Logo + Upload + Extractor + Controls ===
+LOGO_URL = "https://i.imgur.com/F4P6o5D.png"  # replace later with your hosted ADI logo
+st.sidebar.image(LOGO_URL, use_column_width=True)
+
 st.sidebar.header("Upload eBook / Lesson Plan / PPT")
 upload = st.sidebar.file_uploader("PDF / DOCX / PPTX (≤200MB)", type=["pdf","docx","pptx"])
 
@@ -145,11 +158,11 @@ def parse_file(file):
     return ""
 
 @st.cache_resource(show_spinner=False)
-def index_sections(full_text:str):
+def index_sections(full_text: str):
     if not full_text:
         return {}, {}
     text = re.sub(r"\u00a0", " ", full_text)
-    # Capture headings like "Lesson 1" / "Week 3" at line starts (case‑insensitive)
+    # Headings like "Lesson 1" / "Week 3" at line starts
     lesson_matches = list(re.finditer(r"(?im)^(lesson\s*(\d{1,2}))\b.*$", text))
     week_matches   = list(re.finditer(r"(?im)^(week\s*(\d{1,2}))\b.*$", text))
 
@@ -220,16 +233,21 @@ if "verbs_by_level" not in st.session_state:
 level_options = VERBS_CATALOG[level]
 current_selected = st.session_state.verbs_by_level.get(level, VERBS_DEFAULT[level])
 
-b1, b2 = st.sidebar.columns(2)
-if b1.button("Select all verbs"):
+# Pill buttons row
+st.sidebar.markdown("<div class='btn-row'>", unsafe_allow_html=True)
+btn_select_all = st.sidebar.button("Select all verbs")
+btn_auto_best  = st.sidebar.button("Auto-select best")
+btn_reset      = st.sidebar.button("Reset to defaults")
+st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+if btn_select_all:
     st.session_state.verbs_by_level[level] = level_options[:]
     st.rerun()
-if b2.button("Auto‑select best"):
+if btn_auto_best or btn_reset:
     st.session_state.verbs_by_level[level] = VERBS_DEFAULT[level][:]
     st.rerun()
 
-valid_defaults = [v for v in current_selected if v in level_options]
-# Ensure defaults are valid for the selected level
+# Ensure defaults valid for current level to avoid Streamlit errors
 valid_defaults = [v for v in current_selected if v in level_options]
 verbs = st.sidebar.multiselect(
     "Preferred verbs (per level)",
@@ -237,11 +255,18 @@ verbs = st.sidebar.multiselect(
     default=valid_defaults if valid_defaults else VERBS_DEFAULT[level],
     key=f"verbs_{level}"
 )
-st.session_state.verbs_by_level[level] = verbs if verbs else VERBS_DEFAULT[level][:]
+# Keep session state in sync and valid
+st.session_state.verbs_by_level[level] = [v for v in (verbs if verbs else VERBS_DEFAULT[level]) if v in level_options]
 
 st.sidebar.markdown("**Selected verbs preview:**")
 sel_preview = st.session_state.verbs_by_level[level]
-st.sidebar.markdown(""+"<div class='chips'>"+"".join([f"<span class='chip'>{v}</span>" for v in sel_preview[:6]])+(f"<span class='chip more'>+{len(sel_preview)-6} more</span>" if len(sel_preview)>6 else "")+"</div>", unsafe_allow_html=True)
+st.sidebar.markdown(
+    "<div class='chips'>"
+    + "".join([f"<span class='chip'>{v}</span>" for v in sel_preview[:6]])
+    + (f"<span class='chip more'>+{len(sel_preview)-6} more</span>" if len(sel_preview)>6 else "")
+    + "</div>",
+    unsafe_allow_html=True
+)
 
 # === Main Tabs ===
 kn_tab, skills_tab = st.tabs(["Knowledge MCQs", "Skills Activities"])
@@ -259,7 +284,7 @@ with kn_tab:
         # A mix of question patterns (definition, example, application, true/false, missing term, sequence)
         TEMPLATES = [
             lambda t: (f"Which of the following is the **best definition** of {t}?", ["A) A broad opinion","B) A precise explanation","C) An unrelated example","D) None of the above"], "B"),
-            lambda t: (f"Which option **best illustrates** {t} in practice?", ["A) A generic list","B) A real‑world case that matches the concept","C) An opposite of the concept","D) None of the above"], "B"),
+            lambda t: (f"Which option **best illustrates** {t} in practice?", ["A) A generic list","B) A real-world case that matches the concept","C) An opposite of the concept","D) None of the above"], "B"),
             lambda t: (f"You must apply {t} to a new situation. **What should you do first?**", ["A) Ignore the scenario","B) Identify the key variables and constraints","C) Memorize the definition","D) None of the above"], "B"),
             lambda t: (f"**Which statement is TRUE** about {t}?", ["A) It never varies","B) It always produces the same output","C) It depends on the given conditions","D) None of the above"], "C"),
             lambda t: (f"Fill the blank: **{t}** involves ____.", ["A) random guessing","B) structured analysis","C) ignoring evidence","D) None of the above"], "B"),
@@ -283,8 +308,12 @@ with kn_tab:
                 """,
                 unsafe_allow_html=True,
             )
-        edited_mcq = st.text_area("✏️ Edit questions before export:", "
-".join([q[0] for q in mcqs]), key="mcq_edit", height=220)
+        edited_mcq = st.text_area(
+            "✏️ Edit questions before export:",
+            "\n".join([q[0] for q in mcqs]),
+            key="mcq_edit",
+            height=220
+        )
         st.markdown("<div class='toolbar'>", unsafe_allow_html=True)
         st.download_button("📄 TXT", edited_mcq, file_name="mcqs.txt")
         st.download_button("📥 Moodle GIFT", edited_mcq, file_name="mcqs.gift")
@@ -296,7 +325,13 @@ with skills_tab:
 
     # Show selected verbs as chips
     st.markdown("**Verbs in use:**", unsafe_allow_html=True)
-    st.markdown(""+"<div class='chips'>"+"".join([f"<span class='chip'>{v}</span>" for v in sel_preview[:6]])+(f"<span class='chip more'>+{len(sel_preview)-6} more</span>" if len(sel_preview)>6 else "")+"</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='chips'>"
+        + "".join([f"<span class='chip'>{v}</span>" for v in sel_preview[:6]])
+        + (f"<span class='chip more'>+{len(sel_preview)-6} more</span>" if len(sel_preview)>6 else "")
+        + "</div>",
+        unsafe_allow_html=True
+    )
 
     context_text = st.text_area("Context from eBook / notes (editable)", value=st.session_state.get("act_seed", ""), key="act_context_box", height=220)
 
@@ -317,7 +352,7 @@ with skills_tab:
             <div class='card'>
               <h4>📌 Activity {i} — {duration} mins</h4>
               <div class='meta'>Bloom's Level: {level} · Verb in use: <b>{verb}</b></div>
-              <div class='chips'>{''.join([f"<span class='chip'>{v}</span>" for v in chosen_verbs[:6]])}{'<span class=\'chip more\'>+' + str(max(0,len(chosen_verbs)-6)) + ' more</span>' if len(chosen_verbs)>6 else ''}</div>
+              <div class='chips'>{''.join([f"<span class='chip'>{v}</span>" for v in chosen_verbs[:6]])}{'<span class="chip more">+' + str(max(0,len(chosen_verbs)-6)) + ' more</span>' if len(chosen_verbs)>6 else ''}</div>
               <div><span class='label'>📝 Task:</span> {task}</div>
               <div><span class='label'>📊 Output:</span> Short presentation or diagram.</div>
               <div><span class='label'>📤 Evidence:</span> Upload to LMS.</div>
@@ -350,4 +385,3 @@ with skills_tab:
 
 # === Footer ===
 st.markdown("<hr><div style='text-align:center; color:#666;'>© Academy of Defense Industries — ADI Builder</div>", unsafe_allow_html=True)
-
