@@ -1,322 +1,340 @@
-import io
-import re
-import random
-from datetime import date
+# app.py — ADI Builder (Streamlit)
+# Sleek UI with export buttons (Word/DOCX, Moodle GIFT, TXT), clean cards, tabs.
+# If deploying on Streamlit Cloud, add to requirements.txt:
+# streamlit
+# python-docx
 
+from __future__ import annotations
 import streamlit as st
+from io import BytesIO
+from datetime import datetime
 
-# ---- File parsers ----
-import fitz  # PyMuPDF
-from pptx import Presentation
-from docx import Document
+# Optional DOCX export
+try:
+    from docx import Document
+    from docx.shared import Pt
+    DOCX_AVAILABLE = True
+except Exception:
+    DOCX_AVAILABLE = False
 
-# ======================
-# PAGE & GLOBAL THEME
-# ======================
-st.set_page_config(page_title="ADI Builder", page_icon="🧩", layout="wide")
+# -------------------------------
+# Page Config & Style
+# -------------------------------
+st.set_page_config(page_title="ADI Builder", page_icon="🎓", layout="wide")
 
-ADI_GREEN = "#15563d"     # deep green
-ADI_BEIGE = "#b79e82"     # warm beige / brown tint
-ADI_SAND  = "#efeae3"     # soft sandy background
-ADI_TEXT  = "#1f2725"
-ADI_BORDER= "#ccbca9"
+PRIMARY = "#0BA360"  # ADI green accent
+BG_GRADIENT = "linear-gradient(180deg, #f7f9fb 0%, #eef2f6 100%)"
 
-CSS = f"""
+CUSTOM_CSS = f"""
 <style>
-/* ----- page background with gentle gradient ----- */
-html, body, [data-testid="stAppViewContainer"] {{
-  background: linear-gradient(180deg, #fcfcfb 0%, {ADI_SAND} 100%) !important;
-  color: {ADI_TEXT};
+/**** Page background ****/
+.stApp {{
+  background: {BG_GRADIENT};
 }}
 
-/* ----- headings ----- */
+/* Typography */
+html, body, [class*="css"] {{
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  letter-spacing: 0.1px;
+}}
+
+/* Headings */
 h1, h2, h3, h4 {{
-  letter-spacing: .2px;
-}}
-h1 {{
-  font-size: 2.0rem !important;
-  font-weight: 800 !important;
-  color: {ADI_GREEN} !important;
-  margin-bottom: .3rem !important;
-}}
-h2 {{
-  font-size: 1.15rem !important;
-  font-weight: 700 !important;
-  color: {ADI_TEXT} !important;
-}}
-/* section title row */
-.adi-section-title {{
-  display: flex; align-items:center; gap:.5rem; margin: .2rem 0 .6rem 0;
-}}
-.adi-line {{
-  height: 3px; width: 100%; background: {ADI_GREEN}; border-radius: 2px; margin: 6px 0 12px 0;
+  font-weight: 700;
 }}
 
-/* ----- cards / surface boxes ----- */
-.adi-card {{
+/* Accent tabs */
+.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
+  border-bottom: 3px solid {PRIMARY};
+}}
+
+/* Card container */
+.card {{
   background: #ffffff;
-  border: 1px solid {ADI_BORDER};
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 18px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+  padding: 18px 20px;
+  margin: 12px 0 8px 0;
+  border: 1px solid #eef0f3;
 }}
-.adi-tight {{
-  padding-top: 8px; padding-bottom: 8px;
-}}
+.card h4 {{ margin: 0 0 8px 0; font-size: 1.05rem; }}
+.card .meta {{ color: #556; font-size: 0.88rem; margin-bottom: 6px; }}
+.card .label {{ font-weight: 600; }}
 
-/* ----- inputs/selects ----- */
-[data-baseweb="select"] > div,
-div[data-baseweb="input"] > div,
-textarea, input[type="text"] {{
-  border: 1px solid {ADI_BORDER} !important;
+/* Toolbar */
+.toolbar {{
+  display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; align-items: center;
+  padding: 8px; margin-top: 6px; margin-bottom: 10px;
+}}
+.toolbar .hint {{ font-size: 0.86rem; color: #5a6; margin-right: auto; }}
+
+/* Buttons (slight rounding) */
+.stButton>button {{
   border-radius: 12px !important;
-  background: #fff !important;
-}}
-[data-baseweb="select"]:focus-within > div,
-div[data-baseweb="input"]:focus-within > div,
-textarea:focus, input[type="text"]:focus {{
-  box-shadow: 0 0 0 3px rgba(21,86,61,.15) !important;
-  border-color: {ADI_GREEN} !important;
+  padding: 8px 14px !important;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.04);
 }}
 
-/* ----- tags / chips (remove Streamlit red) ----- */
-[data-baseweb="tag"] {{
-  background: #f4efe9 !important;   /* soft beige chip */
-  color: {ADI_TEXT} !important;
-  border: 1px solid {ADI_BORDER} !important;
-}}
-[data-baseweb="tag"] svg {{ color: {ADI_BEIGE} !important; }}
-
-/* ----- tabs: selected underline = ADI green ----- */
-[data-baseweb="tab-list"] > div[aria-selected="true"]::after {{
-  background-color: {ADI_GREEN} !important;
-  height: 3px !important;
-}}
-
-/* ----- buttons ----- */
-.stButton > button {{
-  background: {ADI_GREEN} !important;
-  color: #fff !important;
-  border: 1px solid {ADI_GREEN} !important;
-  border-radius: 12px !important;
-  padding: .58rem 1.05rem !important;
-  font-weight: 650 !important;
-}}
-.stButton > button:hover {{ filter: brightness(.96); }}
-
-/* ----- file uploader with dashed green outline ----- */
-div[data-testid="stFileUploadDropzone"] {{
-  border: 2px dashed {ADI_GREEN} !important;
-  border-radius: 14px !important;
-  background: #fff !important;
-}}
-div[data-testid="stFileUploader"] label p {{
-  color: {ADI_TEXT} !important;
-}}
-
-/* ----- slider accents to ADI green ----- */
-[data-baseweb="slider"] div[role="slider"] {{
-  background: {ADI_GREEN} !important;
-}}
-[data-baseweb="slider"] > div > div > div {{
-  background: rgba(21,86,61,.25) !important;   /* track */
-}}
-
-/* compact radio/checkbox spacing */
-.css-1pcexqc, .stMultiSelect, .stSelectbox {{
-  margin-bottom: 0rem !important;
-}}
+/* Inputs */
+.block-container {{ padding-top: 1.2rem; }}
 </style>
 """
-st.markdown(CSS, unsafe_allow_html=True)
 
-# ======================
-# TEXT EXTRACTION
-# ======================
-def extract_text_from_pdf(file):
-    text = []
-    with fitz.open(stream=file.read(), filetype="pdf") as pdf:
-        for page in pdf:
-            text.append(page.get_text("text"))
-    return "\n".join(text)
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-def extract_text_from_docx(file):
-    data = file.read()
-    bio = io.BytesIO(data)
-    doc = Document(bio)
-    return "\n".join(p.text for p in doc.paragraphs)
+# -------------------------------
+# Sidebar (brand + inputs)
+# -------------------------------
+st.sidebar.image(
+    "https://dummyimage.com/300x80/0BA360/ffffff.png&text=ADI+Builder",
+    use_column_width=True,
+)
 
-def extract_text_from_pptx(file):
-    data = file.read()
-    prs = Presentation(io.BytesIO(data))
-    slides = []
-    for idx, slide in enumerate(prs.slides, start=1):
-        bits = []
-        for shp in slide.shapes:
-            if hasattr(shp, "text"):
-                bits.append(shp.text)
-        if bits:
-            slides.append(f"Slide {idx}: " + " ".join(bits))
-    return "\n".join(slides)
+st.sidebar.markdown("### Upload source (optional)")
+upload = st.sidebar.file_uploader("PDF / DOCX / PPTX (≤200MB)", type=["pdf", "docx", "pptx"], help="Used to extract topics or text if you want.")
 
-def extract_text_from_upload(uploaded):
-    if uploaded is None: return ""
-    name = uploaded.name.lower()
-    uploaded.seek(0)
-    if name.endswith(".pdf"):
-        return extract_text_from_pdf(uploaded)
-    if name.endswith(".docx"):
-        return extract_text_from_docx(uploaded)
-    if name.endswith(".pptx"):
-        return extract_text_from_pptx(uploaded)
-    return ""
+st.sidebar.markdown("---")
 
-# ======================
-# GENERATION LOGIC
-# ======================
-BLOOM_LEVELS = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
-DEFAULT_VERBS = {
-    "Remember":   ["define", "list", "recall"],
-    "Understand": ["explain", "summarise", "describe"],
-    "Apply":      ["demonstrate", "use", "illustrate"],
-    "Analyze":    ["differentiate", "compare", "contrast"],
-    "Evaluate":   ["justify", "critique", "assess"],
-    "Create":     ["design", "develop", "compose"]
+col1, col2 = st.sidebar.columns(2)
+num_activities = col1.number_input("# Activities", min_value=1, max_value=10, value=3)
+duration = col2.number_input("Duration (mins)", min_value=5, max_value=180, value=45)
+
+level = st.sidebar.selectbox("Bloom's Level (focus)", [
+    "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"
+], index=2)
+
+verbs_default = {
+    "Remember": ["list", "define", "recall"],
+    "Understand": ["summarize", "classify", "explain"],
+    "Apply": ["demonstrate", "solve", "use"],
+    "Analyze": ["compare", "differentiate", "organize"],
+    "Evaluate": ["justify", "critique", "defend"],
+    "Create": ["design", "compose", "develop"]
 }
+verbs = st.sidebar.multiselect("Preferred verbs", verbs_default[level], default=verbs_default[level])
 
-def guess_topics(raw_text, max_topics=12):
-    # simple sentence split → keep 5+ word lines
-    sentences = re.split(r"[.!?\n]", raw_text or "")
-    picks = [s.strip() for s in sentences if len(s.split()) >= 5]
-    return picks[:max_topics]
+st.sidebar.markdown("---")
 
-def make_mcq(topic, level, verb):
-    stem = f"{verb.capitalize()} the key ideas of: {topic}"
-    options = [
-        f"Defines criteria for {topic}",
-        f"Summarises {topic}",
-        f"Compares {topic} with another concept",
-        f"Unrelated statement"
-    ]
-    random.shuffle(options)
-    return {"stem": stem, "level": level, "verb": verb,
-            "options": options, "answer": options[0]}
+st.sidebar.caption("Tip: Export buttons appear after you generate content.")
 
-def generate_mcqs(raw_text, levels, verbs_map, total, auto_verbs, level_mix):
-    topics = guess_topics(raw_text, max_topics=20)
-    if not topics: return []
-    if not levels: levels = ["Apply"]
+# -------------------------------
+# Helpers
+# -------------------------------
 
-    mcqs = []
-    for i in range(total):
-        level = random.choice(levels) if level_mix else levels[0]
-        if auto_verbs:
-            verb = random.choice(DEFAULT_VERBS[level])
-        else:
-            pool = verbs_map.get(level, DEFAULT_VERBS[level])
-            verb = random.choice(pool) if pool else random.choice(DEFAULT_VERBS[level])
-        topic = topics[i % len(topics)]
-        mcqs.append(make_mcq(topic, level, verb))
-    return mcqs
+def make_activity(i: int, total: int, duration: int, level: str, verbs: list[str]):
+    v = verbs[(i-1) % max(1, len(verbs))] if verbs else "apply"
+    task = (
+        f"Work in pairs to {v} the key concept from today's topic. Use a real-world example from your context."
+        if level in {"Understand", "Apply"} else
+        f"In small groups, {v} alternative approaches to the problem and choose the best one."
+        if level in {"Analyze", "Evaluate"} else
+        f"Individually, {v} a simple artifact that demonstrates your understanding."
+    )
+    output = (
+        "Short presentation or annotated diagram"
+        if level in {"Understand", "Analyze"} else
+        "One-page write‑up or screencast"
+        if level in {"Apply", "Evaluate"} else
+        "Prototype/mockup or concept map"
+    )
+    evidence = "Upload to LMS (photo, PDF, or link)."
+    title = f"Activity {i} of {total} — {duration} mins"
+    return {
+        "title": title,
+        "task": task,
+        "output": output,
+        "evidence": evidence,
+        "duration": duration,
+    }
 
-# ======================
-# UI LAYOUT
-# ======================
-st.markdown("<h1>ADI Builder</h1>", unsafe_allow_html=True)
-st.caption("Create crisp knowledge questions and simple skills activities from your lesson materials.")
 
-# ---- Upload + Schedule Row ----
-with st.container():
-    up_col, wk_col, ls_col = st.columns([2.2, .9, .9])
-    with up_col:
-        st.markdown('<div class="adi-card adi-tight">', unsafe_allow_html=True)
-        uploaded = st.file_uploader("Upload PDF / DOCX / PPTX", type=["pdf","docx","pptx"])
-        st.markdown('</div>', unsafe_allow_html=True)
-    with wk_col:
-        st.markdown('<div class="adi-card adi-tight">', unsafe_allow_html=True)
-        week = st.selectbox("Week", list(range(1, 15)), index=0)
-        st.markdown('</div>', unsafe_allow_html=True)
-    with ls_col:
-        st.markdown('<div class="adi-card adi-tight">', unsafe_allow_html=True)
-        lesson = st.selectbox("Lesson", list(range(1, 5)), index=0)
-        st.markdown('</div>', unsafe_allow_html=True)
+def render_activity_card(act: dict):
+    st.markdown(
+        f"""
+        <div class='card'>
+          <h4>{act['title']}</h4>
+          <div class='meta'>Designed for Bloom's focus: <b>{level}</b></div>
+          <div><span class='label'>Task:</span> {act['task']}</div>
+          <div><span class='label'>Output:</span> {act['output']}</div>
+          <div><span class='label'>Evidence:</span> {act['evidence']}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-with st.container():
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    pasted = st.text_area("Or paste content here", height=140, placeholder="Paste lesson notes or text from your eBook…")
-    st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="adi-line"></div>', unsafe_allow_html=True)
+def activities_to_text(acts: list[dict]) -> str:
+    lines = []
+    for i, a in enumerate(acts, 1):
+        lines.append(f"{i}. ({a['duration']} mins) {a['title']}")
+        lines.append(f"   Task: {a['task']}")
+        lines.append(f"   Output: {a['output']}")
+        lines.append(f"   Evidence: {a['evidence']}")
+        lines.append("")
+    return "\n".join(lines).strip()
 
-# ---- Tabs ----
-tab_mcq, tab_act = st.tabs(["Knowledge MCQs", "Skills Activities"])
 
-# ---------------- MCQs ----------------
-with tab_mcq:
-    st.markdown('<div class="adi-section-title"><h2>Knowledge MCQs</h2></div>', unsafe_allow_html=True)
+def activities_to_gift(acts: list[dict]) -> str:
+    # Represent each activity as a GIFT comment block
+    chunks = []
+    for i, a in enumerate(acts, 1):
+        body = f"Task: {a['task']}\nOutput: {a['output']}\nEvidence: {a['evidence']}"
+        chunks.append(f"// Activity {i} ({a['duration']} mins)\n// {body}\n")
+    return "\n".join(chunks).strip()
 
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1.8, 1.2, 1.2])
 
-    with c1:
-        levels = st.multiselect("Bloom’s levels", BLOOM_LEVELS, default=["Understand", "Apply"])
-    with c2:
-        auto_verbs = st.checkbox("Auto-select verbs (balanced)", value=True)
-    with c3:
-        level_mix = st.checkbox("Mix levels", value=False)
+def activities_to_docx(acts: list[dict]) -> bytes:
+    doc = Document()
+    s = doc.styles['Normal']
+    s.font.name = 'Calibri'
+    s.font.size = Pt(11)
+    doc.add_heading('ADI Builder — Skills Activities', level=1)
+    doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
+    for i, a in enumerate(acts, 1):
+        doc.add_heading(f"{i}. ({a['duration']} mins) {a['title']}", level=2)
+        p = doc.add_paragraph()
+        p.add_run("Task: ").bold = True
+        doc.add_paragraph(a['task'])
+        p = doc.add_paragraph()
+        p.add_run("Output: ").bold = True
+        doc.add_paragraph(a['output'])
+        p = doc.add_paragraph()
+        p.add_run("Evidence: ").bold = True
+        doc.add_paragraph(a['evidence'])
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
 
-    total_q = st.slider("Number of MCQs", 5, 10, 6)
 
-    # Per-level verbs when auto-select is off
-    user_verbs = {}
-    if not auto_verbs:
-        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-        st.markdown("**Choose verbs for selected levels**")
-        for lev in levels:
-            user_verbs[lev] = st.multiselect(
-                f"Verbs for {lev}",
-                DEFAULT_VERBS[lev],
-                default=DEFAULT_VERBS[lev][:2],
-                key=f"verbs_{lev}"
+def to_bytes(s: str) -> bytes:
+    return s.encode('utf-8')
+
+# -------------------------------
+# Main UI
+# -------------------------------
+st.title("ADI Builder — Lesson Activities & Questions")
+
+subtitle_left, subtitle_right = st.columns([0.6, 0.4])
+with subtitle_left:
+    st.caption("Sleek, engaging, and export‑ready. Upload content (optional), set your parameters, and generate.")
+with subtitle_right:
+    st.write("")
+
+# Tabs
+kn_tab, skills_tab = st.tabs(["Knowledge MCQs", "Skills Activities"])  # MCQ stub kept for parity
+
+# -------------------------------
+# Knowledge MCQs (readable text area + placeholder generation)
+# -------------------------------
+with kn_tab:
+    st.subheader("Generate MCQs (placeholder)")
+    colk1, colk2 = st.columns([1,1])
+    with colk1:
+        n_mcq = st.number_input("How many MCQs?", 1, 50, 5)
+    with colk2:
+        kn_topic = st.text_input("Topic (optional)", "Module description, knowledge & skills outcomes")
+
+    gen_mcq = st.button("Generate MCQs", key="btn_mcq")
+
+    if gen_mcq:
+        # simple placeholder questions
+        mcqs = []
+        for i in range(1, n_mcq+1):
+            stem = f"({i}) Which statement best relates to: {kn_topic}?"
+            opts = ["A) Definition", "B) Example", "C) Contrast", "D) None of the above"]
+            answer = "B"
+            mcqs.append((stem, opts, answer))
+
+        for i, (stem, opts, ans) in enumerate(mcqs, 1):
+            st.markdown(
+                f"""
+                <div class='card'>
+                <h4>Question {i}</h4>
+                <div class='meta'>Single best answer</div>
+                <div>{stem}</div>
+                <div style='margin-top:6px;'>""" + "<br/>".join(opts) + f"""</div>
+                <div style='margin-top:8px; font-size:0.9rem; color:#486;'>Answer: <b>{ans}</b></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="adi-card adi-tight">', unsafe_allow_html=True)
-    if st.button("Generate MCQs"):
-        raw_text = extract_text_from_upload(uploaded) if uploaded else pasted
-        mcqs = generate_mcqs(raw_text, levels, user_verbs, total_q, auto_verbs, level_mix)
+# -------------------------------
+# Skills Activities
+# -------------------------------
+with skills_tab:
+    st.subheader("Generate Skills Activities")
 
-        if not mcqs:
-            st.info("No content found. Upload a file or paste some lesson text above.")
+    colA, colB, colC = st.columns([1,1,1])
+    with colA:
+        st.text_input("Skills activity title (optional)", value="", key="title_hint")
+    with colB:
+        st.text_input("Context/notes (optional)", value="", key="notes_hint")
+    with colC:
+        st.text_input("Assessment link (optional)", value="", key="assess_hint")
+
+    generate = st.button("Generate Activities", type="primary", use_container_width=False, key="btn_act")
+
+    if generate:
+        activities = [make_activity(i+1, num_activities, duration, level, verbs) for i in range(num_activities)]
+
+        # Show toolbar with export options
+        st.markdown("<div class='toolbar'><span class='hint'>Ready to export</span></div>", unsafe_allow_html=True)
+
+        # Render activity cards
+        for act in activities:
+            render_activity_card(act)
+
+        # Build export payloads
+        txt_payload = activities_to_text(activities)
+        gift_payload = activities_to_gift(activities)
+
+        # TXT
+        st.download_button(
+            label="⬇️ Download TXT",
+            file_name="adi_activities.txt",
+            mime="text/plain",
+            data=to_bytes(txt_payload),
+            key="dl_txt"
+        )
+
+        # Moodle GIFT
+        st.download_button(
+            label="⬇️ Export Moodle GIFT",
+            file_name="adi_activities.gift",
+            mime="text/plain",
+            data=to_bytes(gift_payload),
+            key="dl_gift"
+        )
+
+        # DOCX (Word)
+        if DOCX_AVAILABLE:
+            docx_bytes = activities_to_docx(activities)
+            st.download_button(
+                label="⬇️ Download Word (.docx)",
+                file_name="adi_activities.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                data=docx_bytes,
+                key="dl_docx"
+            )
         else:
-            for i, q in enumerate(mcqs, start=1):
-                st.markdown(f"**Q{i}. {q['stem']}**")
-                for opt in q["options"]:
-                    st.markdown(f"- {opt}")
-                st.caption(f"Answer: {q['answer']}  •  Level: {q['level']}  •  Verb: {q['verb']}")
-                st.markdown("---")
-    st.markdown('</div>', unsafe_allow_html=True)
+            st.info("To enable Word (.docx) export, add `python-docx` to requirements.txt.")
 
-# ---------------- Activities ----------------
-with tab_act:
-    st.markdown('<div class="adi-section-title"><h2>Skills Activities</h2></div>', unsafe_allow_html=True)
+        # Legacy .doc as plain text (Word will still open it)
+        st.download_button(
+            label="⬇️ Download Word (.doc)",
+            file_name="adi_activities.doc",
+            mime="application/msword",
+            data=to_bytes(txt_payload),
+            key="dl_doc"
+        )
 
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    ac1, ac2 = st.columns([1.2, 1.2])
-    with ac1:
-        act_count = st.slider("Number of activities", 1, 4, 2)
-    with ac2:
-        act_duration = st.selectbox("Duration (mins)", list(range(10, 65, 5)), index=2)
+        st.success("Activities generated. Use the buttons above to download.")
 
-    if st.button("Generate Activities"):
-        raw_text = extract_text_from_upload(uploaded) if uploaded else pasted
-        topics = guess_topics(raw_text, max_topics=act_count)
-        if not topics:
-            st.info("No content found. Upload a file or paste some lesson text above.")
-        else:
-            for i, t in enumerate(topics, start=1):
-                st.markdown(f"**{i}. ({act_duration} mins)**  {t}")
-                st.markdown("- Task: Work in pairs or small groups.")
-                st.markdown("- Output: Short presentation or annotated diagram.")
-                st.markdown("- Evidence: Photo or upload to LMS.")
-                st.markdown("---")
-    st.markdown('</div>', unsafe_allow_html=True)
+# Footer
+st.markdown("""
+<div style='text-align:center; margin-top:24px; color:#6b7280; font-size:0.9rem;'>
+  © ADI Builder — Streamlit UI. Polished with custom CSS, tabs, and export toolbar.
+</div>
+""", unsafe_allow_html=True)
