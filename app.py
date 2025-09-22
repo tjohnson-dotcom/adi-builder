@@ -56,7 +56,7 @@ st.markdown("""
   .stButton>button:hover{filter:brightness(.96); transform: translateY(-1px);}
   .stButton>button:active{transform: translateY(0);}
 
-  /* Inputs with ADI outline */
+  /* Inputs */
   .stSelectbox > div > div,
   .stMultiSelect > div > div,
   .stTextInput > div > div > input,
@@ -68,14 +68,16 @@ st.markdown("""
     margin-bottom:4px !important;
   }
 
-  /* Drag & drop file uploader */
+  /* FIX: Drag & drop file uploader (all states) */
+  .stFileUploader div[data-testid="stFileDropzone"],
+  .stFileUploader div[data-testid="stFileUploader"],
   .stFileUploader > div > div{
     border:2px dashed var(--adi-green) !important;
     border-radius:12px !important;
     background:#fff;
   }
 
-  /* Verb multiselect boxes compact */
+  /* Verb multiselect compact */
   .stMultiSelect{margin-bottom:0.25rem !important;}
   .stMultiSelect label{font-weight:600; margin-bottom:0.15rem; color:var(--adi-green);}
   .stMultiSelect [data-baseweb="tag"]{
