@@ -86,7 +86,7 @@ with kn_tab:
             blocks.append(q_text)
 
         txt_out="\n\n".join(blocks)
-        st.download_button("Download MCQs (.txt)", txt_out.encode("utf-8"), file_name="adi_mcqs.txt")
+        # Word-friendly formats only
         mcq_rtf=to_rtf("ADI Builder — Knowledge MCQs", txt_out)
         st.download_button("Download MCQs (.rtf)", mcq_rtf, file_name="adi_mcqs.rtf")
         if DOCX_AVAILABLE:
@@ -118,7 +118,7 @@ with skills_tab:
             st.text_area(f"Activity {i}",text,height=120)
             acts.append(text)
         edited_out="\n\n".join(acts)
-        st.download_button("Download Activities (.txt)", edited_out.encode("utf-8"), file_name="adi_activities.txt")
+        # Word-friendly formats only
         act_rtf=to_rtf("ADI Builder — Skills Activities", edited_out)
         st.download_button("Download Activities (.rtf)", act_rtf, file_name="adi_activities.rtf")
         if DOCX_AVAILABLE:
@@ -131,10 +131,31 @@ with skills_tab:
             st.download_button("Download Activities (.docx)",bio.getvalue(),file_name="adi_activities.docx")
 
 # Full Pack
-if DOCX_AVAILABLE and st.button("Build Full Pack"):
+def build_full_pack_docx(mcqs,acts):
     doc=Document(); s=doc.styles['Normal']; s.font.name='Calibri'; s.font.size=Pt(11)
     doc.add_heading('ADI Builder — Lesson Pack',0)
     doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
-    doc.add_paragraph("(MCQs and Activities will be combined here)")
+    if mcqs:
+        doc.add_heading('Section A — MCQs',level=1)
+        for i,blk in enumerate(mcqs,1):
+            doc.add_heading(f'Question {i}',level=2)
+            for line in blk.split('\n'):
+                if line.startswith(("A)","B)","C)","D)")):
+                    doc.add_paragraph(line,style='List Bullet')
+                else:
+                    doc.add_paragraph(line)
+    if acts:
+        doc.add_page_break()
+        doc.add_heading('Section B — Activities',level=1)
+        for a in acts:
+            doc.add_paragraph(a)
     bio=BytesIO();doc.save(bio);bio.seek(0)
-    st.download_button("Download Full Pack (.docx)",bio.getvalue(),file_name="adi_full_pack.docx")
+    return bio.getvalue()
+
+if DOCX_AVAILABLE and st.button("Build Full Pack"):
+    mcqs = []
+    acts = []
+    # You could pull from session state if needed
+    docx_bytes = build_full_pack_docx(mcqs,acts)
+    st.download_button("Download Full Pack (.docx)",docx_bytes,file_name="adi_full_pack.docx")
+
