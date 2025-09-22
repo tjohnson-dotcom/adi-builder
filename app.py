@@ -1,5 +1,6 @@
-# app.py — ADI Builder (Streamlit, Branded + Upload + Lesson/Week Extractor + Bloom Verbs + Full Exports)
-# Upload eBook/Plan/PPT → select Lesson/Week → generate MCQs & step-by-step Activities → edit → export (TXT, GIFT, DOC, DOCX, Full Pack).
+# app.py — ADI Builder (Streamlit)
+# Branded + Upload + Lesson/Week Extractor + Bloom Verbs + Difficulty + Attachments + Clean Exports
+# Upload eBook/Plan/PPT → select Lesson/Week → generate MCQs & step-by-step Activities → edit → export.
 
 from __future__ import annotations
 import streamlit as st
@@ -11,7 +12,7 @@ import os
 # ---- Optional libs (graceful fallbacks) ----
 try:
     from docx import Document
-    from docx.shared import Pt
+    from docx.shared import Pt, Inches
     DOCX_AVAILABLE = True
 except Exception:
     DOCX_AVAILABLE = False
@@ -99,24 +100,22 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.caption("Professional, branded, editable and export-ready.")
 
-# ---- Sidebar logo with fallback (prevents the '0' glitch) ----
+# ---- Sidebar logo with robust fallback (no '0' glitch) ----
 def show_sidebar_logo():
-    local_path = "assets/adi-logo.png"  # put your logo here if you have it
-    url_fallback = "https://raw.githubusercontent.com/LCI-ADI/assets/main/adi-logo.png"
-    try:
-        if os.path.exists(local_path):
-            st.sidebar.image(local_path, width=180)
-        else:
-            st.sidebar.image(url_fallback, width=180)
-    except Exception:
-        st.sidebar.markdown("**Academy of Defense Industries**")
-
+    local_path = "assets/adi-logo.png"  # place your PNG here to show the logo
+    if os.path.exists(local_path):
+        st.sidebar.image(local_path, width=180)
+    else:
+        st.sidebar.markdown(
+            f"<div style='padding:8px 0;font-weight:700;color:{ADI_GREEN};font-size:1.05rem;'>"
+            "Academy of Defense Industries</div>",
+            unsafe_allow_html=True
+        )
 show_sidebar_logo()
 
 # =========================
 #       DATA & HELPERS
 # =========================
-
 VERBS_CATALOG = {
     "Remember": ["define","duplicate","label","list","match","memorize","name","omit","recall","recognize","record","repeat","reproduce","state"],
     "Understand": ["classify","convert","defend","describe","discuss","distinguish","estimate","explain","express","identify","indicate","locate","report","restate","review","select","translate","summarize"],
@@ -199,8 +198,8 @@ if upload is not None and "parsed_text_blob" not in st.session_state:
 # ---- Select lesson/week (if parsed) ----
 if st.session_state.get("parsed_text_blob"):
     st.sidebar.subheader("Pick from eBook/Plan/PPT")
-    lkeys = sorted(st.session_state.lessons.keys()) or list(range(1,15))
-    wkeys = sorted(st.session_state.weeks.keys()) or list(range(1,15))
+    lkeys = sorted(st.session_state.lessons.keys()) or list(range(1,14+1))
+    wkeys = sorted(st.session_state.weeks.keys()) or list(range(1,14+1))
     sel_lesson = st.sidebar.selectbox("📖 Lesson", options=["—"]+[str(k) for k in lkeys], index=0)
     sel_week   = st.sidebar.selectbox("🗓️ Week",   options=["—"]+[str(k) for k in wkeys], index=0)
     c1, c2 = st.sidebar.columns(2)
@@ -235,6 +234,14 @@ duration       = col2.number_input("Duration (mins)", 5, 180, 45)
 
 level = st.sidebar.selectbox("Bloom's Level", list(VERBS_CATALOG.keys()), index=2, key="level")
 st.sidebar.info(f"**{level}**: {LEVEL_TIPS[level]}")
+
+# Difficulty (global)
+difficulty = st.sidebar.select_slider(
+    "Difficulty",
+    options=["Easy","Medium","Hard"],
+    value="Medium",
+    help="Scales MCQ rigor and activity complexity."
+)
 
 if "verbs_by_level" not in st.session_state:
     st.session_state.verbs_by_level = {k: VERBS_DEFAULT[k][:] for k in VERBS_DEFAULT}
@@ -290,8 +297,8 @@ with kn_tab:
 
     if st.button("Generate MCQs"):
         import random
-        # Templates intentionally exclude True/False and 'All/None of the above'
-        TEMPLATES = [
+
+        BASE_TEMPLATES = [
             lambda t: (f"Which option is the most accurate **definition** of {t}?",
                        ["A) A broad opinion", "B) A precise explanation capturing essential characteristics",
                         "C) A historical anecdote", "D) A list of unrelated facts"], "B"),
@@ -312,9 +319,29 @@ with kn_tab:
                         "C) Evaluate → Define → Apply", "D) Define → Evaluate → Apply"], "A"),
         ]
 
+        HARD_TEMPLATES = [
+            lambda t: (f"Given a brief scenario involving {t}, which option best justifies the recommended approach?",
+                       ["A) Cites unrelated evidence",
+                        "B) References assumptions and constraints explicitly",
+                        "C) Focuses on formatting over reasoning",
+                        "D) Mentions outcomes without criteria"], "B"),
+            lambda t: (f"Which choice best **prioritizes** actions when applying {t} with limited resources?",
+                       ["A) Start with tasks requiring the least thought",
+                        "B) Identify constraints, then map actions to impact",
+                        "C) Copy a previous solution without adaptation",
+                        "D) Choose actions randomly"], "B"),
+        ]
+
+        if difficulty == "Easy":
+            pool = [BASE_TEMPLATES[0], BASE_TEMPLATES[1], BASE_TEMPLATES[4]]
+        elif difficulty == "Hard":
+            pool = HARD_TEMPLATES + BASE_TEMPLATES
+        else:
+            pool = BASE_TEMPLATES
+
         mcqs = []
         for _ in range(n_mcq):
-            stem, opts, ans = random.choice(TEMPLATES)(topic)
+            stem, opts, ans = random.choice(pool)(topic)
             mcqs.append((stem, opts, ans))
 
         edited_blocks = []
@@ -333,11 +360,28 @@ with kn_tab:
             )
             q_text = stem + "\n" + "\n".join(opts) + f"\nAnswer: {ans}"
             box = st.text_area(f"✏️ Edit Q{i}", q_text, key=f"mcq_edit_{i}", height=120)
+
+            # Optional attachments per question (session-only)
+            st.session_state.setdefault(f"mcq_passage_{i}", "")
+            st.session_state.setdefault(f"mcq_img_{i}", None)
+            st.text_area(f"📄 Passage (optional) for Q{i}", st.session_state[f"mcq_passage_{i}"], key=f"mcq_passage_{i}", height=80)
+            st.file_uploader(f"🖼️ Image (optional) for Q{i}", type=["png","jpg","jpeg"], key=f"mcq_img_{i}")
+
             edited_blocks.append(box)
 
         # ---- Exports for MCQs ----
         def mcq_blocks_to_txt(blocks:list[str])->str:
-            return "\n\n".join(b.strip() for b in blocks)
+            txt_blocks = []
+            for idx, blk in enumerate(blocks, 1):
+                pre = ""
+                pkey = f"mcq_passage_{idx}"
+                if pkey in st.session_state and (st.session_state[pkey] or "").strip():
+                    pre += "Passage:\n" + st.session_state[pkey].strip() + "\n\n"
+                ikey = f"mcq_img_{idx}"
+                if ikey in st.session_state and st.session_state[ikey] is not None:
+                    pre += "(See image in Word export)\n"
+                txt_blocks.append(pre + blk.strip())
+            return "\n\n".join(txt_blocks)
 
         def mcq_blocks_to_gift(blocks:list[str])->str:
             out = []
@@ -345,6 +389,14 @@ with kn_tab:
                 lines = [l.strip() for l in blk.strip().splitlines() if l.strip()]
                 if not lines: continue
                 stem = lines[0]
+                # prepend passage and image note
+                pkey = f"mcq_passage_{idx}"
+                if pkey in st.session_state and (st.session_state[pkey] or "").strip():
+                    stem = f"[Passage] {st.session_state[pkey].strip()} \n\n{stem}"
+                ikey = f"mcq_img_{idx}"
+                if ikey in st.session_state and st.session_state[ikey] is not None:
+                    stem = f"{stem} (See image in Word export)"
+
                 options = [l for l in lines[1:] if re.match(r"^[A-D]\)", l)]
                 ans_line = next((l for l in lines if l.lower().startswith("answer:")), "Answer: A")
                 ans_letter = ans_line.split(":",1)[1].strip()[:1].upper() if ":" in ans_line else "A"
@@ -371,7 +423,25 @@ with kn_tab:
                 options = [l for l in lines[1:] if re.match(r"^[A-D]\)", l)]
                 ans_line = next((l for l in lines if l.lower().startswith('answer:')), '')
                 doc.add_heading(f"Question {idx}", level=2)
+
+                # Passage (if any)
+                pkey = f"mcq_passage_{idx}"
+                if pkey in st.session_state and (st.session_state[pkey] or "").strip():
+                    doc.add_heading("Passage", level=3)
+                    doc.add_paragraph(st.session_state[pkey].strip())
+
+                # Stem
                 doc.add_paragraph(stem)
+
+                # Image (if any)
+                ikey = f"mcq_img_{idx}"
+                if ikey in st.session_state and st.session_state[ikey] is not None:
+                    try:
+                        st.session_state[ikey].seek(0)
+                        doc.add_picture(st.session_state[ikey], width=Inches(4.5))
+                    except Exception:
+                        doc.add_paragraph("[Image could not be embedded]")
+
                 for opt in options:
                     doc.add_paragraph(opt, style='List Bullet')
                 if ans_line:
@@ -434,6 +504,21 @@ with skills_tab:
                 "Team can justify choices during a 1-min share-out",
             ]
 
+            if difficulty == "Easy":
+                step2 = f"In pairs, {verb} a simple example in the scenario; list variables and obvious constraints. ({t_work} min)"
+                checks = [
+                    "Example matches concept",
+                    "Key terms identified",
+                    "Basic visual produced",
+                ]
+            elif difficulty == "Hard":
+                step2 = f"In small teams, {verb} the concept under competing constraints; decide trade-offs and justify. ({t_work} min)"
+                checks = [
+                    "Trade-offs justified with criteria",
+                    "Constraints explicit and prioritized",
+                    "Visual shows reasoning steps",
+                ]
+
             act_text = (
                 f"Activity {i} — {duration} mins\n"
                 f"Bloom's Level: {level} (verb: {verb})\n"
@@ -482,10 +567,8 @@ with skills_tab:
         st.download_button("📄 TXT", edited_output, file_name="adi_activities.txt")
         st.download_button("📥 Moodle GIFT", edited_output, file_name="adi_activities.gift")
         st.download_button("🗎 Word (.doc)", edited_output, file_name="adi_activities.doc")
-        # Structured DOCX for activities
         if DOCX_AVAILABLE:
-            from docx import Document as _D
-            doc = _D()
+            doc = Document()
             s = doc.styles['Normal']; s.font.name='Calibri'; s.font.size=Pt(11)
             doc.add_heading('ADI Builder — Skills Activities', level=1)
             doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
@@ -536,7 +619,24 @@ if DOCX_AVAILABLE and (st.session_state.get("mcq_blocks") or st.session_state.ge
                 options = [l for l in lines[1:] if re.match(r'^[A-D]\)', l)]
                 ans_line = next((l for l in lines if l.lower().startswith('answer:')), '')
                 doc.add_heading(f'Question {idx}', level=2)
+
+                # Passage
+                pkey = f"mcq_passage_{idx}"
+                if pkey in st.session_state and (st.session_state[pkey] or "").strip():
+                    doc.add_heading("Passage", level=3)
+                    doc.add_paragraph(st.session_state[pkey].strip())
+
                 doc.add_paragraph(stem)
+
+                # Image
+                ikey = f"mcq_img_{idx}"
+                if ikey in st.session_state and st.session_state[ikey] is not None:
+                    try:
+                        st.session_state[ikey].seek(0)
+                        doc.add_picture(st.session_state[ikey], width=Inches(4.5))
+                    except Exception:
+                        doc.add_paragraph("[Image could not be embedded]")
+
                 for opt in options:
                     doc.add_paragraph(opt, style='List Bullet')
                 if ans_line:
@@ -545,7 +645,6 @@ if DOCX_AVAILABLE and (st.session_state.get("mcq_blocks") or st.session_state.ge
                 doc.add_paragraph("")
 
         if activities_list:
-            # Page break before activities for neat separation
             doc.add_page_break()
             doc.add_heading('Section B — Skills Activities', level=1)
             for block in activities_list:
