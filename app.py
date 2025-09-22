@@ -256,6 +256,3 @@ with skills_tab:
 
 # Footer
 st.markdown("<hr><div style='text-align:center; color:#666;'>© Academy of Defense Industries — ADI Builder</div>", unsafe_allow_html=True)
-
-
-
