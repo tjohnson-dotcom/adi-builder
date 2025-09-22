@@ -63,7 +63,7 @@ h1, h2, h3 {{ font-weight: 700; color: {ADI_GREEN}; }}
 .toolbar {{ display:flex; justify-content:flex-end; gap:12px; margin:16px 0; flex-wrap: wrap; }}
 
 /* Buttons */
-.stButton>button {{ background:{ADI_GREEN}; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-weight:600; transition:background .2s; }}
+.stButton>button { background:"+ "{ADI_GREEN}" +"; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-weight:600; font-size:0.9rem; white-space:nowrap; transition:background .2s; }; color:#fff; border:none; border-radius:10px; padding:10px 18px; font-weight:600; transition:background .2s; }}
 .stButton>button:hover {{ background:{ADI_BROWN}; }}
 
 /* White editable areas */
@@ -228,7 +228,15 @@ if b2.button("Auto‑select best"):
     st.session_state.verbs_by_level[level] = VERBS_DEFAULT[level][:]
     st.rerun()
 
-verbs = st.sidebar.multiselect("Preferred verbs (per level)", options=level_options, default=current_selected, key=f"verbs_{level}")
+valid_defaults = [v for v in current_selected if v in level_options]
+# Ensure defaults are valid for the selected level
+valid_defaults = [v for v in current_selected if v in level_options]
+verbs = st.sidebar.multiselect(
+    "Preferred verbs (per level)",
+    options=level_options,
+    default=valid_defaults if valid_defaults else VERBS_DEFAULT[level],
+    key=f"verbs_{level}"
+)
 st.session_state.verbs_by_level[level] = verbs if verbs else VERBS_DEFAULT[level][:]
 
 st.sidebar.markdown("**Selected verbs preview:**")
@@ -247,16 +255,36 @@ with kn_tab:
     base_text = st.text_area("Source text (editable)", value=st.session_state.get("mcq_seed", ""), key="mcq_source_box", height=220)
 
     if st.button("Generate MCQs"):
-        # Placeholder generator — replace with your own logic
+        import random
+        # A mix of question patterns (definition, example, application, true/false, missing term, sequence)
+        TEMPLATES = [
+            lambda t: (f"Which of the following is the **best definition** of {t}?", ["A) A broad opinion","B) A precise explanation","C) An unrelated example","D) None of the above"], "B"),
+            lambda t: (f"Which option **best illustrates** {t} in practice?", ["A) A generic list","B) A real‑world case that matches the concept","C) An opposite of the concept","D) None of the above"], "B"),
+            lambda t: (f"You must apply {t} to a new situation. **What should you do first?**", ["A) Ignore the scenario","B) Identify the key variables and constraints","C) Memorize the definition","D) None of the above"], "B"),
+            lambda t: (f"**Which statement is TRUE** about {t}?", ["A) It never varies","B) It always produces the same output","C) It depends on the given conditions","D) None of the above"], "C"),
+            lambda t: (f"Fill the blank: **{t}** involves ____.", ["A) random guessing","B) structured analysis","C) ignoring evidence","D) None of the above"], "B"),
+            lambda t: (f"Place the steps for **{t}** in the correct order (first to last). Which option is correct?", ["A) Decide → Evaluate → Define","B) Define → Apply → Evaluate","C) Apply → Define → Evaluate","D) None of the above"], "B"),
+        ]
         mcqs = []
         for i in range(1, n_mcq+1):
-            stem = f"({i}) Which statement best relates to: {topic}?"
-            opts = ["A) Definition", "B) Example", "C) Contrast", "D) None of the above"]
-            ans = "B"
+            stem, opts, ans = random.choice(TEMPLATES)(topic)
             mcqs.append((stem, opts, ans))
         for i, (stem, opts, ans) in enumerate(mcqs, 1):
-            st.markdown(f"<div class='card'><h4>📝 Question {i}</h4><div class='meta'>Single best answer</div><div>{stem}</div><div style='margin-top:6px;'>"+"<br/>".join(opts)+f"</div><div style='margin-top:8px; font-size:.9rem; color:#486;'>Answer: <b>{ans}</b></div></div>", unsafe_allow_html=True)
-        edited_mcq = st.text_area("✏️ Edit questions before export:", "\n".join([q[0] for q in mcqs]), key="mcq_edit", height=220)
+            options_html = "<br/>".join(opts)
+            st.markdown(
+                f"""
+                <div class='card'>
+                  <h4>📝 Question {i}</h4>
+                  <div class='meta'>Single best answer</div>
+                  <div>{stem}</div>
+                  <div style='margin-top:6px;'>{options_html}</div>
+                  <div style='margin-top:8px;'>Answer: <span class='answer-badge'>{ans}</span></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        edited_mcq = st.text_area("✏️ Edit questions before export:", "
+".join([q[0] for q in mcqs]), key="mcq_edit", height=220)
         st.markdown("<div class='toolbar'>", unsafe_allow_html=True)
         st.download_button("📄 TXT", edited_mcq, file_name="mcqs.txt")
         st.download_button("📥 Moodle GIFT", edited_mcq, file_name="mcqs.gift")
@@ -322,3 +350,4 @@ with skills_tab:
 
 # === Footer ===
 st.markdown("<hr><div style='text-align:center; color:#666;'>© Academy of Defense Industries — ADI Builder</div>", unsafe_allow_html=True)
+
