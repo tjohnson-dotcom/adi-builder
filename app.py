@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Tabs Green, Inputs Glow, Buttons Glow)
+# app.py — ADI Builder (Inputs pill-style + Bloom tiers auto-highlight by Week)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -23,9 +23,11 @@ ADI_CSS = f"""
 <style>
 :root{{
   --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#EEF5F0;
-  --adi-gold:#C8A85A; --adi-stone:#f3f1ee; --adi-stone-text:#4a4a45;
-  --adi-sand:#f8f3e8; --adi-sand-text:#6a4b2d; --adi-ink:#1f2937; --adi-muted:#6b7280;
-  --bg:#FAFAF7; --card:#ffffff; --border:#d9dfda; --shadow:0 10px 24px rgba(0,0,0,.06);
+  --adi-gold:#C8A85A; --adi-sand:#f8f3e8; --adi-sand-text:#6a4b2d;
+  --adi-stone:#f3f1ee; --adi-stone-text:#4a4a45;
+  --adi-ink:#1f2937; --adi-muted:#6b7280;
+  --bg:#FAFAF7; --card:#ffffff; --border:#d9dfda;
+  --shadow:0 10px 24px rgba(0,0,0,.06);
   --radius:18px; --radius-pill:999px;
 }}
 html,body{{background:var(--bg)}}
@@ -50,35 +52,23 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-tabs input[type="radio"]{{ accent-color: var(--adi-green); }}
 .adi-tabs input[type="radio"]:focus-visible{{ outline:2px solid var(--adi-gold); outline-offset:2px; }}
 
-/* Layout */
-.grid{{display:grid; grid-template-columns: 340px 1fr; gap:20px; margin-top:12px;}}
-.sidebar{{max-width:340px;}}
-
-/* Cards */
-.adi-card{{ background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:14px; }}
-.adi-card h3{{ margin:0 0 8px 0; color:var(--adi-green); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }}
-
-/* Upload */
-.adi-upload{{ border:2px dashed var(--adi-green); background:var(--adi-green-50); border-radius:14px; padding:12px; display:flex; gap:10px; align-items:center; }}
-.adi-upload .icon{{ width:28px; height:28px; border-radius:7px; background:var(--adi-green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }}
-.adi-upload small{{ color:var(--adi-muted) }}
-
-/* Inputs with outline */
-input, textarea, select{{ border:2px solid var(--adi-green) !important; border-radius:12px !important; }}
-div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
-input:focus, textarea:focus, select:focus{{ outline:none !important; border-color:var(--adi-green-600) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; }}
+/* Inputs pill style */
+input, textarea, select{{ border:1px solid var(--border) !important; border-radius:var(--radius-pill) !important; background:var(--adi-stone) !important; padding:.4rem .8rem !important; }}
+input:focus, textarea:focus, select:focus{{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }}
 
 /* Pills */
 .pills{{ display:flex; flex-wrap:wrap; gap:8px; }}
-.pill{{ padding:6px 10px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:12px; color:#25402b; }}
+.pill{{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }}
 .pill.low{{ background:#eaf5ec; color:#1f4c2c; }}
 .pill.med{{ background:var(--adi-sand); color:var(--adi-sand-text); }}
 .pill.hi{{ background:var(--adi-stone); color:var(--adi-stone-text); }}
+.pill.active{{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }}
 
 /* Buttons */
 div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.7rem 1.1rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s; }}
 div.stButton>button:hover{{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }}
 .btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
+.btn-sand button{{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }}
 
 </style>
 """
@@ -126,43 +116,52 @@ with left:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Upload eBook / Lesson Plan / PPT")
     st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
-    st.markdown(
-        '<div class="adi-upload"><div class="icon">UP</div>'
-        '<div><strong>Drag and drop</strong> your file here, or <u>Browse</u><br>'
-        '<small>We recommend eBooks (PDF) as source for best results.</small></div></div>',
-        unsafe_allow_html=True,
-    )
-    st.file_uploader(" ", type=["pdf", "docx", "pptx"], label_visibility="collapsed")
+    st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"])
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
-    c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
-    c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
+    lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
+    week = c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
+    st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto‑highlighted below.")
     b1, b2 = st.columns(2)
     with b1:
-        st.button("Pull → MCQs", use_container_width=True)
+        st.markdown('<div class="btn-gold">', unsafe_allow_html=True)
+        st.button("Pull → MCQs", use_container_width=True, key="pull_mcq")
+        st.markdown('</div>', unsafe_allow_html=True)
     with b2:
-        st.button("Pull → Activities", use_container_width=True)
+        st.markdown('<div class="btn-sand">', unsafe_allow_html=True)
+        st.button("Pull → Activities", use_container_width=True, key="pull_act")
+        st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Activity Parameters")
     cc1, cc2 = st.columns(2)
-    cc1.number_input("Activities", min_value=1, value=3, step=1)
-    cc2.number_input("Duration (mins)", min_value=5, value=45, step=5)
+    cc1.number_input("Activities", min_value=1, value=3, step=1, key="num_activities")
+    cc2.number_input("Duration (mins)", min_value=5, value=45, step=5, key="num_duration")
+
+    # Bloom tiers auto-highlight based on Week
+    highlight = None
+    if week in ["1", "2", "3", "4"]:
+        highlight = "low"
+    elif week in ["5", "6", "7", "8", "9"]:
+        highlight = "med"
+    elif week in ["10", "11", "12", "13", "14"]:
+        highlight = "hi"
+
     st.caption("ADI Bloom tiers used for MCQs:")
     cols = st.columns(3)
     with cols[0]:
         st.markdown("**Low tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill low">{w}</span>' for w in ["define","identify","list","recall","describe","label"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pills">' + ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>' for w in ["define","identify","list","recall","describe","label"]]) + '</div>', unsafe_allow_html=True)
     with cols[1]:
         st.markdown("**Medium tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill med">{w}</span>' for w in ["apply","demonstrate","solve","illustrate"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pills">' + ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>' for w in ["apply","demonstrate","solve","illustrate"]]) + '</div>', unsafe_allow_html=True)
     with cols[2]:
         st.markdown("**High tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill hi">{w}</span>' for w in ["evaluate","synthesize","design","justify"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown('<div class="pills">' + ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>' for w in ["evaluate","synthesize","design","justify"]]) + '</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
