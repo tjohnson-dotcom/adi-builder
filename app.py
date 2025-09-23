@@ -1,4 +1,4 @@
-# app.py — ADI Builder (polished UI, pill inputs, policy legend, Bloom auto-highlight)
+# app.py — ADI Builder (polished UI, stable CSS, custom ADI-green radios, uploader panel)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -18,7 +18,7 @@ try:
 except Exception:
     logo_data_uri = None
 
-# ------------------------ THEME CSS (keep entire block INSIDE this string) ------------------------
+# ------------------------ THEME CSS ------------------------
 ADI_CSS = """
 <style>
 :root{
@@ -46,25 +46,29 @@ main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{font-weight:800; font-size:22px; margin:0;}
 .adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
 
-/* Tabs */
-.adi-tabs [role="radiogroup"]{ gap:10px; display:flex; flex-wrap:wrap; }
-.adi-tabs label{
-  background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600);
-  border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s;
+/* ——— Tabs (we still render radio, but we style the Streamlit radio directly below) ——— */
+.adi-tabs{ margin-bottom:.25rem; }
+
+/* 1) Custom ADI-green radios for ALL Streamlit radios */
+.stRadio > div{ display:flex; gap:14px; align-items:center; }
+.stRadio label{ display:inline-flex; align-items:center; gap:10px; font-weight:600; color:var(--adi-ink); }
+
+.stRadio input[type="radio"]{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  width:18px; height:18px; border:2px solid var(--adi-green);
+  border-radius:50%; display:inline-block; position:relative; background:#fff; outline:none;
 }
-.adi-tabs label:hover{ background:#eaf5ec; }
-.adi-tabs label[aria-checked="true"]{
-  background:var(--adi-green); color:#fff; border-color:var(--adi-green-600);
-  box-shadow:0 6px 14px rgba(36,90,52,.25);
+.stRadio input[type="radio"]:checked{
+  background:
+    radial-gradient(var(--adi-green) 0 45%, transparent 46%);
+  border-color:var(--adi-green);
+}
+.stRadio input[type="radio"]:focus-visible{
+  box-shadow:0 0 0 3px rgba(200,168,90,.45);
+  border-color:var(--adi-green);
 }
 
-/* Force radio dots to ADI green */
-input[type=radio], .stRadio input[type=radio], [role="radiogroup"] input[type=radio]{
-  accent-color: var(--adi-green) !important;
-}
-.stRadio [role="radio"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
-
-/* Inputs pill style (stone bg, green glow on focus) */
+/* 2) Inputs pill style (stone bg, green glow on focus) */
 input, textarea, select{
   border:1px solid var(--border) !important;
   border-radius:var(--radius-pill) !important;
@@ -78,7 +82,7 @@ input:focus, textarea:focus, select:focus{
   box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important;
 }
 
-/* Streamlit selectbox (BaseWeb) pill style, remove red & ghost circle */
+/* 3) Streamlit selectbox (BaseWeb) pill style + remove ghost circle */
 .stSelectbox [data-baseweb="select"] > div{
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
@@ -97,7 +101,7 @@ input:focus, textarea:focus, select:focus{
   border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important;
 }
 
-/* Number inputs wrapper for consistent pill style */
+/* 4) Number inputs wrapper pill style */
 .stNumberInput > div{
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
@@ -107,16 +111,12 @@ input:focus, textarea:focus, select:focus{
   border-color: var(--adi-green) !important;
   box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
 }
-.stNumberInput button{
-  background: transparent !important; border:none !important; box-shadow:none !important; pointer-events:auto !important;
-}
+.stNumberInput button{ background: transparent !important; border:none !important; box-shadow:none !important; }
 
-/* Placeholders readable */
-input::placeholder, textarea::placeholder{
-  color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500;
-}
+/* 5) Placeholders readable */
+input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
 
-/* Pills */
+/* 6) Pills */
 .pills{ display:flex; flex-wrap:wrap; gap:8px; }
 .pill{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }
 .pill.low{ background:#eaf5ec; color:#1f4c2c; }
@@ -124,7 +124,7 @@ input::placeholder, textarea::placeholder{
 .pill.hi{ background:var(--adi-stone); color:var(--adi-stone-text); }
 .pill.active{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }
 
-/* Buttons */
+/* 7) Buttons */
 div.stButton>button{
   background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill);
   padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s;
@@ -133,7 +133,7 @@ div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200
 .btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
 .btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
 
-/* File uploader – dashed ADI panel with UP badge */
+/* 8) Uploader – dashed ADI panel with UP badge (the one you liked) */
 .stFileUploader{ margin-top:.25rem; }
 [data-testid="stFileUploadDropzone"]{
   border:2px dashed var(--adi-green) !important;
