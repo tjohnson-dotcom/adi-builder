@@ -1,5 +1,0 @@
-# OLD
-LOGO_PATH = os.path.join("assets", "adi-logo.png")
-
-# NEW (uses root-level logo.png)
-LOGO_PATH = "logo.png"
