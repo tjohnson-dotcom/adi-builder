@@ -1,422 +1,368 @@
-# ADI Builder – Trainer-friendly UI (MCQs + Activities, editable + export)
-# Run:
-#   pip install -r requirements.txt
-#   streamlit run app.py
+# app.py — ADI Builder (stable, pill-only UI, exports working)
+# Run:  pip install -r requirements.txt
+#       streamlit run app.py
 
-import io
 import os
+import io
+import re
+import csv
+import base64
 import random
 from datetime import datetime
+from typing import List, Dict
 
-import pandas as pd
 import streamlit as st
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt
 
-# ------------------------------
-# Branding / Theme
-# ------------------------------
-ADI_GREEN = "#245a34"
-ADI_GREEN_600 = "#1f4c2c"
-ADI_GREEN_50 = "#EEF5F0"
-ADI_GOLD = "#C8A85A"
-STONE = "#f3f1ee"
+# -------------------- Page + Theme --------------------
+st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
+                   page_icon="📘", layout="wide")
 
-st.set_page_config(
-    page_title="ADI Builder",
-    page_icon="📘",
-    layout="wide",
-)
-
-CSS = f"""
+CSS = """
 <style>
-:root {{
-  --adi-green:{ADI_GREEN};
-  --adi-green-600:{ADI_GREEN_600};
-  --adi-green-50:{ADI_GREEN_50};
-  --adi-gold:{ADI_GOLD};
-  --stone:{STONE};
-}}
+:root{
+  --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#EEF5F0;
+  --adi-gold:#C8A85A; --adi-stone:#f3f1ee; --adi-stone-text:#4a4a45;
+  --adi-ink:#1f2937; --muted:#6b7280; --border:#d9dfda;
+}
 
-html, body {{
-  background:#FAFAF7;
-}}
+html,body{background:#FAFAF7;}
+main .block-container{padding-top:1rem; max-width:1220px;}
 
-main .block-container {{
-  padding-top: 0.8rem;
-  max-width: 1200px;
-}}
+.header{
+  background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600));
+  color:#fff; padding:18px 20px; border-radius:18px; box-shadow:0 10px 24px rgba(0,0,0,.06);
+}
+.header h1{margin:0; font-size:22px; font-weight:800;}
+.header .sub{opacity:.9; margin-top:3px; font-size:12px}
 
-.adi-hero {{
-  background: linear-gradient(90deg, var(--adi-green), var(--adi-green-600));
-  color:#fff;
-  padding: 16px 18px;
-  border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(0,0,0,.12);
-  margin-bottom: 12px;
-}}
-.adi-title {{ font-weight: 800; font-size: 22px; }}
-.adi-sub {{ opacity:.95; font-size:12px; margin-top:2px; }}
+.card{
+  background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px;
+  box-shadow:0 10px 24px rgba(0,0,0,.04);
+}
+.card h3{
+  margin:0 0 10px 0; color:var(--adi-green); font-size:12px; text-transform:uppercase; letter-spacing:.05em;
+}
 
-.adi-card {{
-  background:#fff;
-  border: 1px solid #dde3de;
-  border-radius:16px;
-  box-shadow: 0 8px 22px rgba(0,0,0,.06);
-  padding:14px 14px 4px 14px;
-}}
+/* Drag & drop box */
+.drop{
+  background:var(--adi-green-50); border:2px dashed var(--adi-green); border-radius:12px; padding:12px;
+}
+.drop .row{display:flex; gap:10px; align-items:center;}
+.drop .badge{width:30px; height:30px; border-radius:8px; background:var(--adi-green); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:800;}
 
-.quick-pills {{
-  display:flex; gap:8px; flex-wrap:wrap;
-}}
-.quick-pill {{
-  padding:6px 12px; border-radius:999px; border:1px solid #d8dfda;
-  background:#f3f7f3; cursor:pointer; user-select:none;
-  font-weight:600; color:#26422d;
-}}
-.quick-pill.active {{
-  background: var(--adi-green); color:#fff; border-color:var(--adi-green-600);
+/* Inputs */
+input[type="radio"]{ accent-color: var(--adi-green); }
+
+/* Pills */
+.choice-pills{display:flex; gap:8px; flex-wrap:wrap;}
+.choice-pill{
+  padding:8px 14px; border-radius:999px; border:1px solid var(--border);
+  background:#f3f7f3; cursor:pointer; user-select:none; font-weight:600; color:#26422d;
+}
+.choice-pill.active{
+  background:var(--adi-green); color:#fff; border-color:var(--adi-green-600);
   box-shadow:0 6px 14px rgba(36,90,52,.25);
-}}
+}
 
-div.stButton>button {{
-  background: var(--adi-green);
-  color:#fff; border:none; border-radius:999px;
-  padding:.6rem 1.1rem; font-weight:600;
-  box-shadow:0 6px 16px rgba(31,76,44,.24);
-}}
-div.stButton>button:hover {{
-  filter:brightness(.96);
-  box-shadow:0 0 0 3px rgba(200,168,90,.35);
-}}
+/* Buttons */
+div.stButton>button{
+  background:var(--adi-green); color:#fff; border:none; border-radius:999px;
+  padding:.65rem 1.1rem; font-weight:700; box-shadow:0 6px 14px rgba(31,76,44,.22);
+}
+div.stButton>button:hover{filter:brightness(.98)}
 
-.badge {{
-  display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px;
-  background:var(--adi-green-50); color:#1f4c2c; border:1px solid #d8e3da;
-}}
+/* Preview boxes */
+.qbox{
+  background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px;
+  margin-bottom:10px;
+}
 
-.radio-wrap {{
-  display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-  padding:8px 12px; border:1px dashed #cfd7d1; border-radius:12px; background:#fff;
-}}
-
-.bloom-pill {{
-  padding:6px 10px; border-radius:999px; border:1px solid #e5e5e0;
-  background:#f8f6f3; color:#5b564f; font-size:12px; margin-right:6px;
-}}
-.bloom-pill.active.low {{ background:#eaf5ec; color:#154224; }}
-.bloom-pill.active.med {{ background:#f8f1df; color:#6a4b2d; }}
-.bloom-pill.active.high {{ background:#eee; color:#333; }}
+/* Small captions */
+small{color:var(--muted)}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# ------------------------------
-# Simple heuristic Bloom tiers
-# ------------------------------
-BLOOMS = {
-    "low": ["define", "identify", "list", "recall", "describe", "label"],
-    "med": ["apply", "demonstrate", "solve", "illustrate"],
-    "high": ["evaluate", "synthesize", "design", "justify"],
-}
-def bloom_tier_from_week(week:int)->str:
-    if 1 <= week <= 4:
-        return "low"
-    if 5 <= week <= 9:
-        return "med"
-    return "high"  # 10-14
+# -------------------- Header --------------------
+st.markdown("""
+<div class="header">
+  <h1>ADI Builder – Lesson Activities & Questions</h1>
+  <div class="sub">Professional, branded, editable and export-ready.</div>
+</div>
+""", unsafe_allow_html=True)
 
-# ------------------------------
-# MCQ generation (placeholder logic)
-# Replace with your real generator if available
-# ------------------------------
-def generate_mcqs(topic: str, source_text: str, n_questions: int, tier: str):
-    """Return list of dicts: question, A,B,C,D, answer, bloom"""
-    verbs = BLOOMS.get(tier, BLOOMS["low"])
-    out = []
-    for i in range(1, n_questions+1):
-        verb = random.choice(verbs).capitalize()
-        q = f"{verb} – {topic or 'Topic'} (Q{i})"
-        options = [f"Option {c} for Q{i}" for c in ["A","B","C","D"]]
-        ans = "A"
-        out.append({
-            "Bloom": verb,
-            "Question": q,
-            "A": options[0],
-            "B": options[1],
-            "C": options[2],
-            "D": options[3],
-            "Answer": ans
-        })
-    return out
+# -------------------- Helpers --------------------
+def pills(label: str, options, key: str, default=None):
+    """Render pill selectors; return selection via st.session_state[key]."""
+    st.write(f"**{label}**")
+    if key not in st.session_state:
+        st.session_state[key] = default if default is not None else options[0]
+    cols = st.columns(min(len(options), 6))
+    for i, opt in enumerate(options):
+        col = cols[i % len(cols)]
+        with col:
+            selected = (st.session_state[key] == opt)
+            pill_html = f'<div class="choice-pill {"active" if selected else ""}">{opt}</div>'
+            if st.button(pill_html, key=f"{key}_{opt}", use_container_width=True):
+                st.session_state[key] = opt
+    return st.session_state[key]
 
-# ------------------------------
-# Activities generation (placeholder)
-# ------------------------------
-def generate_activities(n: int, week: int, duration_min: int):
-    tier = bloom_tier_from_week(week)
-    templates = {
-        "low": "Short knowledge check on {topic}. Pair up and {verb}.",
-        "med": "Small group task to {verb} a scenario from {topic}.",
-        "high": "Team design challenge: {verb} a solution for a complex case in {topic}."
-    }
-    verbs = BLOOMS[tier]
-    topic = "module content"
-    out = []
-    for i in range(1, n+1):
-        verb = random.choice(verbs)
-        text = templates[tier].format(topic=topic, verb=verb)
-        out.append({
-            "Activity": f"Activity {i}",
-            "Description": text,
-            "Duration (mins)": duration_min
-        })
-    return out
-
-# ------------------------------
-# Export helpers
-# ------------------------------
-def mcqs_to_docx(df: pd.DataFrame, filename: str) -> bytes:
+def export_docx_mcqs(questions: List[Dict]) -> bytes:
     doc = Document()
-    doc.add_heading('ADI – MCQs', level=1)
-    doc.add_paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"))
-    doc.add_paragraph('')
+    styles = doc.styles['Normal']
+    styles.font.name = 'Calibri'
+    styles.font.size = Pt(11)
 
-    for idx, row in df.iterrows():
+    doc.add_heading('ADI — Multiple Choice Questions', level=1)
+    for i, q in enumerate(questions, start=1):
         p = doc.add_paragraph()
-        run = p.add_run(f"Q{idx+1}. {row.get('Question','')}")
-        run.bold = True
-        doc.add_paragraph(f"A. {row.get('A','')}")
-        doc.add_paragraph(f"B. {row.get('B','')}")
-        doc.add_paragraph(f"C. {row.get('C','')}")
-        doc.add_paragraph(f"D. {row.get('D','')}")
-        doc.add_paragraph(f"Answer: {row.get('Answer','')}")
-        doc.add_paragraph(f"(Bloom: {row.get('Bloom','')})")
-        doc.add_paragraph('')
-
+        p.add_run(f"Q{i}. {q['question']}").bold = True
+        for j, ch in enumerate(q['choices'], start=1):
+            doc.add_paragraph(f"{chr(64+j)}. {ch}", style=None)
+        doc.add_paragraph(f"Answer: {q['answer_key']}").italic = True
+        doc.add_paragraph("")  # spacer
     bio = io.BytesIO()
     doc.save(bio)
-    bio.seek(0)
-    return bio.read()
+    return bio.getvalue()
 
-def mcqs_to_gift(df: pd.DataFrame) -> bytes:
-    # Minimal Moodle GIFT
+def export_csv_mcqs(questions: List[Dict]) -> bytes:
+    bio = io.StringIO()
+    writer = csv.writer(bio)
+    writer.writerow(["Question", "A", "B", "C", "D", "Correct"])
+    for q in questions:
+        writer.writerow([q["question"], *q["choices"], q["answer_key"]])
+    return bio.getvalue().encode("utf-8")
+
+def export_gift_mcqs(questions: List[Dict]) -> bytes:
+    # Simple Moodle GIFT
     lines = []
-    for idx, row in df.iterrows():
-        q = row.get("Question","").replace("\n"," ")
-        a = row.get("A","")
-        b = row.get("B","")
-        c = row.get("C","")
-        d = row.get("D","")
-        correct = row.get("Answer","A").strip().upper()
-        options = {"A":a,"B":b,"C":c,"D":d}
-        correct_text = options.get(correct, a)
-        gift = f"::{idx+1}::{q} {{ = {correct_text} ~ {a if correct!='A' else b} ~ {c} ~ {d} }}\n"
-        lines.append(gift)
+    for q in questions:
+        lines.append(f"::{q.get('id','Q')}:: {q['question']} {{")
+        correct_letter = q['answer_key'].strip().upper()
+        mapping = {"A":0,"B":1,"C":2,"D":3}
+        for idx, choice in enumerate(q['choices']):
+            if idx == mapping.get(correct_letter, 0):
+                lines.append(f"  ={choice}")
+            else:
+                lines.append(f"  ~{choice}")
+        lines.append("}\n")
     return ("\n".join(lines)).encode("utf-8")
 
-def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8")
+def download_button(bin_bytes: bytes, label: str, file_name: str):
+    st.download_button(label, data=bin_bytes, file_name=file_name, type="primary")
 
-def activities_to_docx(df: pd.DataFrame) -> bytes:
-    doc = Document()
-    doc.add_heading('ADI – Activities', level=1)
-    doc.add_paragraph(datetime.now().strftime("%Y-%m-%d %H:%M"))
-    doc.add_paragraph('')
+# -------------------- Very Simple MCQ Generator (local, deterministic) --------------------
+DISTRACTORS = [
+    "Not applicable", "None of the above", "All of the above", "Irrelevant option",
+    "Alternative method", "Different policy", "Unrelated concept"
+]
 
-    for idx, row in df.iterrows():
-        doc.add_heading(row.get("Activity", f"Activity {idx+1}"), level=2)
-        doc.add_paragraph(row.get("Description",""))
-        doc.add_paragraph(f"Duration: {row.get('Duration (mins)',0)} minutes")
-        doc.add_paragraph('')
+def make_mcq_from_line(line: str) -> Dict:
+    """Naive question from a line of text: take a key term and build distractors."""
+    text = re.sub(r'\s+', ' ', line).strip()
+    if len(text) < 10:
+        text = f"This statement is true regarding: {text or 'ADI policy'}"
+    # pick a key term (last 1–2 words)
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]*", text) if len(w) > 2]
+    key = " ".join(words[-2:]) if len(words) >= 2 else (words[-1] if words else "ADI Policy")
+    correct = f"{key}"
+    distractors = random.sample(DISTRACTORS, k=3) if len(DISTRACTORS) >= 3 else ["Option 1","Option 2","Option 3"]
+    choices = [correct] + distractors
+    random.shuffle(choices)
+    answer_key = "ABCD"[choices.index(correct)]
+    return {
+        "id": f"Q_{abs(hash(text))%10_000}",
+        "question": f"Which of the following best relates to: {text}?",
+        "choices": choices,
+        "answer_key": answer_key
+    }
 
-    bio = io.BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio.read()
+def generate_mcqs(source_text: str, count: int) -> List[Dict]:
+    # Use non-empty lines as seeds; if not enough lines, repeat/augment
+    seeds = [ln.strip() for ln in source_text.splitlines() if ln.strip()]
+    if not seeds:
+        seeds = [f"ADI policy guideline item {i}" for i in range(1, count+1)]
+    out = []
+    i = 0
+    while len(out) < count:
+        out.append(make_mcq_from_line(seeds[i % len(seeds)]))
+        i += 1
+    return out[:count]
 
-# ------------------------------
-# Header
-# ------------------------------
-st.markdown(
-    """
-    <div class="adi-hero">
-      <div class="adi-title">ADI Builder – Lesson Activities & Questions</div>
-      <div class="adi-sub">Professional, branded, editable and export-ready.</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# -------------------- Session --------------------
+if "mcqs" not in st.session_state:
+    st.session_state.mcqs = []
 
-# ------------------------------
-# Tabs
-# ------------------------------
+# -------------------- Tabs --------------------
 tab1, tab2 = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-# =======================================
-# TAB 1 – MCQs
-# =======================================
+# ==========================================================
+# TAB 1 — MCQs
+# ==========================================================
 with tab1:
-    left, right = st.columns([1.1, 1.9], gap="large")
+    left, right = st.columns([0.95, 2.05], gap="large")
 
     with left:
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Upload eBook / Lesson Plan / PPT")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### Upload eBook / Lesson Plan / PPT")
         st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
-        uploaded = st.file_uploader("Drag and drop your file (optional)", type=["pdf","docx","pptx"])
-        if uploaded is not None:
-            st.success(f"Uploaded: {uploaded.name}")
-        st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Pick from eBook / Plan / PPT")
-        st.write("**Lesson**")
-        lesson = st.radio("lesson", [1,2,3,4,5], index=0, horizontal=True, label_visibility="collapsed")
-        st.write("**Week**")
-        week = st.radio("week", list(range(1,15)), index=0, horizontal=True, label_visibility="collapsed")
-        tier = bloom_tier_from_week(week)
-        st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. Tier is auto-highlighted below.")
-        # Bloom badges
-        st.write(
-            f'<span class="bloom-pill {"active low" if tier=="low" else ""}">Low: {", ".join(BLOOMS["low"][:3])}…</span> '
-            f'<span class="bloom-pill {"active med" if tier=="med" else ""}">Medium: {", ".join(BLOOMS["med"][:2])}…</span> '
-            f'<span class="bloom-pill {"active high" if tier=="high" else ""}">High: {", ".join(BLOOMS["high"][:2])}…</span>',
-            unsafe_allow_html=True
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div class="drop">
+          <div class="row">
+            <div class="badge">UP</div>
+            <div>
+              <strong>Drag and drop</strong> your file here, or click below.<br>
+              <small>We recommend eBooks (PDF) as source for best results.</small>
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.file_uploader(" ", type=["pdf","docx","pptx"], label_visibility="collapsed")
+
+        st.markdown("### Pick from eBook / Plan / PPT")
+        lesson = pills("Lesson", [1,2,3,4,5], key="lesson", default=1)
+
+        st.markdown(" ")
+        week = pills("Week", list(range(1,15)), key="week", default=1)
+        # Bloom highlight note
+        st.caption("ADI policy: Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted.")
+
+        st.markdown('</div>', unsafe_allow_html=True)  # /card
 
     with right:
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Generate MCQs — Policy Blocks (Low → Medium → High)")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### Generate MCQs — Policy Blocks (Low → Medium → High)")
         topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-        src_text = st.text_area("Source text (optional, editable)", height=140, placeholder="Paste or edit source text here...")
+        source = st.text_area("Source text (optional, editable)", height=140, placeholder="Paste or edit source text here…")
 
-        # Quick pick pills
         st.write("**How many MCQs?**")
-        if "mcq_target" not in st.session_state:
-            st.session_state.mcq_target = 10
-        cols = st.columns([.9,.9,.9,3])
-        with cols[0]:
-            if st.button("5", key="q5", use_container_width=True):
-                st.session_state.mcq_target = 5
-        with cols[1]:
-            if st.button("10", key="q10", use_container_width=True):
-                st.session_state.mcq_target = 10
-        with cols[2]:
-            if st.button("20", key="q20", use_container_width=True):
-                st.session_state.mcq_target = 20
-        with cols[3]:
-            mcq_count = st.slider(" ", min_value=5, max_value=30, value=st.session_state.mcq_target, step=1, label_visibility="collapsed")
-            st.session_state.mcq_target = mcq_count
+        mcq_count = pills(" ", [5,10,20,30], key="mcq_target", default=10)
 
         if st.button("Generate MCQ Blocks"):
-            data = generate_mcqs(topic, src_text, st.session_state.mcq_target, tier)
-            st.session_state.mcq_df = pd.DataFrame(data)
+            st.session_state.mcqs = generate_mcqs(source or topic, mcq_count)
 
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Preview & edit
+        st.markdown("### Preview & Edit")
+        if not st.session_state.mcqs:
+            st.info("No questions yet. Generate to see them here.")
+        else:
+            edited = []
+            for idx, q in enumerate(st.session_state.mcqs, start=1):
+                st.markdown(f"**Q{idx}**")
+                with st.container(border=True):
+                    qtext = st.text_area("Question", q["question"], key=f"qtext_{idx}", label_visibility="collapsed")
+                    cols = st.columns(4)
+                    new_choices = []
+                    for j, c in enumerate(q["choices"]):
+                        with cols[j]:
+                            new_choices.append(st.text_input(f"{'ABCD'[j]}.", c, key=f"ch_{idx}_{j}"))
+                    # answer picker
+                    ans = st.radio("Answer", ["A","B","C","D"], index="ABCD".index(q["answer_key"]), horizontal=True, key=f"ans_{idx}")
+                    edited.append({"id": q["id"], "question": qtext, "choices": new_choices, "answer_key": ans})
+                st.markdown("")
 
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Preview & Edit")
-        mcq_df = st.session_state.get("mcq_df", pd.DataFrame(columns=["Bloom","Question","A","B","C","D","Answer"]))
-        edited = st.data_editor(
-            mcq_df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="mcq_editor",
-            column_config={
-                "Answer": st.column_config.SelectboxColumn("Answer", options=["A","B","C","D"]),
-            }
-        )
-        st.session_state.mcq_df = edited
+            st.session_state.mcqs = edited
 
-        colA, colB, colC = st.columns(3)
-        with colA:
-            docx_bytes = mcqs_to_docx(edited, "adi_mcqs.docx") if not edited.empty else None
-            st.download_button(
-                "Download Word (.docx)",
-                data=docx_bytes or b"",
-                file_name=f"adi_mcqs_w{week}_{len(edited)}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                disabled=edited.empty,
-                use_container_width=True
-            )
-        with colB:
-            csv_bytes = df_to_csv_bytes(edited) if not edited.empty else None
-            st.download_button(
-                "Download CSV",
-                data=csv_bytes or b"",
-                file_name=f"adi_mcqs_w{week}_{len(edited)}.csv",
-                mime="text/csv",
-                disabled=edited.empty,
-                use_container_width=True
-            )
-        with colC:
-            gift_bytes = mcqs_to_gift(edited) if not edited.empty else None
-            st.download_button(
-                "Download Moodle (GIFT)",
-                data=gift_bytes or b"",
-                file_name=f"adi_mcqs_w{week}_{len(edited)}.gift",
-                mime="text/plain",
-                disabled=edited.empty,
-                use_container_width=True
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
+            # Export buttons
+            st.markdown("### Export")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                docx_bytes = export_docx_mcqs(st.session_state.mcqs)
+                download_button(docx_bytes, "Download Word (.docx)", f"ADI_MCQs_w{week}_{mcq_count}.docx")
+            with c2:
+                csv_bytes = export_csv_mcqs(st.session_state.mcqs)
+                download_button(csv_bytes, "Download CSV", f"ADI_MCQs_w{week}_{mcq_count}.csv")
+            with c3:
+                gift_bytes = export_gift_mcqs(st.session_state.mcqs)
+                download_button(gift_bytes, "Download Moodle (GIFT)", f"ADI_MCQs_w{week}_{mcq_count}.txt")
 
-# =======================================
-# TAB 2 – Activities
-# =======================================
+        st.markdown('</div>', unsafe_allow_html=True)  # /card
+
+# ==========================================================
+# TAB 2 — Activities (simple plan + export)
+# ==========================================================
 with tab2:
-    c1, c2 = st.columns([1.1, 1.9], gap="large")
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### Pick parameters")
 
-    with c1:
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Pick parameters")
-        week2 = st.radio("Week (activities)", list(range(1,15)), index=0, horizontal=True, label_visibility="collapsed", key="wk2")
-        tier2 = bloom_tier_from_week(week2)
-        st.write(
-            f'<span class="bloom-pill {"active low" if tier2=="low" else ""}">Low</span> '
-            f'<span class="bloom-pill {"active med" if tier2=="med" else ""}">Medium</span> '
-            f'<span class="bloom-pill {"active high" if tier2=="high" else ""}">High</span>',
-            unsafe_allow_html=True
-        )
-        n_acts = st.slider("Number of activities", 1, 8, 3)
-        duration = st.slider("Duration (mins) (per activity)", 10, 120, 45, step=5)
-        st.markdown('</div>', unsafe_allow_html=True)
+    week2 = pills("Week", list(range(1,15)), key="week_act", default=1)
+    tier = pills("Bloom tier", ["Low","Medium","High"], key="tier_act", default="Medium")
+    n_acts = pills("Number of activities", [1,2,3,4,5,6,7,8], key="act_count", default=3)
+    duration = pills("Duration (mins) (per activity)", [15,30,45,60,90,120], key="act_duration", default=45)
 
-    with c2:
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Generate Activities")
-        if st.button("Generate Activity Plan"):
-            acts = generate_activities(n_acts, week2, duration)
-            st.session_state.act_df = pd.DataFrame(acts)
+    st.markdown("### Generate Activities")
+    if st.button("Generate Activity Plan"):
+        activities = []
+        for i in range(1, n_acts+1):
+            activities.append({
+                "tier": tier,
+                "title": f"Module: Activity {i}",
+                "objective": "Students will apply the core concept of Module.",
+                "steps": "1) Briefing (5m) 2) Main task 3) Share-out",
+                "materials": "Projector, handouts, whiteboard",
+                "assessment": "Participation / quick check"
+            })
+        st.session_state.activities = activities
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("### Preview & Edit")
+    if "activities" not in st.session_state or not st.session_state.activities:
+        st.info("No activities yet. Generate to see them here.")
+    else:
+        edited = []
+        for i, row in enumerate(st.session_state.activities, start=1):
+            st.markdown(f"**Activity {i}**")
+            with st.container(border=True):
+                c1, c2 = st.columns([0.6,1.4])
+                with c1:
+                    tier_v = st.selectbox("Tier", ["Low","Medium","High"], index=["Low","Medium","High"].index(row["tier"]), key=f"tier_{i}")
+                    title_v = st.text_input("Title", row["title"], key=f"title_{i}")
+                with c2:
+                    obj_v = st.text_input("Objective", row["objective"], key=f"obj_{i}")
+                steps_v = st.text_area("Steps", row["steps"], key=f"steps_{i"])
+                mats_v = st.text_input("Materials", row["materials"], key=f"mats_{i}")
+                assess_v = st.text_input("Assessment", row["assessment"], key=f"assess_{i}")
+                edited.append({
+                    "tier": tier_v, "title": title_v, "objective": obj_v,
+                    "steps": steps_v, "materials": mats_v, "assessment": assess_v
+                })
+            st.markdown("")
+        st.session_state.activities = edited
 
-        st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-        st.markdown("#### Preview & Edit")
-        act_df = st.session_state.get("act_df", pd.DataFrame(columns=["Activity","Description","Duration (mins)"]))
-        act_edit = st.data_editor(act_df, num_rows="dynamic", use_container_width=True, key="act_editor")
-        st.session_state.act_df = act_edit
+        # Exports
+        st.markdown("### Export")
+        def export_docx_activities(rows: List[Dict]) -> bytes:
+            doc = Document()
+            doc.add_heading('ADI — Activities Plan', level=1)
+            for i, r in enumerate(rows, start=1):
+                doc.add_heading(f"Activity {i}: {r['title']}", level=2)
+                doc.add_paragraph(f"Tier: {r['tier']}")
+                doc.add_paragraph(f"Objective: {r['objective']}")
+                doc.add_paragraph(f"Steps: {r['steps']}")
+                doc.add_paragraph(f"Materials: {r['materials']}")
+                doc.add_paragraph(f"Assessment: {r['assessment']}")
+                doc.add_paragraph("")
+            bio = io.BytesIO()
+            doc.save(bio)
+            return bio.getvalue()
 
-        col1, col2 = st.columns(2)
-        with col1:
-            bytes_doc = activities_to_docx(act_edit) if not act_edit.empty else None
-            st.download_button(
-                "Download Word (.docx)",
-                data=bytes_doc or b"",
-                file_name=f"adi_activities_w{week2}_{len(act_edit)}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                disabled=act_edit.empty,
-                use_container_width=True
-            )
-        with col2:
-            bytes_csv = df_to_csv_bytes(act_edit) if not act_edit.empty else None
-            st.download_button(
-                "Download CSV",
-                data=bytes_csv or b"",
-                file_name=f"adi_activities_w{week2}_{len(act_edit)}.csv",
-                mime="text/csv",
-                disabled=act_edit.empty,
-                use_container_width=True
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
+        def export_csv_activities(rows: List[Dict]) -> bytes:
+            bio = io.StringIO()
+            writer = csv.writer(bio)
+            writer.writerow(["Tier","Title","Objective","Steps","Materials","Assessment"])
+            for r in rows:
+                writer.writerow([r["tier"], r["title"], r["objective"], r["steps"], r["materials"], r["assessment"]])
+            return bio.getvalue().encode("utf-8")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            download_button(export_docx_activities(st.session_state.activities),
+                            "Download Word (.docx)", f"ADI_Activities_w{week2}.docx")
+        with c2:
+            download_button(export_csv_activities(st.session_state.activities),
+                            "Download CSV", f"ADI_Activities_w{week2}.csv")
+
+    st.markdown('</div>', unsafe_allow_html=True)  # /card
