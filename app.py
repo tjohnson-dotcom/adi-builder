@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Streamlined Left Sidebar, ADI-branded, working tabs)
+# app.py — ADI Builder (Outlined Inputs + Prominent Green Tabs)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
 # ------------------------ Logo Embed ------------------------
-LOGO_PATH = os.path.join("assets", "adi-logo.png")  # place your PNG here
+LOGO_PATH = os.path.join("assets", "adi-logo.png")
 logo_data_uri = None
 try:
     if os.path.exists(LOGO_PATH):
@@ -40,27 +40,27 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{{font-weight:800; font-size:22px; margin:0;}}
 .adi-sub{{opacity:.92; font-size:12px; margin-top:2px;}}
 
-/* Prominent Tabs */
+/* Prominent Tabs (green) */
 .adi-tabs [role="radiogroup"]{{ gap:10px; display:flex; flex-wrap:wrap; }}
-.adi-tabs label{{ background:#e9efe9; border:1px solid #c9d7cb; color:#204A2C; border-radius:14px; padding:10px 16px; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.04); font-weight:600; }}
-.adi-tabs label[aria-checked="true"]{{ background:#ffffff; border-color:#b9ccb9; box-shadow:0 8px 18px rgba(0,0,0,.07); }}
+.adi-tabs label{{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }}
+.adi-tabs label:hover{{ background:#eaf5ec; }}
+.adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }}
 
 /* Layout */
 .grid{{display:grid; grid-template-columns: 340px 1fr; gap:20px; margin-top:12px;}}
 .sidebar{{max-width:340px;}}
 
-/* Cards - STRAPLINED (compact) */
-.adi-card{{ background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:12px 12px; }}
+/* Cards */
+.adi-card{{ background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:14px; }}
 .adi-card h3{{ margin:0 0 8px 0; color:var(--adi-green); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }}
-.adi-card .tight{{ margin-top:8px; }}
 
 /* Upload */
 .adi-upload{{ border:2px dashed var(--adi-green); background:var(--adi-green-50); border-radius:14px; padding:12px; display:flex; gap:10px; align-items:center; }}
 .adi-upload .icon{{ width:28px; height:28px; border-radius:7px; background:var(--adi-green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }}
 .adi-upload small{{ color:var(--adi-muted) }}
 
-/* Inputs */
-input, textarea{{ border-radius:12px !important; }}
+/* Inputs with outline */
+input, textarea, select{{ border:1.5px solid #98b29d !important; border-radius:12px !important; }}
 div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
 
 /* Pills */
@@ -72,16 +72,8 @@ div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
 
 /* Buttons */
 div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.55rem .9rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); }}
+div.stButton>button:hover{{ filter:brightness(.95); }}
 .btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
-
-/* Small buttons in a row */
-.btn-row{{ display:flex; gap:8px; }}
-
-/* Stepper aesthetics */
-.step-row{{ display:flex; align-items:center; gap:10px; }}
-.stepper{{ display:inline-flex; align-items:center; border:1px solid #cbd5cb; border-radius:999px; overflow:hidden; background:#fff; }}
-.stepper button{{ border:none; background:#fff; padding:6px 10px; cursor:pointer; }}
-.stepper input{{ width:54px; border:none; text-align:center; padding:8px 6px; }}
 
 </style>
 """
@@ -105,7 +97,7 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# ------------------------ Tabs (working + prominent) ------------------------
+# ------------------------ Tabs ------------------------
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "Knowledge MCQs (ADI Policy)"
 
@@ -122,14 +114,10 @@ with st.container():
     st.session_state.active_tab = tab_choice
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ------------------------ Grid ------------------------
-left, right = st.columns([0.88, 2.12], gap="large")
+# ------------------------ Layout ------------------------
+left, right = st.columns([0.9, 2.1], gap="large")
 
-# ------------------------ LEFT (straplined) ------------------------
 with left:
-    st.markdown('<div class="sidebar">', unsafe_allow_html=True)
-
-    # Upload
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Upload eBook / Lesson Plan / PPT")
     st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
@@ -139,30 +127,26 @@ with left:
         '<small>We recommend eBooks (PDF) as source for best results.</small></div></div>',
         unsafe_allow_html=True,
     )
-    st.file_uploader(" ", type=["pdf", "docx", "pptx"], label_visibility="collapsed", key="file")
+    st.file_uploader(" ", type=["pdf", "docx", "pptx"], label_visibility="collapsed")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Pick from source
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
-    c1.selectbox("Lesson", options=["—", "1", "2", "3", "4"], index=0, key="lesson")
-    c2.selectbox("Week", options=["—", "1", "2", "3", "4", "5", "6", "7", "8"], index=0, key="week")
-    st.markdown('<div class="btn-row mt-8">', unsafe_allow_html=True)
-    colb1, colb2 = st.columns(2)
-    with colb1:
-        st.button("Pull → MCQs", use_container_width=True, key="pull_mcq")
-    with colb2:
-        st.button("Pull → Activities", use_container_width=True, key="pull_act")
-    st.markdown('</div>', unsafe_allow_html=True)
+    c1.selectbox("Lesson", options=["—", "1", "2", "3"], index=0)
+    c2.selectbox("Week", options=["—", "1", "2", "3", "4", "5"], index=0)
+    b1, b2 = st.columns(2)
+    with b1:
+        st.button("Pull → MCQs", use_container_width=True)
+    with b2:
+        st.button("Pull → Activities", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Activity params + Bloom
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Activity Parameters")
     cc1, cc2 = st.columns(2)
-    cc1.number_input("Activities", min_value=1, value=3, step=1, key="acts")
-    cc2.number_input("Duration (mins)", min_value=5, value=45, step=5, key="dur")
+    cc1.number_input("Activities", min_value=1, value=3, step=1)
+    cc2.number_input("Duration (mins)", min_value=5, value=45, step=5)
     st.caption("ADI Bloom tiers used for MCQs:")
     cols = st.columns(3)
     with cols[0]:
@@ -176,33 +160,21 @@ with left:
         st.markdown('<div class="pills">' + ''.join([f'<span class="pill hi">{w}</span>' for w in ["evaluate","synthesize","design","justify"]]) + '</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)  # /sidebar
-
-# ------------------------ RIGHT (changes with tab) ------------------------
 with right:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-
     if st.session_state.active_tab.startswith("Knowledge"):
         st.markdown("### Generate MCQs - Policy Blocks (Low → Medium → High)")
-        topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-        source = st.text_area("Source text (optional, editable)", height=160, placeholder="Paste or edit source text here...")
-        st.markdown('<div class="step-row">', unsafe_allow_html=True)
+        st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
+        st.text_area("Source text (optional, editable)", height=140, placeholder="Paste or edit source text here...")
         st.caption("How many MCQ blocks? (×3 questions)")
-        blocks = st.number_input(label="", min_value=1, value=1, step=1, key="mcq_blocks")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.number_input(" ", min_value=1, value=1, step=1, key="mcq_blocks")
         st.button("Generate MCQ Blocks")
-
     else:
         st.markdown("### Build Skills Activities")
-        act_type = st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
-        goal = st.text_input("Learning goal", placeholder="What should learners be able to do?")
-        materials = st.text_area("Materials / Inputs", height=120, placeholder="Links, readings, slides, equipment...")
-        outcols = st.columns(2)
-        with outcols[0]:
-            groups = st.number_input("Groups", min_value=1, value=4)
-        with outcols[1]:
-            time = st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
+        st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
+        st.text_input("Learning goal", placeholder="What should learners be able to do?")
+        st.text_area("Materials / Inputs", height=120, placeholder="Links, readings, slides, equipment...")
+        st.number_input("Groups", min_value=1, value=4)
+        st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
-
     st.markdown('</div>', unsafe_allow_html=True)
-
