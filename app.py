@@ -175,6 +175,19 @@ div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200
 .stSlider [data-baseweb="slider"] > div:nth-child(2){background:#e6ebe8}
 .stSlider [data-baseweb="slider"] > div:nth-child(2) > div{background:var(--adi-green)}
 .stSlider [role="slider"]{background:#fff; border:2px solid var(--adi-green); box-shadow:0 2px 6px rgba(36,90,52,.25)}
+/* Segmented control for Lesson & Week */
+.segwrap [role="radiogroup"]{display:flex; gap:8px; flex-wrap:wrap}
+.segwrap label{border:1px solid var(--border); background:#fff; border-radius:999px; padding:6px 12px; cursor:pointer; font-weight:700; color:var(--adi-ink)}
+.segwrap label[aria-checked="true"]{background:var(--adi-green); color:#fff; border-color:var(--adi-green)}
+.segwrap input[type="radio"]{display:none}
+
+/* Make standard radio dots ADI green (e.g., top mode selector) */
+.stRadio input[type="radio"]{accent-color: var(--adi-green) !important}
+
+/* Slider visuals (kept if used elsewhere) */
+.stSlider [data-baseweb="slider"] > div:nth-child(2){background:#e6ebe8}
+.stSlider [data-baseweb="slider"] > div:nth-child(2) > div{background:var(--adi-green)}
+.stSlider [role="slider"]{background:#fff; border:2px solid var(--adi-green); box-shadow:0 2px 6px rgba(36,90,52,.25)}
 </style>
 """
 
@@ -235,7 +248,9 @@ with left:
         lesson = st.radio("Lesson", options=[1,2,3,4,5], horizontal=True, index=0, key="lesson_seg")
         st.markdown('</div>', unsafe_allow_html=True)
     with c2:
-        week = st.slider("Week", min_value=1, max_value=14, value=1, step=1, key="week_slider")
+        st.markdown('<div class="segwrap">', unsafe_allow_html=True)
+        week = st.radio("Week", options=list(range(1,15)), horizontal=True, index=0, key="week_seg")
+        st.markdown('</div>', unsafe_allow_html=True)
     st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto‑highlighted below.")
     b1, b2 = st.columns(2)
     with b1:
