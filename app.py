@@ -160,6 +160,11 @@ div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200
 /* Robust ADI uploader wrapper (works even if testIDs change) */
 .adi-up{border:2px dashed var(--adi-green); background: var(--adi-green-50); border-radius:14px; padding:14px; display:flex; align-items:center; gap:12px}
 .adi-up-badge{width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center}
+/* Slider styling */
+.stSlider > div { padding-top: 4px; }
+.stSlider [data-baseweb="slider"] > div:nth-child(2) { background:#e6ebe8; }
+.stSlider [data-baseweb="slider"] > div:nth-child(2) > div { background: var(--adi-green); }
+.stSlider [role="slider"] { background:#fff; border:2px solid var(--adi-green); box-shadow:0 2px 6px rgba(36,90,52,.25); }
 </style>
 """
 
@@ -215,8 +220,8 @@ with left:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
-    lesson = c1.number_input("Lesson", min_value=1, max_value=5, value=1, step=1, key="lesson_num")
-    week   = c2.number_input("Week",   min_value=1, max_value=14, value=1, step=1, key="week_num")
+    lesson = c1.slider("Lesson", min_value=1, max_value=5, value=1, step=1, key="lesson_slider")
+        week   = c2.slider("Week",   min_value=1, max_value=14, value=1, step=1, key="week_slider")
     st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto‑highlighted below.")
     b1, b2 = st.columns(2)
     with b1:
@@ -269,3 +274,4 @@ with right:
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
     st.markdown('</div>', unsafe_allow_html=True)
+
