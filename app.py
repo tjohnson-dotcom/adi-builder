@@ -58,6 +58,33 @@ textarea{ border-radius:28px !important; }
 input:hover, textarea:hover, select:hover{ box-shadow:0 0 0 2px rgba(36,90,52,.10); }
 input:focus, textarea:focus, select:focus{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }
 
+/* Streamlit selectbox (BaseWeb) pill style to prevent red outline */
+.stSelectbox [data-baseweb="select"] > div{
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--adi-stone) !important;
+  box-shadow: none !important;
+}
+.stSelectbox [data-baseweb="select"] > div:focus-within{
+  outline: none !important;
+  border-color: var(--adi-green) !important;
+  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
+}
+.stSelectbox [data-baseweb="select"] div[aria-expanded="true"]{
+  border-color: var(--adi-green) !important;
+}
+
+/* Number inputs wrapper for consistent pill style */
+.stNumberInput > div{
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--adi-stone) !important;
+}
+.stNumberInput > div:focus-within{
+  border-color: var(--adi-green) !important;
+  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
+}
+
 /* Placeholders readable */
 input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
 
