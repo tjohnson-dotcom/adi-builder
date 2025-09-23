@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Inputs pill-style + Bloom tiers auto-highlight by Week)
+# app.py — ADI Builder (stable CSS block, pill inputs, policy legend, Bloom auto‑highlight)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -8,7 +8,7 @@ import streamlit as st
 
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
-# ------------------------ Logo Embed ------------------------
+# ------------------------ Logo (optional) ------------------------
 LOGO_PATH = os.path.join("assets", "adi-logo.png")
 logo_data_uri = None
 try:
@@ -18,8 +18,8 @@ try:
 except Exception:
     logo_data_uri = None
 
-# ------------------------ Theme CSS -------------------------
-ADI_CSS = f"""
+# ------------------------ THEME CSS (keep entire block INSIDE this string) ------------------------
+ADI_CSS = """
 <style>
 :root{
   --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#EEF5F0;
@@ -43,22 +43,22 @@ main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
 
 /* Tabs */
-.adi-tabs [role="radiogroup"]{ gap:10px; display:flex; flex-wrap:wrap; }
+.adi-tabs [role=\"radiogroup\"]{ gap:10px; display:flex; flex-wrap:wrap; }
 .adi-tabs label{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }
 .adi-tabs label:hover{ background:#eaf5ec; }
-.adi-tabs label[aria-checked="true"]{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }
+.adi-tabs label[aria-checked=\"true\"]{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }
 
-/* Global radio dot color (force ADI green) */
-input[type="radio"], .stRadio input[type="radio"], [role="radiogroup"] input[type="radio"]{ accent-color: var(--adi-green) !important; }
-.stRadio [role="radio"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
+/* Force radio dots to ADI green */
+input[type=radio], .stRadio input[type=radio], [role=\"radiogroup\"] input[type=radio]{ accent-color: var(--adi-green) !important; }
+.stRadio [role=\"radio\"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
 
 /* Inputs pill style (stone bg, green glow on focus) */
 input, textarea, select{ border:1px solid var(--border) !important; border-radius:var(--radius-pill) !important; background:var(--adi-stone) !important; padding:.5rem .9rem !important; }
-textarea{ border-radius:28px !important; } /* bigger radius for large text area */
+textarea{ border-radius:28px !important; }
 input:hover, textarea:hover, select:hover{ box-shadow:0 0 0 2px rgba(36,90,52,.10); }
 input:focus, textarea:focus, select:focus{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }
 
-/* Placeholders darker for readability */
+/* Placeholders readable */
 input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
 
 /* Pills */
@@ -74,7 +74,6 @@ div.stButton>button{ background:var(--adi-green); color:#fff; border:none; borde
 div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }
 .btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
 .btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
-
 </style>
 """
 
@@ -84,12 +83,12 @@ st.markdown(ADI_CSS, unsafe_allow_html=True)
 with st.container():
     st.markdown(
         f"""
-        <div class="adi-hero">
-          <div class="adi-hero-row">
-            <div class="logo-box">{('<img src="' + logo_data_uri + '" alt="ADI"/>') if logo_data_uri else '<div class="logo-fallback">A</div>'}</div>
+        <div class=\"adi-hero\">
+          <div class=\"adi-hero-row\">
+            <div class=\"logo-box\">{('<img src=\"' + logo_data_uri + '\" alt=\"ADI\"/>') if logo_data_uri else '<div class=\"logo-fallback\">A</div>'}</div>
             <div>
-              <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
-              <div class="adi-sub">Professional, branded, editable and export-ready.</div>
+              <div class=\"adi-title\">ADI Builder - Lesson Activities & Questions</div>
+              <div class=\"adi-sub\">Professional, branded, editable and export-ready.</div>
             </div>
           </div>
         </div>
@@ -187,3 +186,4 @@ with right:
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
     st.markdown('</div>', unsafe_allow_html=True)
+
