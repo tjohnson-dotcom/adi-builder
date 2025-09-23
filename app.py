@@ -1,4 +1,4 @@
-# app.py — ADI Builder (tabs, fixed selects, ADI styling)
+# app.py — ADI Builder (clean tabs, fixed selects, ADI-green uploader)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -40,18 +40,18 @@ main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px}
 .adi-title{font-weight:800; font-size:22px; margin:0}
 .adi-sub{opacity:.92; font-size:12px; margin-top:2px}
 
-/* Tabs (native Streamlit) */
-.stTabs [data-baseweb="tab-list"]{gap:10px; border-bottom:none}
+/* Tabs (subtle, less visual weight) */
+.stTabs [data-baseweb="tab-list"]{gap:8px; border-bottom:1px solid #ecefee}
 .stTabs [data-baseweb="tab"]{
-  background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600);
-  border-radius:14px; padding:10px 16px; font-weight:700
+  background:transparent; border:none; color:var(--adi-ink);
+  border-radius:10px; padding:8px 12px; font-weight:700
 }
 .stTabs [aria-selected="true"]{
-  background:var(--adi-green)!important; color:#fff!important; border-color:var(--adi-green-600)!important;
-  box-shadow:0 6px 14px rgba(36,90,52,.25)
+  color:#fff !important; background:var(--adi-green) !important;
+  box-shadow:none !important;
 }
 
-/* Inputs + textareas */
+/* Inputs / textareas (pill) */
 input, textarea, select{
   border:1px solid var(--border)!important; border-radius:var(--radius-pill)!important;
   background:var(--adi-stone)!important; padding:.55rem .9rem!important
@@ -64,17 +64,18 @@ input:focus, textarea:focus, select:focus{
 }
 input::placeholder, textarea::placeholder{color:var(--adi-muted); opacity:.95; font-style:italic; font-weight:500}
 
-/* Selectbox (BaseWeb) — precise, no overlays, pointer events on */
-.stSelectbox [data-baseweb="select"]{position:relative; pointer-events:auto!important}
+/* Selectbox (BaseWeb) — FIX: remove overlay; force pointer events */
+.stSelectbox [data-baseweb="select"]{position:relative; pointer-events:auto!important; z-index:auto!important}
 .stSelectbox [data-baseweb="select"] *{pointer-events:auto!important}
 .stSelectbox [data-baseweb="select"] > div{
   border-radius:var(--radius-pill)!important; border:1px solid var(--border)!important;
   background:var(--adi-stone)!important; box-shadow:none!important; padding:8px 12px!important
 }
-/* remove stray pseudo rings & enhancers that caused clicks to miss */
+/* kill any pseudo rings/overlays/enhancers */
 .stSelectbox [data-baseweb="select"] > div::before,
 .stSelectbox [data-baseweb="select"] > div::after{content:none!important}
 .stSelectbox [data-baseweb="select"] div[class*="enhancer"]{display:none!important}
+/* focus/open */
 .stSelectbox [data-baseweb="select"] > div:focus-within{
   border-color:var(--adi-green)!important; box-shadow:0 0 0 3px rgba(36,90,52,.25)!important
 }
@@ -104,19 +105,27 @@ div.stButton>button:hover{filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,
 .btn-gold button{background:var(--adi-gold)!important; color:#1f2a1f!important; box-shadow:0 4px 12px rgba(200,168,90,.32)!important}
 .btn-sand button{background:var(--adi-sand)!important; color:var(--adi-sand-text)!important; box-shadow:0 4px 12px rgba(106,75,45,.25)!important}
 
-/* Uploader — dashed ADI panel with UP badge */
-.stFileUploader [data-testid="stFileUploadDropzone"]{
-  border:2px dashed var(--adi-green)!important; background:var(--adi-green-50)!important;
-  border-radius:14px!important; padding:16px!important; display:flex!important; align-items:center!important; gap:12px!important
+/* Uploader — ADI green dashed (with fallback selectors) */
+.stFileUploader [data-testid="stFileUploadDropzone"],
+div[data-testid="stFileUploadDropzone"],
+div[data-testid="stFileDropzone"]{
+  border:2px dashed var(--adi-green)!important;
+  background:var(--adi-green-50)!important;
+  border-radius:14px!important; padding:16px!important;
+  display:flex!important; align-items:center!important; gap:12px!important
 }
-.stFileUploader [data-testid="stFileUploadDropzone"]::before{
+.stFileUploader [data-testid="stFileUploadDropzone"]::before,
+div[data-testid="stFileUploadDropzone"]::before,
+div[data-testid="stFileDropzone"]::before{
   content:"UP"; display:flex; align-items:center; justify-content:center;
   width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; margin-right:6px
 }
-.stFileUploader [data-testid="stFileUploadDropzone"] button{
-  background:#fff!important; color:var(--adi-ink)!important; border:1px solid #e0e5e1!important; border-radius:12px!important; box-shadow:none!important
+.stFileUploader [data-testid="stFileUploadDropzone"] button,
+div[data-testid="stFileUploadDropzone"] button,
+div[data-testid="stFileDropzone"] button{
+  background:#fff!important; color:var(--adi-ink)!important;
+  border:1px solid #e0e5e1!important; border-radius:12px!important; box-shadow:none!important
 }
-.stFileUploader [data-testid="stFileUploadDropzone"]:hover{box-shadow:0 0 0 3px rgba(36,90,52,.18)!important}
 </style>
 """
 st.markdown(ADI_CSS, unsafe_allow_html=True)
@@ -137,7 +146,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Tabs (no radios → no red dot)
+# Tabs (clean + no red dots)
 tab_mcq, tab_skills = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
 # ---- MCQ tab
