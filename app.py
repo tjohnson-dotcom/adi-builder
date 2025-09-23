@@ -70,6 +70,17 @@ div.stButton>button:hover{{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(20
 .btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
 .btn-sand button{{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }}
 
+/* --- Global radio dot color (force ADI green) --- */
+/* Standard browsers */
+input[type="radio"]{ accent-color: var(--adi-green) !important; }
+/* Streamlit containers */
+.stRadio input[type="radio"], [role="radiogroup"] input[type="radio"]{ accent-color: var(--adi-green) !important; }
+/* Fallback: show green ring when focused */
+.stRadio [role="radio"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
+
+/* Placeholder visibility */
+input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity: .95; font-style: italic; font-weight: 500; }
+
 </style>
 """
 
