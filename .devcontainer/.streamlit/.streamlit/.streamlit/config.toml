@@ -1,0 +1,5 @@
+[theme]
+primaryColor = "#245a34"          # ADI green (accents, radio dots)
+backgroundColor = "#FAFAF7"       # page background
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1f2937"
