@@ -85,6 +85,43 @@ input:focus, textarea:focus, select:focus{ outline:none !important; border-color
   box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
 }
 
+/* Streamlit selectbox (BaseWeb) pill style to prevent red outline */
+.stSelectbox [data-baseweb="select"] > div{
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--adi-stone) !important;
+  box-shadow: none !important;
+  padding: 8px 12px !important;
+}
+/* kill any BaseWeb pseudo rings/overlays that can look like a circle */
+.stSelectbox [data-baseweb="select"] > div::before,
+.stSelectbox [data-baseweb="select"] > div::after{ content: none !important; }
+/* if BaseWeb renders enhancers, hide them to avoid the ghost circle */
+.stSelectbox [data-baseweb="select"] div[class*="enhancer"]{ display: none !important; }
+/* focused/open state */
+.stSelectbox [data-baseweb="select"] > div:focus-within{
+  outline: none !important;
+  border-color: var(--adi-green) !important;
+  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
+}
+.stSelectbox [data-baseweb="select"] div[aria-expanded="true"]{ border-color: var(--adi-green) !important; }
+
+/* Dropdown menu */
+.stSelectbox [role="listbox"]{ border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important; }
+
+/* Number inputs wrapper for consistent pill style */
+.stNumberInput > div{
+  border-radius: var(--radius-pill) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--adi-stone) !important;
+}
+.stNumberInput > div:focus-within{
+  border-color: var(--adi-green) !important;
+  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
+}
+/* ensure stepper buttons remain clickable and clean */
+.stNumberInput button{ background: transparent !important; border:none !important; box-shadow:none !important; pointer-events:auto !important; }
+
 /* Placeholders readable */
 input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
 
@@ -101,6 +138,25 @@ div.stButton>button{ background:var(--adi-green); color:#fff; border:none; borde
 div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }
 .btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
 .btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
+/* File uploader style – dashed ADI panel with UP badge */
+.stFileUploader{ margin-top:.25rem; }
+[data-testid="stFileUploadDropzone"]{
+  border:2px dashed var(--adi-green) !important;
+  background: var(--adi-green-50) !important;
+  border-radius:14px !important;
+  padding:16px !important;
+  display:flex !important; align-items:center !important; gap:12px !important;
+}
+[data-testid="stFileUploadDropzone"]::before{
+  content:"UP"; display:flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; margin-right:6px;
+}
+[data-testid="stFileUploadDropzone"] button{
+  background:#fff !important; color:var(--adi-ink) !important;
+  border:1px solid #e0e5e1 !important; border-radius:12px !important; box-shadow:none !important;
+}
+[data-testid="stFileUploadDropzone"]:hover{ box-shadow:0 0 0 3px rgba(36,90,52,.18) !important; }
+
 </style>
 """
 
@@ -148,6 +204,7 @@ with left:
     st.markdown("### Upload eBook / Lesson Plan / PPT")
     st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
     st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"])
+st.caption("We recommend eBooks (PDF) as source for best results.")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
