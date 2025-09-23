@@ -1,7 +1,8 @@
-# app.py — ADI Builder (Streamlit, ADI Bloom Policy)
-# MCQs: 3-question blocks (Low→Medium→High) with approved verbs; per-question Passage/Image
-# Activities with steps; Exports: DOCX + RTF; Full Pack DOCX
-# Branded UI (ADI green), safe file_uploader handling, Lesson/Week extract, PDF/DOCX/PPTX parsing
+# app.py — ADI Builder (Streamlit, ADI Bloom Policy, Polished UI)
+# - MCQs: policy 3-question blocks (Low→Medium→High), optional per-question verb swap (from approved list)
+# - Activities: clear steps, exports DOCX/RTF, Full Pack DOCX
+# - Upload PDF/DOCX/PPTX, pull Lesson/Week text
+# - Brand styling + strong input outlines + green slider; safe file_uploader handling
 
 from __future__ import annotations
 import os, re
@@ -35,50 +36,66 @@ ADI_GREEN = "#006C35"; ADI_BEIGE = "#C8B697"; ADI_SAND = "#D9CFC2"; ADI_BROWN = 
 
 st.markdown(f"""
 <style>
+/* ---------- App shell & headings ---------- */
 .stApp {{ background: linear-gradient(180deg, #ffffff 0%, {ADI_GRAY} 100%); }}
 html,body,[class*="css"] {{ font-family: 'Segoe UI', Inter, Roboto, system-ui, -apple-system, sans-serif; }}
 h1,h2,h3 {{ color:{ADI_GREEN}; font-weight: 750; }}
 .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
   border-bottom: 4px solid {ADI_GREEN}; color:{ADI_GREEN}; font-weight: 650;
 }}
-.banner {{ background:{ADI_GREEN}; color:#fff; padding:18px 28px; border-radius:12px; margin: 12px 0 18px; }}
-.badge {{ display:inline-block; background:{ADI_BEIGE}; color:#222; padding:3px 9px; border-radius:9px; font-size:.8rem; margin-left:8px; }}
-.card {{ background:#fff; border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.06); padding:18px; border-left:6px solid {ADI_GREEN}; margin:14px 0; }}
+.banner {{ background:{ADI_GREEN}; color:#fff; padding:18px 28px; border-radius:12px; margin:12px 0 18px; }}
+.badge  {{ display:inline-block; background:{ADI_BEIGE}; color:#222; padding:3px 9px; border-radius:9px; font-size:.8rem; margin-left:8px; }}
+
+/* ---------- Cards ---------- */
+.card {{ background:#fff; border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.06);
+         padding:18px; border-left:6px solid {ADI_GREEN}; margin:14px 0; }}
 .card h4 {{ margin:0 0 8px 0; color:{ADI_GREEN}; }}
 .card .meta {{ color:#666; font-size:.9rem; margin-bottom:8px; }}
 .card .label {{ font-weight:650; color:{ADI_BROWN}; }}
-.stButton>button {{ background:{ADI_GREEN}; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-weight:600; }}
-.stButton>button:hover {{ background:#0c5a2f; }}
-textarea {{ border:1.4px solid #c7c7c7 !important; border-radius:10px !important; padding:10px !important; background:#fff !important; }}
-textarea:focus {{ outline:none !important; border-color:{ADI_GREEN} !important; box-shadow:0 0 0 2px rgba(0,108,53,.15); }}
-.chips {{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }}
-.chip {{ background:{ADI_SAND}; color:{ADI_BROWN}; border:1px solid #e9e0d6; padding:4px 8px; border-radius:999px; font-size:.8rem; }}
-.chip.more {{ background:#eee; color:#555; }}
 .answer-badge {{ background:{ADI_GREEN}; color:#fff; border-radius:999px; padding:2px 8px; font-size:.8rem; }}
 .btnrow {{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 8px; }}
 
-/* Difficulty slider (bold centered label, green track/thumb) */
-.stSlider label p {{
-  text-align: center !important;
-  font-weight: 700 !important;
-  color: {ADI_GREEN} !important;
+/* ---------- Buttons ---------- */
+.stButton>button {{ background:{ADI_GREEN}; color:#fff; border:none; border-radius:10px; padding:8px 14px; font-weight:600; }}
+.stButton>button:hover {{ background:#0c5a2f; }}
+
+/* ---------- Inputs: clear outlines & focus ---------- */
+textarea,
+.stTextInput > div > div > input,
+.stNumberInput input,
+.stSelectbox > div > div > div,
+.stFileUploader label {{
+  border: 2px solid #2e7d57 !important;
+  border-radius: 10px !important;
+  background: #fff !important;
 }}
-.stSlider > div[data-baseweb="slider"] > div {{ background: {ADI_GREEN} !important; }}
-.stSlider [role="slider"] {{
-  background: white !important; border: 2px solid {ADI_GREEN} !important;
+textarea:focus,
+.stTextInput > div > div > input:focus,
+.stNumberInput input:focus,
+.stSelectbox > div > div > div:focus-within,
+.stFileUploader label:focus-within {{
+  outline: none !important;
+  border-color: {ADI_GREEN} !important;
+  box-shadow: 0 0 0 3px rgba(0,108,53,.18) !important;
 }}
 
-/* Verb multiselect pills (beige/green) */
-.stMultiSelect [data-baseweb="tag"] {{
-  background: {ADI_BEIGE} !important; color: {ADI_GREEN} !important;
-  border-radius: 999px !important; font-weight: 600 !important;
+/* ---------- Verb chips (info only) ---------- */
+.chips {{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 0; }}
+.chip {{ background:{ADI_SAND}; color:{ADI_BROWN}; border:1px solid #e9e0d6; padding:4px 8px; border-radius:999px; font-size:.8rem; }}
+.chip.more {{ background:#eee; color:#555; }}
+
+/* ---------- Difficulty slider ---------- */
+.stSlider label p {{
+  text-align:center !important;
+  font-weight:700 !important;
+  color:#ffffff !important;
+  background:{ADI_GREEN};
+  padding:4px 10px; border-radius:8px; width:max-content; margin:0 auto 6px auto;
 }}
-.stMultiSelect [data-baseweb="tag"] svg {{ display:none; }}
-.stMultiSelect div[role="option"] {{
-  background: {ADI_BEIGE} !important; color: {ADI_GREEN} !important;
-  border-radius: 12px !important; padding: 4px 8px !important; font-weight: 600 !important;
-}}
-.stMultiSelect div[role="option"]:hover {{ background: {ADI_GREEN} !important; color: white !important; }}
+.stSlider [data-baseweb="slider"] > div {{ background:{ADI_GREEN} !important; }}
+.stSlider [data-baseweb="slider"] > div > div {{ background:{ADI_GREEN} !important; }}
+.stSlider [data-baseweb="slider"] > div > div > div {{ background:{ADI_GREEN} !important; }}
+.stSlider [role="slider"] {{ background:#fff !important; border:2px solid {ADI_GREEN} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -190,7 +207,7 @@ col1,col2 = st.sidebar.columns(2)
 num_activities = col1.number_input("Activities", 1, 10, 3)
 duration       = col2.number_input("Duration (mins)", 5, 180, 45)
 
-# Simple info chips for verbs (visual only)
+# Informative chips only (no large verb pickers)
 st.sidebar.caption("ADI Bloom tiers used for MCQs:")
 st.sidebar.markdown("<div class='chips'>"+"".join(f"<span class='chip'>{v}</span>" for v in ADI_LOW[:4])+ "<span class='chip more'>+low</span></div>", unsafe_allow_html=True)
 st.sidebar.markdown("<div class='chips'>"+"".join(f"<span class='chip'>{v}</span>" for v in ADI_MED[:4])+ "<span class='chip more'>+med</span></div>", unsafe_allow_html=True)
@@ -199,38 +216,62 @@ st.sidebar.markdown("<div class='chips'>"+"".join(f"<span class='chip'>{v}</span
 # ---------- Tabs ----------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-# ---------- MCQs (Policy: 3 per block) ----------
+# ---------- MCQs (Policy Block of 3) ----------
 with mcq_tab:
-    st.subheader("Generate MCQs (3 per block: Low → Medium → High)")
+    st.subheader("Generate MCQs — Policy Blocks (Low → Medium → High)")
     if st.session_state.get("mcq_seed"): st.success("Lesson/Week text inserted into MCQ editor.")
     topic = st.text_input("Topic / Outcome (optional)", "Module description, knowledge & skills outcomes")
     base_text = st.text_area("Source text (optional, editable)", value=st.session_state.get("mcq_seed",""), height=160)
     blocks = st.number_input("How many MCQ blocks? (x3 questions)", 1, 20, 1)
 
-    def make_low_q(t):
-        stem = f"Which option best **{ADI_LOW[0]}s** or **{ADI_LOW[1]}** a key concept in {t}?"
-        opts = ["A) A vague opinion","B) A precise statement with essential characteristics","C) An unrelated anecdote","D) A random number"]
-        return stem, opts, "B"
-    def make_med_q(t):
-        stem = f"You need to **{ADI_MED[0]}** {t} in a new context. What is the **most appropriate** first step?"
-        opts = ["A) Repeat the definition","B) Identify variables/constraints; choose a method to apply","C) Collect unrelated data","D) Ignore context and proceed"]
-        return stem, opts, "B"
-    def make_high_q(t):
-        stem = f"Given constraints, **{ADI_HIGH[1]}** two approaches to {t}. Which choice **best justifies** the recommendation?"
-        opts = ["A) Cites unrelated evidence","B) States assumptions and criteria, weighing trade-offs","C) Focuses on formatting over reasoning","D) Mentions outcomes without criteria"]
-        return stem, opts, "B"
+    # stem builders that allow verb override per tier
+    def stem_low(t, v="identify"):
+        v = v or "identify"
+        return f"Which option best **{v}** a key concept in {t}?"
+    def stem_med(t, v="apply"):
+        v = v or "apply"
+        return f"You need to **{v}** {t} in a new context. What is the **most appropriate** first step?"
+    def stem_high(t, v="evaluate"):
+        v = v or "evaluate"
+        return f"Given constraints, **{v}** two approaches to {t}. Which choice **best justifies** the recommendation?"
 
     if st.button("Generate MCQ Blocks"):
         all_q = []
-        for b in range(int(blocks)):
-            all_q.extend([make_low_q(topic), make_med_q(topic), make_high_q(topic)])
+        # build blocks (3 per block)
+        for _ in range(int(blocks)):
+            all_q.extend([("Low", stem_low, ADI_LOW), ("Medium", stem_med, ADI_MED), ("High", stem_high, ADI_HIGH)])
 
         edited_blocks=[]
-        for i,(stem,opts,ans) in enumerate(all_q, start=1):
+        for i,(tier, builder, verb_list) in enumerate(all_q, start=1):
+            # optional verb swap (policy list)
+            sv = st.selectbox(f"Verb (optional) for Q{i} — {tier}", options=["(auto)"] + verb_list, index=0, key=f"verb_{i}")
+            chosen = None if sv=="(auto)" else sv
+            stem = builder(topic, chosen)
+
+            # unified options set per pattern/tier
+            if tier=="Low":
+                opts = ["A) A vague opinion",
+                        "B) A precise statement with essential characteristics",
+                        "C) An unrelated anecdote",
+                        "D) A random number"]
+                ans = "B"
+            elif tier=="Medium":
+                opts = ["A) Repeat the definition",
+                        "B) Identify variables/constraints; choose a method to apply",
+                        "C) Collect unrelated data",
+                        "D) Ignore context and proceed"]
+                ans = "B"
+            else:  # High
+                opts = ["A) Cites unrelated evidence",
+                        "B) States assumptions and criteria, weighing trade-offs",
+                        "C) Focuses on formatting over reasoning",
+                        "D) Mentions outcomes without criteria"]
+                ans = "B"
+
             st.markdown(f"""
             <div class='card'>
               <h4>📝 Question {i}</h4>
-              <div class='meta'>Policy tier: {"Low" if i%3==1 else "Medium" if i%3==2 else "High"}</div>
+              <div class='meta'>Policy tier: {tier}</div>
               <div>{stem}</div>
               <div style='margin-top:6px;'>{'<br/>'.join(opts)}</div>
               <div style='margin-top:8px;'>Answer: <span class='answer-badge'>{ans}</span></div>
@@ -240,6 +281,7 @@ with mcq_tab:
             q_text = stem + "\n" + "\n".join(opts) + f"\nAnswer: {ans}"
             box = st.text_area(f"✏️ Edit Q{i}", q_text, key=f"mcq_edit_{i}", height=118)
 
+            # optional passage/image (safe state)
             passage_key = f"mcq_passage_{i}"
             img_key     = f"mcq_img_{i}"
             st.text_area(f"📄 Passage (optional) for Q{i}", value=st.session_state.get(passage_key, ""), key=passage_key, height=80)
@@ -292,8 +334,6 @@ with mcq_tab:
 with act_tab:
     st.subheader("Generate Skills Activities")
     context_text = st.text_area("Context from eBook / notes (editable)", value=st.session_state.get("act_seed",""), height=160)
-
-    if "activity_duration" not in st.session_state: st.session_state.activity_duration = duration
 
     if st.button("Generate Activities", type="primary"):
         activities=[]
