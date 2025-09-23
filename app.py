@@ -1,266 +1,229 @@
-# app.py — ADI Builder (polished UI + quick-pick MCQs + pill radios + progress)
-# Run:
-#   pip install streamlit
-#   streamlit run app.py
+# ADI Builder — working MCQ generator (no external APIs)
+# Run:  pip install streamlit
+#       streamlit run app.py
 
-import os
-import time
+import re
+import csv
 import base64
+import os
+import io
+import random
 import streamlit as st
 
+# ---------- Page ----------
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
-# ---------- logo (optional) ----------
-LOGO_PATH = os.path.join("assets", "adi-logo.png")
-logo_data_uri = None
-try:
-    if os.path.exists(LOGO_PATH):
-        with open(LOGO_PATH, "rb") as f:
-            logo_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
-except Exception:
-    logo_data_uri = None
-
-# ---------- theme css ----------
-ADI_CSS = """
+# ---------- Theme (short & safe) ----------
+st.markdown("""
 <style>
 :root{
-  --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#EEF5F0;
-  --adi-gold:#C8A85A; --adi-sand:#f8f3e8;
-  --adi-ink:#1f2937; --muted:#6b7280; --border:#d9dfda;
-  --bg:#FAFAF7; --card:#ffffff; --shadow:0 10px 24px rgba(0,0,0,.06);
-  --r:18px; --pill:999px;
+  --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#eef5f0;
+  --adi-gold:#c8a85a; --border:#d9dfda; --card:#fff;
 }
-html,body{background:var(--bg)}
-main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
-
-/* header */
-.adi-hero{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600)); color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);}
-.adi-hero-row{display:flex; align-items:center; gap:16px;}
-.logo-box{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08); overflow:hidden; display:flex; align-items:center; justify-content:center;}
-.logo-box img{width:100%; height:100%; object-fit:contain;}
-.logo-fallback{font-weight:800; font-size:20px;}
-.adi-title{font-weight:800; font-size:22px; margin:0;}
-.adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
-
-/* tabs */
-.adi-tabs [role="radiogroup"]{gap:10px; display:flex; flex-wrap:wrap;}
-.adi-tabs [role="radio"]{background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600);
-  border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:.2s;}
-.adi-tabs [role="radio"]:hover{background:#eaf5ec;}
-.adi-tabs [role="radio"][aria-checked="true"]{background:var(--adi-green); color:#fff; border-color:var(--adi-green-600);
-  box-shadow:0 6px 14px rgba(36,90,52,.25);}
-
-/* pills radios for Lesson/Week (hide dot) */
-.stRadio [role="radiogroup"]{display:flex; gap:8px; flex-wrap:wrap}
-.stRadio [role="radio"]{border:1px solid var(--border); border-radius:999px; padding:6px 12px; background:#fff; color:var(--adi-ink); font-weight:700}
-.stRadio [role="radio"][aria-checked="true"]{background:var(--adi-green); color:#fff; border-color:var(--adi-green)}
-.stRadio [role="radio"] > div:first-child{display:none}  /* hide the small dot */
-
-/* make any remaining dots green (e.g., top mode) */
-input[type=radio]{accent-color:var(--adi-green) !important}
-
-/* inputs */
-input, textarea, select{border:1px solid var(--border) !important; border-radius:var(--pill) !important;
-  background:#f3f1ee !important; padding:.5rem .9rem !important;}
-textarea{border-radius:28px !important;}
-input:focus, textarea:focus, select:focus{outline:none !important; border-color:var(--adi-green) !important;
-  box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important;}
-input::placeholder, textarea::placeholder{color:var(--muted); opacity:.95; font-style:italic; font-weight:500}
-
-/* buttons */
-div.stButton>button{background:var(--adi-green); color:#fff; border:none; border-radius:var(--pill);
-  padding:.70rem 1.1rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:.25s;}
-div.stButton>button:hover{filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45);}
-.btn-gold button{background:var(--adi-gold) !important; color:#1f2a1f !important;}
-.btn-sand button{background:var(--adi-sand) !important; color:#5a4028 !important;}
-
-/* cards */
-.adi-card{background:var(--card); border:1px solid var(--border); border-radius:20px; padding:16px; box-shadow:var(--shadow);}
-
-/* uploader */
-.adi-up{border:2px dashed var(--adi-green); background:var(--adi-green-50); border-radius:14px; padding:14px; display:flex; align-items:center; gap:12px}
-.adi-up-badge{width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center}
-
-/* bloom chips */
-.pills{display:flex; flex-wrap:wrap; gap:8px}
-.pill{padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b}
-.pill.low{background:#eaf5ec; color:#1f4c2c} .pill.med{background:#f8f3e8; color:#6a4b2d} .pill.hi{background:#f3f1ee; color:#4a4a45}
-.pill.active{box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600)}
-
-/* mcq quick-pick */
-.mcq-picks{display:flex; gap:8px; flex-wrap:wrap}
-.mcq-picks button{background:#fff !important; color:var(--adi-ink) !important; border:1px solid var(--border) !important;
-  border-radius:999px !important; padding:.35rem .75rem !important; box-shadow:none !important;}
-.mcq-picks button:hover{box-shadow:0 0 0 3px rgba(36,90,52,.15) !important}
-.mcq-picks .active{background:var(--adi-green) !important; color:#fff !important; border-color:var(--adi-green) !important}
-
-/* slider thumb/track if used later */
-.stSlider [data-baseweb="slider"] > div:nth-child(2){background:#e6ebe8}
-.stSlider [data-baseweb="slider"] > div:nth-child(2) > div{background:var(--adi-green)}
-.stSlider [role="slider"]{background:#fff; border:2px solid var(--adi-green); box-shadow:0 2px 6px rgba(36,90,52,.25)}
+html,body{background:#FAFAF7}
+main .block-container{padding-top:0.8rem; max-width:1220px}
+.adi-hero{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600));
+  color:#fff; border-radius:20px; padding:16px 18px; margin-bottom:12px}
+.adi-title{font-weight:800; font-size:20px}
+.adi-sub{opacity:.92; font-size:12px}
+section.card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:14px}
+div.stButton>button{background:var(--adi-green); color:#fff; border:none; border-radius:999px;
+  padding:.6rem 1rem; font-weight:600}
+div.stButton>button:hover{filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.35)}
+input[type="radio"], input[type="checkbox"]{accent-color: var(--adi-green)}
+/* uploader – keep it stable */
+[data-testid="stFileUploadDropzone"]{
+  border:2px dashed var(--adi-green)!important; background:var(--adi-green-50)!important;
+  border-radius:14px!important; pointer-events:auto!important
+}
 </style>
-"""
-st.markdown(ADI_CSS, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# ---------- header ----------
-st.markdown(
-    f"""
+# ---------- Header ----------
+with st.container():
+    st.markdown(f"""
     <div class="adi-hero">
-      <div class="adi-hero-row">
-        <div class="logo-box">{('<img src="'+logo_data_uri+'" alt="ADI"/>') if logo_data_uri else '<div class="logo-fallback">A</div>'}</div>
-        <div>
-          <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
-          <div class="adi-sub">Professional, branded, editable and export-ready.</div>
-        </div>
-      </div>
+      <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
+      <div class="adi-sub">Professional, branded, editable and export-ready.</div>
     </div>
-    """,
-    unsafe_allow_html=True,
-)
+    """, unsafe_allow_html=True)
 
-# ---------- top tabs ----------
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "Knowledge MCQs (ADI Policy)"
-
-st.markdown('<div class="adi-tabs">', unsafe_allow_html=True)
-tab = st.radio(
-    "choose",
-    ["Knowledge MCQs (ADI Policy)", "Skills Activities"],
-    index=0 if st.session_state.active_tab.startswith("Knowledge") else 1,
-    horizontal=True,
-    label_visibility="collapsed",
-)
-st.markdown("</div>", unsafe_allow_html=True)
-st.session_state.active_tab = tab
-
-# ---------- layout ----------
+# ---------- Tabs ----------
+tab = st.radio("choose", ["Knowledge MCQs (ADI Policy)", "Skills Activities"], horizontal=True, label_visibility="collapsed")
 left, right = st.columns([0.95, 2.05], gap="large")
 
-# ========== LEFT ==========
+# ---------- LEFT SIDE ----------
 with left:
-    # upload
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Upload eBook / Lesson Plan / PPT")
-    st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
-    st.markdown('<div class="adi-up"><div class="adi-up-badge">UP</div><div>', unsafe_allow_html=True)
-    file = st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"], label_visibility="collapsed")
-    st.markdown("</div></div>", unsafe_allow_html=True)
-
-    if file:
-        st.caption(f"**{file.name}** · {file.size/1_000_000:.1f} MB")
-        colp1, colp2 = st.columns([1, 2])
-        with colp1:
-            if st.button("Process upload"):
-                prog = st.progress(0, text="Processing…")
-                for i in range(0, 101, 5):
-                    time.sleep(0.02)
-                    prog.progress(i, text=f"Processing… {i}%")
-                prog.empty()
-                st.success("Upload processed.")
-        with colp2:
-            st.caption("We recommend eBooks (PDF) as source for best results.")
-    else:
+    # Upload
+    with st.container():
+        st.markdown('<section class="card">', unsafe_allow_html=True)
+        st.markdown("### Upload eBook / Lesson Plan / PPT")
+        st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
+        file = st.file_uploader("Drag and drop your file, or Browse", type=["pdf","docx","pptx"], accept_multiple_files=False)
+        if file:
+            st.success(f"Uploaded: **{file.name}**  ·  {file.size/1_000_000:.1f} MB")
+            # quick progress animation (purely UI)
+            prog = st.progress(0)
+            for i in range(0,101,10):
+                prog.progress(i)
+            prog.empty()
         st.caption("We recommend eBooks (PDF) as source for best results.")
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('</section>', unsafe_allow_html=True)
 
-    # pick from plan
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Pick from eBook / Plan / PPT")
-    c1, c2 = st.columns(2)
-    with c1:
-        lesson = st.radio("Lesson", [1, 2, 3, 4, 5], horizontal=True, index=0, key="lesson_radio")
-    with c2:
-        week = st.radio("Week", list(range(1, 15)), horizontal=True, index=0, key="week_radio")
+    # Pick from plan
+    with st.container():
+        st.markdown('<section class="card">', unsafe_allow_html=True)
+        st.markdown("### Pick from eBook / Plan / PPT")
 
-    st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted below.")
+        # Lesson 1–5 (simple)
+        st.write("**Lesson**")
+        lesson = st.radio("", [1,2,3,4,5], index=0, horizontal=True, label_visibility="collapsed")
 
-    b1, b2 = st.columns(2)
-    with b1:
-        st.markdown('<div class="btn-gold">', unsafe_allow_html=True)
-        st.button("Pull → MCQs", use_container_width=True, key="pull_mcqs")
-        st.markdown('</div>', unsafe_allow_html=True)
-    with b2:
-        st.markdown('<div class="btn-sand">', unsafe_allow_html=True)
-        st.button("Pull → Activities", use_container_width=True, key="pull_acts")
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        # Week 1–14 (ADI policy driver)
+        st.write("**Week**")
+        week = st.radio("", list(range(1,15)), index=0, horizontal=True, label_visibility="collapsed")
 
-    # activity parameters + bloom chips
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Activity Parameters")
-    cc1, cc2 = st.columns(2)
-    num_acts = cc1.number_input("Activities", min_value=1, value=3, step=1)
-    duration = cc2.number_input("Duration (mins)", min_value=5, value=45, step=5)
+        st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted.")
+        b1, b2 = st.columns(2)
+        with b1:
+            st.button("Pull → MCQs")
+        with b2:
+            st.button("Pull → Activities")
+        st.markdown('</section>', unsafe_allow_html=True)
 
-    # bloom auto-highlight
-    tier = "low" if 1 <= week <= 4 else ("med" if 5 <= week <= 9 else "hi")
-    st.caption("ADI Bloom tiers used for MCQs:")
-    colL, colM, colH = st.columns(3)
-    with colL:
-        st.markdown("**Low tier**")
-        st.markdown('<div class="pills">' + ''.join(
-            [f'<span class="pill low {"active" if tier=="low" else ""}">{w}</span>' for w in
-             ["define","identify","list","recall","describe","label"]]
-        ) + '</div>', unsafe_allow_html=True)
-    with colM:
-        st.markdown("**Medium tier**")
-        st.markdown('<div class="pills">' + ''.join(
-            [f'<span class="pill med {"active" if tier=="med" else ""}">{w}</span>' for w in
-             ["apply","demonstrate","solve","illustrate"]]
-        ) + '</div>', unsafe_allow_html=True)
-    with colH:
-        st.markdown("**High tier**")
-        st.markdown('<div class="pills">' + ''.join(
-            [f'<span class="pill hi {"active" if tier=="hi" else ""}">{w}</span>' for w in
-             ["evaluate","synthesize","design","justify"]]
-        ) + '</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Activity parameters (kept simple)
+    with st.container():
+        st.markdown('<section class="card">', unsafe_allow_html=True)
+        st.markdown("### Activity Parameters")
+        a1, a2 = st.columns(2)
+        with a1:
+            st.number_input("Activities", min_value=1, value=3, step=1)
+        with a2:
+            st.number_input("Duration (mins)", min_value=5, value=45, step=5)
+        st.caption("ADI Bloom tiers used for MCQs: **Low** (define, identify, list, recall, describe, label) · "
+                   "**Medium** (apply, demonstrate, solve, illustrate) · **High** (evaluate, synthesize, design, justify)")
+        st.markdown('</section>', unsafe_allow_html=True)
 
-# ========== RIGHT ==========
+# ---------- RIGHT SIDE ----------
+def infer_keywords(text: str, k: int = 8):
+    if not text:
+        return []
+    words = re.findall(r"[A-Za-z]{4,}", text.lower())
+    freq = {}
+    for w in words:
+        if w in {"this","that","with","from","have","which","their","there","about","into","your","were","will"}:
+            continue
+        freq[w] = freq.get(w,0) + 1
+    out = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+    return [w for w,_ in out[:k]]
+
+LOW_VERBS    = ["define","identify","list","recall","describe","label"]
+MED_VERBS    = ["apply","demonstrate","solve","illustrate"]
+HIGH_VERBS   = ["evaluate","synthesize","design","justify"]
+
+def week_tier(w:int):
+    if w <= 4:  return "Low", LOW_VERBS
+    if w <= 9:  return "Medium", MED_VERBS
+    return "High", HIGH_VERBS
+
+def make_distr(total:int, w:int):
+    # ADI policy weighted distribution
+    if w <= 4:       # Low focus
+        low = max(1, int(total*0.7)); med = max(0, int(total*0.25)); high = total - low - med
+    elif w <= 9:     # Medium focus
+        med = max(1, int(total*0.6)); low = max(0, int(total*0.25)); high = total - low - med
+    else:            # High focus
+        high = max(1, int(total*0.6)); med = max(0, int(total*0.25)); low = total - med - high
+    return max(low,0), max(med,0), max(high,0)
+
+def build_mcq(stem, correct, distractors):
+    # ensure 4 options
+    opts = [correct] + distractors[:3]
+    # pad simple distractors if needed
+    fill = ["Not applicable","None of the above","All of the above","Insufficient data","Irrelevant"]
+    i = 0
+    while len(opts) < 4 and i < len(fill):
+        if fill[i] not in opts:
+            opts.append(fill[i])
+        i+=1
+    random.shuffle(opts)
+    correct_letter = "ABCD"[opts.index(correct)]
+    return opts, correct_letter
+
+def generate_mcqs(src_text: str, topic: str, total: int, w: int):
+    random.seed(42)  # stable for testing
+    tier, verbs = week_tier(w)
+    low_n, med_n, high_n = make_distr(total, w)
+    kws = infer_keywords((src_text or "") + " " + (topic or ""), k=10)
+    if not kws:
+        kws = ["policy","procedure","safety","protocol","system","input","output","quality","risk","standard"]
+    bank = []
+    def mk(level, verb):
+        term = random.choice(kws)
+        # simple stem patterns per level
+        if level=="Low":
+            stem = f"{verb.capitalize()} the term '{term}'."
+            correct = f"{term} definition"
+            distract = [f"{k} definition" for k in random.sample(kws,3)]
+        elif level=="Medium":
+            stem = f"{verb.capitalize()} how '{term}' would be used in context."
+            correct = f"Use '{term}' in a correct example"
+            distract = [f"Misuse '{x}' in an example" for x in random.sample(kws,3)]
+        else:
+            stem = f"{verb.capitalize()} the impact of '{term}' on the module's outcome."
+            correct = f"Reasoned judgement about '{term}'"
+            distract = [f"Unjustified claim about '{x}'" for x in random.sample(kws,3)]
+        opts, ans = build_mcq(stem, correct, distract)
+        return {"Tier":level, "Verb":verb, "Question":stem,
+                "A":opts[0], "B":opts[1], "C":opts[2], "D":opts[3], "Answer":ans}
+
+    for _ in range(low_n):
+        bank.append(mk("Low", random.choice(LOW_VERBS)))
+    for _ in range(med_n):
+        bank.append(mk("Medium", random.choice(MED_VERBS)))
+    for _ in range(high_n):
+        bank.append(mk("High", random.choice(HIGH_VERBS)))
+    # in case rounding missed length
+    if len(bank) < total:
+        for _ in range(total - len(bank)):
+            bank.append(mk(tier, random.choice(verbs)))
+    return bank[:total]
+
 with right:
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-
-    if st.session_state.active_tab.startswith("Knowledge"):
+    st.markdown('<section class="card">', unsafe_allow_html=True)
+    if tab.startswith("Knowledge"):
         st.markdown("### Generate MCQs — Policy Blocks (Low → Medium → High)")
-        st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-        st.text_area("Source text (optional, editable)", height=140, placeholder="Paste or edit source text here…")
+        topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
+        src   = st.text_area("Source text (optional, editable)", height=130, placeholder="Paste or edit source text here...")
 
-        # ----- MCQ total with quick picks -----
-        st.markdown("#### MCQ Quantity")
-        if "mcq_total" not in st.session_state:
-            st.session_state.mcq_total = 9
+        st.caption("How many MCQs?")
+        quick = st.radio("Quick pick", [5,10,15,20,25,30], horizontal=True, index=1, label_visibility="collapsed")
+        total = st.number_input("Or type any number", min_value=5, max_value=50, value=int(quick), step=1, key="mcq_total")
 
-        quick = [5, 10, 15, 20, 25, 30]
-        st.write("")  # breathing space
-        pick_cols = st.columns(len(quick))
-        for i, q in enumerate(quick):
-            pressed = pick_cols[i].button(f"{q}", key=f"mcq_qp_{q}")
-            # set active style on the one that's current
-            if st.session_state.mcq_total == q:
-                pick_cols[i].markdown('<div class="mcq-picks"><button class="active">selected</button></div>', unsafe_allow_html=True)
-            if pressed:
-                st.session_state.mcq_total = q
+        low_n, med_n, high_n = make_distr(total, week)
+        st.caption(f"Week **{week}** → distribution: **Low {low_n} · Medium {med_n} · High {high_n}**")
 
-        mcq_total = st.slider("Total MCQ questions", 5, 30, st.session_state.mcq_total, 1, key="mcq_total_slider")
-        st.session_state.mcq_total = mcq_total
+        gen = st.button("Generate MCQs")
+        if gen:
+            data = generate_mcqs(src, topic, total, week)
+            st.success(f"Generated **{len(data)}** MCQs.")
+            # show table
+            st.dataframe(data, use_container_width=True)
 
-        # convert to blocks of 3 (round up)
-        mcq_blocks = (mcq_total + 2) // 3
-        st.caption(f"{mcq_total} questions → **{mcq_blocks}** policy blocks (3 per block).")
-
-        if st.button("Generate MCQs", key="gen_mcqs"):
-            # Placeholder action (hook up your generator here)
-            st.success(f"Preparing {mcq_total} MCQs across {mcq_blocks} blocks (Week {week} → {tier.upper()} tier emphasis).")
-            # TODO: call your generation pipeline with: file, topic text, source text, week, lesson, mcq_total/mcq_blocks
+            # download CSV
+            buf = io.StringIO()
+            writer = csv.DictWriter(buf, fieldnames=["Tier","Verb","Question","A","B","C","D","Answer"])
+            writer.writeheader()
+            for r in data: writer.writerow(r)
+            st.download_button("Download MCQs (CSV)", buf.getvalue().encode("utf-8"),
+                               file_name=f"adi_mcqs_w{week}_{total}.csv", mime="text/csv")
 
     else:
         st.markdown("### Build Skills Activities")
-        st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
+        st.selectbox("Activity type", ["Case Study","Role Play","Scenario MCQ","Group Discussion","Practical Demo"])
         st.text_input("Learning goal", placeholder="What should learners be able to do?")
-        st.text_area("Materials / Inputs", height=120, placeholder="Links, readings, slides, equipment…")
+        st.text_area("Materials / Inputs", height=110, placeholder="Links, readings, slides, equipment...")
         st.number_input("Groups", min_value=1, value=4)
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
-        if st.button("Generate Activity Plan", key="gen_acts"):
-            st.success("Activity plan generated (placeholder).")
-    st.markdown("</div>", unsafe_allow_html=True)
-
+        st.button("Generate Activity Plan")
+    st.markdown('</section>', unsafe_allow_html=True)
