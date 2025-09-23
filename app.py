@@ -213,4 +213,3 @@ with right:
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
     st.markdown('</div>', unsafe_allow_html=True)
-
