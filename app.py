@@ -1,4 +1,4 @@
-# app.py — ADI Builder (stable CSS block, pill inputs, policy legend, Bloom auto‑highlight)
+# app.py — ADI Builder (polished UI, pill inputs, policy legend, Bloom auto-highlight)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -34,58 +34,51 @@ html,body{background:var(--bg)}
 main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 
 /* Header */
-.adi-hero{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600)); color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);} 
-.adi-hero-row{display:flex; align-items:center; gap:16px;} 
-.logo-box{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08); overflow:hidden; display:flex; align-items:center; justify-content:center;} 
-.logo-box img{width:100%; height:100%; object-fit:contain;} 
-.logo-fallback{font-weight:800; font-size:20px;} 
-.adi-title{font-weight:800; font-size:22px; margin:0;} 
+.adi-hero{
+  background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600));
+  color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);
+}
+.adi-hero-row{display:flex; align-items:center; gap:16px;}
+.logo-box{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;}
+.logo-box img{width:100%; height:100%; object-fit:contain;}
+.logo-fallback{font-weight:800; font-size:20px;}
+.adi-title{font-weight:800; font-size:22px; margin:0;}
 .adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
 
 /* Tabs */
-.adi-tabs [role=\"radiogroup\"]{ gap:10px; display:flex; flex-wrap:wrap; }
-.adi-tabs label{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }
+.adi-tabs [role="radiogroup"]{ gap:10px; display:flex; flex-wrap:wrap; }
+.adi-tabs label{
+  background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600);
+  border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s;
+}
 .adi-tabs label:hover{ background:#eaf5ec; }
-.adi-tabs label[aria-checked=\"true\"]{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }
+.adi-tabs label[aria-checked="true"]{
+  background:var(--adi-green); color:#fff; border-color:var(--adi-green-600);
+  box-shadow:0 6px 14px rgba(36,90,52,.25);
+}
 
 /* Force radio dots to ADI green */
-input[type=radio], .stRadio input[type=radio], [role=\"radiogroup\"] input[type=radio]{ accent-color: var(--adi-green) !important; }
-.stRadio [role=\"radio\"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
+input[type=radio], .stRadio input[type=radio], [role="radiogroup"] input[type=radio]{
+  accent-color: var(--adi-green) !important;
+}
+.stRadio [role="radio"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
 
 /* Inputs pill style (stone bg, green glow on focus) */
-input, textarea, select{ border:1px solid var(--border) !important; border-radius:var(--radius-pill) !important; background:var(--adi-stone) !important; padding:.5rem .9rem !important; }
+input, textarea, select{
+  border:1px solid var(--border) !important;
+  border-radius:var(--radius-pill) !important;
+  background:var(--adi-stone) !important;
+  padding:.5rem .9rem !important;
+}
 textarea{ border-radius:28px !important; }
 input:hover, textarea:hover, select:hover{ box-shadow:0 0 0 2px rgba(36,90,52,.10); }
-input:focus, textarea:focus, select:focus{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }
-
-/* Streamlit selectbox (BaseWeb) pill style to prevent red outline */
-.stSelectbox [data-baseweb="select"] > div{
-  border-radius: var(--radius-pill) !important;
-  border: 1px solid var(--border) !important;
-  background: var(--adi-stone) !important;
-  box-shadow: none !important;
-}
-.stSelectbox [data-baseweb="select"] > div:focus-within{
-  outline: none !important;
-  border-color: var(--adi-green) !important;
-  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
-}
-.stSelectbox [data-baseweb="select"] div[aria-expanded="true"]{
-  border-color: var(--adi-green) !important;
+input:focus, textarea:focus, select:focus{
+  outline:none !important; border-color:var(--adi-green) !important;
+  box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important;
 }
 
-/* Number inputs wrapper for consistent pill style */
-.stNumberInput > div{
-  border-radius: var(--radius-pill) !important;
-  border: 1px solid var(--border) !important;
-  background: var(--adi-stone) !important;
-}
-.stNumberInput > div:focus-within{
-  border-color: var(--adi-green) !important;
-  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
-}
-
-/* Streamlit selectbox (BaseWeb) pill style to prevent red outline */
+/* Streamlit selectbox (BaseWeb) pill style, remove red & ghost circle */
 .stSelectbox [data-baseweb="select"] > div{
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
@@ -93,21 +86,16 @@ input:focus, textarea:focus, select:focus{ outline:none !important; border-color
   box-shadow: none !important;
   padding: 8px 12px !important;
 }
-/* kill any BaseWeb pseudo rings/overlays that can look like a circle */
 .stSelectbox [data-baseweb="select"] > div::before,
 .stSelectbox [data-baseweb="select"] > div::after{ content: none !important; }
-/* if BaseWeb renders enhancers, hide them to avoid the ghost circle */
 .stSelectbox [data-baseweb="select"] div[class*="enhancer"]{ display: none !important; }
-/* focused/open state */
 .stSelectbox [data-baseweb="select"] > div:focus-within{
-  outline: none !important;
-  border-color: var(--adi-green) !important;
+  outline: none !important; border-color: var(--adi-green) !important;
   box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
 }
-.stSelectbox [data-baseweb="select"] div[aria-expanded="true"]{ border-color: var(--adi-green) !important; }
-
-/* Dropdown menu */
-.stSelectbox [role="listbox"]{ border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important; }
+.stSelectbox [role="listbox"]{
+  border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important;
+}
 
 /* Number inputs wrapper for consistent pill style */
 .stNumberInput > div{
@@ -119,11 +107,14 @@ input:focus, textarea:focus, select:focus{ outline:none !important; border-color
   border-color: var(--adi-green) !important;
   box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
 }
-/* ensure stepper buttons remain clickable and clean */
-.stNumberInput button{ background: transparent !important; border:none !important; box-shadow:none !important; pointer-events:auto !important; }
+.stNumberInput button{
+  background: transparent !important; border:none !important; box-shadow:none !important; pointer-events:auto !important;
+}
 
 /* Placeholders readable */
-input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
+input::placeholder, textarea::placeholder{
+  color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500;
+}
 
 /* Pills */
 .pills{ display:flex; flex-wrap:wrap; gap:8px; }
@@ -134,11 +125,15 @@ input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95;
 .pill.active{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }
 
 /* Buttons */
-div.stButton>button{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s; }
+div.stButton>button{
+  background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill);
+  padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s;
+}
 div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }
 .btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
 .btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
-/* File uploader style – dashed ADI panel with UP badge */
+
+/* File uploader – dashed ADI panel with UP badge */
 .stFileUploader{ margin-top:.25rem; }
 [data-testid="stFileUploadDropzone"]{
   border:2px dashed var(--adi-green) !important;
@@ -156,7 +151,6 @@ div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200
   border:1px solid #e0e5e1 !important; border-radius:12px !important; box-shadow:none !important;
 }
 [data-testid="stFileUploadDropzone"]:hover{ box-shadow:0 0 0 3px rgba(36,90,52,.18) !important; }
-
 </style>
 """
 
@@ -166,12 +160,12 @@ st.markdown(ADI_CSS, unsafe_allow_html=True)
 with st.container():
     st.markdown(
         f"""
-        <div class=\"adi-hero\">
-          <div class=\"adi-hero-row\">
-            <div class=\"logo-box\">{('<img src=\"' + logo_data_uri + '\" alt=\"ADI\"/>') if logo_data_uri else '<div class=\"logo-fallback\">A</div>'}</div>
+        <div class="adi-hero">
+          <div class="adi-hero-row">
+            <div class="logo-box">{('<img src="' + logo_data_uri + '" alt="ADI"/>') if logo_data_uri else '<div class="logo-fallback">A</div>'}</div>
             <div>
-              <div class=\"adi-title\">ADI Builder - Lesson Activities & Questions</div>
-              <div class=\"adi-sub\">Professional, branded, editable and export-ready.</div>
+              <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
+              <div class="adi-sub">Professional, branded, editable and export-ready.</div>
             </div>
           </div>
         </div>
@@ -194,36 +188,39 @@ with st.container():
         key="adi_tabs_radio",
     )
     st.session_state.active_tab = tab_choice
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------ Layout ------------------------
 left, right = st.columns([0.9, 2.1], gap="large")
 
 with left:
+    # Upload card
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Upload eBook / Lesson Plan / PPT")
     st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
     st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"])
-st.caption("We recommend eBooks (PDF) as source for best results.")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.caption("We recommend eBooks (PDF) as source for best results.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
+    # Picker card
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
     lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
     week = c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
-    st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto‑highlighted below.")
+    st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted below.")
     b1, b2 = st.columns(2)
     with b1:
         st.markdown('<div class="btn-gold">', unsafe_allow_html=True)
         st.button("Pull → MCQs", use_container_width=True, key="pull_mcq")
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     with b2:
         st.markdown('<div class="btn-sand">', unsafe_allow_html=True)
         st.button("Pull → Activities", use_container_width=True, key="pull_act")
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
+    # Activity Parameters card
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Activity Parameters")
     cc1, cc2 = st.columns(2)
@@ -243,14 +240,26 @@ st.caption("We recommend eBooks (PDF) as source for best results.")
     cols = st.columns(3)
     with cols[0]:
         st.markdown("**Low tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>' for w in ["define","identify","list","recall","describe","label"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="pills">' +
+            ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>'
+                     for w in ["define","identify","list","recall","describe","label"]]) +
+            '</div>', unsafe_allow_html=True)
     with cols[1]:
         st.markdown("**Medium tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>' for w in ["apply","demonstrate","solve","illustrate"]]) + '</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="pills">' +
+            ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>'
+                     for w in ["apply","demonstrate","solve","illustrate"]]) +
+            '</div>', unsafe_allow_html=True)
     with cols[2]:
         st.markdown("**High tier**")
-        st.markdown('<div class="pills">' + ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>' for w in ["evaluate","synthesize","design","justify"]]) + '</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="pills">' +
+            ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>'
+                     for w in ["evaluate","synthesize","design","justify"]]) +
+            '</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
@@ -269,4 +278,4 @@ with right:
         st.number_input("Groups", min_value=1, value=4)
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
