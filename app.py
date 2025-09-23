@@ -1,438 +1,313 @@
-# app.py — ADI Builder (Streamlit, ADI Bloom Policy Auto-Picker, Sleek UI)
+/**
+ * ADI Builder — single-file Apps Script (styling-focused)
+ * Paste this whole file into Code.gs in your Apps Script project.
+ * It adds a menu → ADI Builder → Open, and renders a branded, modern UI.
+ * NOTE: This is UI & styling only; wire server actions later.
+ */
 
-from __future__ import annotations
-import os, re, random
-from io import BytesIO
-from datetime import datetime
-import streamlit as st
+function onOpen() {
+  DocumentApp.getUi()
+    .createMenu('ADI Builder')
+    .addItem('Open', 'showAdiBuilder')
+    .addToUi();
+}
 
-# ---------- Optional libs (graceful if missing) ----------
-try:
-    from docx import Document
-    from docx.shared import Pt, Inches
-    DOCX_AVAILABLE = True
-except Exception:
-    DOCX_AVAILABLE = False
+function showAdiBuilder() {
+  var html = HtmlService.createHtmlOutput(ADI_BUILDER_HTML())
+    .setTitle('ADI Builder')
+    .setWidth(420);
+  DocumentApp.getUi().showSidebar(html);
+}
 
-try:
-    from PyPDF2 import PdfReader
-    PDF_AVAILABLE = True
-except Exception:
-    PDF_AVAILABLE = False
+function ADI_BUILDER_HTML() {
+  // Single-file HTML returned as a string. Brand & polish per spec.
+  var html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ADI Builder</title>
+  <style>
+    /* =========================================
+       ADI Design System — quick tokens
+       ========================================= */
+    :root {
+      --adi-green: #245a34; /* primary */
+      --adi-green-600: #1f4c2c;
+      --adi-green-50: #EEF5F0; /* tint for backgrounds */
+      --adi-gold: #C8A85A; /* subtle highlight */
+      --adi-ink: #1f2937; /* text */
+      --adi-muted: #6b7280; /* secondary text */
+      --bg: #FAFAF7; /* warm neutral background */
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --radius-xl: 16px;
+      --radius-lg: 12px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 8px 20px rgba(0,0,0,0.08);
+      --focus: 0 0 0 3px rgba(36,90,52,0.25);
+      --badge-low-bg: #eaf5ec;
+      --badge-low-fg: #1f4c2c;
+      --badge-med-bg: #e8f0fb;
+      --badge-med-fg: #1e3a8a;
+      --badge-hi-bg: #fff1e6;
+      --badge-hi-fg: #7c2d12;
+    }
 
-try:
-    from pptx import Presentation
-    PPTX_AVAILABLE = True
-except Exception:
-    PPTX_AVAILABLE = False
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+      color: var(--adi-ink);
+      background: var(--bg);
+    }
 
-# ---------- Page & Brand ----------
-st.set_page_config(page_title="ADI Builder", page_icon="🎓", layout="wide")
-ADI_GREEN = "#006C35"
-ADI_BEIGE = "#C8B697"
-ADI_SAND  = "#D9CFC2"
-ADI_BROWN = "#6B4E3D"
-ADI_GRAY  = "#F5F5F5"
+    /* Sidebar layout container */
+    .wrap { padding: 14px; }
 
-# ---------- ADI Bloom verbs (policy) ----------
-ADI_LOW   = ["define","identify","list","recall","describe","label","recognize","state","name","select"]
-ADI_MED   = ["apply","demonstrate","interpret","compare","classify","use","solve","illustrate","organize","explain"]
-ADI_HIGH  = ["analyze","evaluate","justify","design","formulate","develop","critique","prioritize","propose","synthesize"]
+    /* Header */
+    .brand-head {
+      background: linear-gradient(90deg, var(--adi-green), var(--adi-green-600));
+      color: #fff;
+      border-radius: var(--radius-xl);
+      padding: 16px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .brand-head .logo {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: rgba(255,255,255,0.2);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px;
+    }
+    .brand-head h1 { font-size: 16px; margin: 0; font-weight: 700; }
+    .brand-sub { font-size: 11px; opacity: 0.95; margin-top: 4px; }
 
-# ---------- CSS (ADI palette, strong outlines, modern tabs, polished textareas) ----------
-st.markdown(f"""
-<style>
-/* App shell & headings */
-.stApp {{ background: linear-gradient(180deg, #ffffff 0%, {ADI_GRAY} 100%); }}
-html,body,[class*="css"] {{ font-family: 'Segoe UI', Inter, Roboto, system-ui, -apple-system, sans-serif; }}
-h1,h2,h3 {{ color:{ADI_GREEN}; font-weight: 750; }}
+    /* Section card */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-sm);
+      padding: 14px;
+      margin-top: 12px;
+      border: 1px solid var(--border);
+    }
+    .card h2 { font-size: 12px; color: var(--adi-green); letter-spacing: 0.04em; text-transform: uppercase; margin: 0 0 10px; }
 
-/* Banner */
-.banner {{ background:{ADI_GREEN}; color:#fff; padding:18px 28px; border-radius:12px; margin:12px 0 18px; }}
-.badge  {{ display:inline-block; background:{ADI_BEIGE}; color:#222; padding:3px 9px; border-radius:9px; font-size:.8rem; margin-left:8px; }}
+    /* Inputs */
+    label { font-size: 12px; color: var(--adi-muted); margin-bottom: 6px; display:block; }
+    .row { display: flex; gap: 10px; }
+    .row > .col { flex: 1; }
 
-/* Inputs: green outlines + focus glow */
-textarea,
-.stTextInput > div > div > input,
-.stNumberInput input,
-.stSelectbox > div > div > div,
-.stFileUploader label {{ border: 2px solid #2e7d57 !important; border-radius: 12px !important; background: #fff !important; }}
-textarea {{ min-height: 140px !important; font-size: .95rem !important; line-height: 1.5 !important; padding: 10px !important; }}
-textarea:focus,
-.stTextInput > div > div > input:focus,
-.stNumberInput input:focus,
-.stSelectbox > div > div > div:focus-within,
-.stFileUploader label:focus-within {{ outline: none !important; border-color: {ADI_GREEN} !important; box-shadow: 0 0 0 3px rgba(0,108,53,.18) !important; }}
+    .input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px; /* pill */
+      padding: 10px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
+    }
+    textarea {
+      border-radius: 12px; /* larger surface */
+      min-height: 96px;
+      resize: vertical;
+    }
+    .input:focus, select:focus, textarea:focus { box-shadow: var(--focus); border-color: var(--adi-green); }
 
-/* Buttons */
-.stButton>button {{ background:{ADI_GREEN}; color:#fff; border:none; border-radius:12px; padding:10px 16px; font-weight:600; }}
-.stButton>button:hover {{ background:#0c5a2f; }}
+    /* Upload box */
+    .upload {
+      border: 2px dashed var(--adi-green);
+      background: var(--adi-green-50);
+      border-radius: var(--radius-xl);
+      padding: 14px;
+      display: flex; align-items: center; gap: 10px;
+      cursor: pointer;
+      transition: background .2s ease;
+    }
+    .upload:hover { background: #e6efe8; }
+    .upload .icon { width: 28px; height: 28px; border-radius: 8px; background: var(--adi-green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }
+    .upload p { margin: 0; font-size: 13px; }
+    .upload small { color: var(--adi-muted); display:block; margin-top:2px; }
+    .upload input[type=file] { display:none; }
 
-/* Cards */
-.card {{ background:#fff; border-radius:16px; box-shadow:0 6px 18px rgba(0,0,0,.06);
-         padding:18px; border-left:6px solid {ADI_GREEN}; margin:14px 0; }}
-.card h4 {{ margin:0 0 8px 0; color:{ADI_GREEN}; }}
-.card .meta {{ color:#666; font-size:.9rem; margin-bottom:8px; }}
-.answer-badge {{ background:{ADI_GREEN}; color:#fff; border-radius:999px; padding:2px 8px; font-size:.8rem; }}
+    /* Pills (Bloom tiers) */
+    .pills { display:flex; flex-wrap: wrap; gap: 8px; }
+    .pill { font-size: 12px; padding: 6px 10px; border-radius: 999px; border:1px solid transparent; user-select:none; }
+    .pill.low { background: var(--badge-low-bg); color: var(--badge-low-fg); }
+    .pill.med { background: var(--badge-med-bg); color: var(--badge-med-fg); }
+    .pill.hi  { background: var(--badge-hi-bg);  color: var(--badge-hi-fg); }
 
-/* Chips (ADI palette per tier) */
-.chips {{ display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 14px; }}
-.chip {{ padding:6px 12px; border-radius:999px; font-size:.85rem; font-weight:600; cursor:default; transition:all .2s ease; }}
-.chip.low  {{ background:{ADI_SAND};  color:#333; }}
-.chip.med  {{ background:{ADI_GREEN}; color:#fff; }}
-.chip.high {{ background:{ADI_BROWN}; color:#fff; }}
+    /* Stepper */
+    .stepper { display: inline-flex; align-items: center; border:1px solid var(--border); border-radius: 999px; overflow:hidden; }
+    .stepper button { appearance:none; border: none; background:#fff; padding:6px 10px; cursor:pointer; font-size:14px; }
+    .stepper input { width: 44px; text-align:center; border:none; outline:none; font-size: 13px; padding: 8px 6px; }
+    .stepper button:focus { box-shadow: var(--focus); }
 
-/* Tabs: ADI green active, subtle inactive */
-.stTabs [data-baseweb="tab-list"] {{ border-bottom: 2px solid #ddd; gap:8px; }}
-.stTabs [data-baseweb="tab-list"] button {{
-  font-weight:600; padding:6px 16px; border-radius:8px 8px 0 0;
-  background:#f7f7f7; color:#333; border:1px solid #ccc; border-bottom:none;
-}}
-.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
-  background:{ADI_GREEN} !important; color:#fff !important; border:1px solid {ADI_GREEN} !important;
-}}
-.stTabs [data-baseweb="tab-list"] button:hover {{ background:#eaeaea; }}
+    /* CTA */
+    .btn {
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      background: var(--adi-green); color:#fff; border:none;
+      border-radius: 999px; padding: 10px 14px; font-weight:600; cursor:pointer;
+      box-shadow: var(--shadow-sm);
+      transition: transform .02s ease, background .15s ease;
+    }
+    .btn:hover { background: var(--adi-green-600); }
+    .btn:active { transform: translateY(1px); }
 
-/* Difficulty slider (kept green and centered title if you re-enable it later) */
-.stSlider label p {{
-  text-align:center !important; font-weight:700 !important; color:#fff !important;
-  background:{ADI_GREEN}; padding:4px 10px; border-radius:8px; width:max-content; margin:0 auto 6px;
-}}
-.stSlider [data-baseweb="slider"] > div,
-.stSlider [data-baseweb="slider"] > div > div,
-.stSlider [data-baseweb="slider"] > div > div > div {{ background:{ADI_GREEN} !important; }}
-.stSlider [role="slider"] {{ background:#fff !important; border:2px solid {ADI_GREEN} !important; }}
-</style>
-""", unsafe_allow_html=True)
+    /* Tiny caption */
+    .caption { font-size: 11px; color: var(--adi-muted); }
 
-# ---------- Banner ----------
-st.markdown("""
-<div class="banner">
-  <h1>🎓 ADI Builder — Lesson Activities & Questions <span class="badge">Branded</span></h1>
-</div>
-""", unsafe_allow_html=True)
-st.caption("Professional, branded, editable and export-ready.")
+    /* Sticky footer spacing */
+    .space { height: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Header with placeholder square for future ADI logo -->
+    <div class="brand-head">
+      <div class="logo" aria-hidden="true">A</div>
+      <div>
+        <h1>ADI Builder</h1>
+        <div class="brand-sub">Lesson Activities & Questions • Professional • Branded • Export‑ready</div>
+      </div>
+    </div>
 
-# ---------- Sidebar brand ----------
-def sidebar_brand():
-    logo_path = "assets/adi-logo.png"
-    if os.path.exists(logo_path):
-        st.sidebar.image(logo_path, width=180)
-    else:
-        st.sidebar.markdown(f"<div style='font-weight:700;color:{ADI_GREEN};'>Academy of Defense Industries</div>", unsafe_allow_html=True)
-sidebar_brand()
+    <!-- Upload Card -->
+    <div class="card">
+      <h2>Upload eBook / Lesson Plan / PPT</h2>
+      <label class="caption">Accepted: PDF · DOCX · PPTX (≤200MB)</label>
+      <label class="upload" for="fileInput">
+        <div class="icon" aria-hidden="true">⬆</div>
+        <div>
+          <p><strong>Drag & drop</strong> your file here, or <u>Browse</u></p>
+          <small>We recommend eBooks (PDF) as source for best results.</small>
+        </div>
+      </label>
+      <input id="fileInput" type="file" accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+    </div>
 
-# ---------- RTF helper (opens instantly in Word) ----------
-def to_rtf(title: str, body: str) -> bytes:
-    def esc(s: str) -> str:
-        return s.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}").replace("\r\n","\n").replace("\r","\n").replace("\n", r"\line ")
-    parts = ['{\\rtf1\\ansi\\deff0', '{\\fonttbl{\\f0 Calibri;}}', '\\fs22', '\\pard\\f0 ']
-    if title:
-        parts.append('\\b ' + esc(title) + '\\b0\\line\\line ')
-    parts.append(esc(body)); parts.append('}')
-    return "\n".join(parts).encode("utf-8")
+    <!-- Lesson & Week Card -->
+    <div class="card">
+      <h2>Pick from eBook / Plan / PPT</h2>
+      <div class="row">
+        <div class="col">
+          <label>Lesson</label>
+          <select id="lesson">
+            <option value="">—</option>
+          </select>
+        </div>
+        <div class="col">
+          <label>Week</label>
+          <select id="week">
+            <option value="">—</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button class="btn" id="pullMcq">Pull → MCQs</button>
+        <button class="btn" id="pullAct" style="background:var(--adi-gold); color:#1f2a1f;">Pull → Activities</button>
+      </div>
+    </div>
 
-# ---------- Upload & parse (PDF/DOCX/PPTX) ----------
-st.sidebar.header("Upload eBook / Lesson Plan / PPT")
-upload = st.sidebar.file_uploader("PDF / DOCX / PPTX (≤200MB)", type=["pdf","docx","pptx"])
-
-@st.cache_resource(show_spinner=False)
-def parse_file(file):
-    if file is None: return ""
-    name = file.name.lower()
-    if name.endswith(".pdf") and PDF_AVAILABLE:
-        reader = PdfReader(file)
-        return "\n".join((p.extract_text() or "") for p in reader.pages)
-    if name.endswith(".docx") and DOCX_AVAILABLE:
-        from docx import Document as _D
-        doc = _D(file); return "\n".join(p.text for p in doc.paragraphs)
-    if name.endswith(".pptx") and PPTX_AVAILABLE:
-        prs = Presentation(file); parts=[]
-        for s in prs.slides:
-            for shp in s.shapes:
-                if hasattr(shp, "text"): parts.append(shp.text)
-        return "\n".join(parts)
-    return ""
-
-@st.cache_resource(show_spinner=False)
-def index_sections(full_text: str):
-    if not full_text: return {}, {}
-    t = re.sub(r"\u00a0", " ", full_text)
-    lm = list(re.finditer(r"(?im)^(lesson\s*(\d{1,2}))\b.*$", t))
-    wm = list(re.finditer(r"(?im)^(week\s*(\d{1,2}))\b.*$", t))
-    def slice_by(matches):
-        sec={}
-        for i,m in enumerate(matches):
-            start=m.start(); end=matches[i+1].start() if i+1<len(matches) else len(t)
-            try: idx=int(m.group(2))
-            except: continue
-            sec[idx]=t[start:end].strip()
-        return sec
-    return slice_by(lm), slice_by(wm)
-
-# Parse once (if uploaded)
-if upload is not None and "parsed_text_blob" not in st.session_state:
-    blob = parse_file(upload)
-    st.session_state.parsed_text_blob = blob
-    st.session_state.lessons, st.session_state.weeks = index_sections(blob)
-
-# ---------- ALWAYS-ON Lesson/Week pickers ----------
-st.sidebar.subheader("Pick from eBook/Plan/PPT")
-lkeys = sorted(st.session_state.get("lessons", {}).keys()) or list(range(1,15))
-wkeys = sorted(st.session_state.get("weeks", {}).keys())   or list(range(1,15))
-
-sel_l = st.sidebar.selectbox("📖 Lesson", options=["—"]+[str(k) for k in lkeys], index=0, key="pick_lesson")
-sel_w = st.sidebar.selectbox("🗓️ Week",   options=["—"]+[str(k) for k in wkeys], index=0, key="pick_week")
-
-c1,c2 = st.sidebar.columns(2)
-pull_mcq  = c1.button("Pull → MCQs")
-pull_acts = c2.button("Pull → Activities")
-
-def selected_text():
-    parts=[]
-    lessons = st.session_state.get("lessons", {})
-    weeks   = st.session_state.get("weeks", {})
-    if sel_l.isdigit():
-        li = int(sel_l)
-        parts.append(lessons.get(li, f"Lesson {li}: [add notes here]"))
-    if sel_w.isdigit():
-        wi = int(sel_w)
-        parts.append(weeks.get(wi, f"Week {wi}: [add notes here]"))
-    return "\n\n".join(p for p in parts if p).strip()
-
-preview = selected_text()
-if preview:
-    st.sidebar.caption("Preview:")
-    st.sidebar.text_area("", value=preview[:2000], height=140)
-
-if pull_mcq:
-    st.session_state.mcq_seed = preview
-if pull_acts:
-    st.session_state.act_seed = preview
-
-# ---------- Activity Parameters (ALWAYS VISIBLE) ----------
-st.sidebar.subheader("Activity Parameters")
-col1,col2 = st.sidebar.columns(2)
-num_activities = col1.number_input("Activities", 1, 10, st.session_state.get("num_activities", 3), key="num_activities")
-duration       = col2.number_input("Duration (mins)", 5, 180, st.session_state.get("duration", 45), key="duration")
-
-# ---------- Bloom tiers (grouped headers, ADI colors) ----------
-st.sidebar.caption("ADI Bloom tiers used for MCQs:")
-st.sidebar.markdown("**Low tier**")
-st.sidebar.markdown("<div class='chips'>" + "".join(f"<span class='chip low'>{v}</span>"  for v in ADI_LOW[:6])  + "</div>", unsafe_allow_html=True)
-st.sidebar.markdown("**Medium tier**")
-st.sidebar.markdown("<div class='chips'>" + "".join(f"<span class='chip med'>{v}</span>"  for v in ADI_MED[:6])  + "</div>", unsafe_allow_html=True)
-st.sidebar.markdown("**High tier**")
-st.sidebar.markdown("<div class='chips'>" + "".join(f"<span class='chip high'>{v}</span>" for v in ADI_HIGH[:6]) + "</div>", unsafe_allow_html=True)
-
-# ---------- Tabs ----------
-mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
-
-# ---------- MCQs: policy blocks (auto-pick verbs; tiny tier swap) ----------
-with mcq_tab:
-    st.subheader("Generate MCQs — Policy Blocks (Low → Medium → High)")
-    if st.session_state.get("mcq_seed"): st.success("Lesson/Week text inserted into MCQ editor.")
-    topic = st.text_input("Topic / Outcome (optional)", "Module description, knowledge & skills outcomes")
-    base_text = st.text_area("Source text (optional, editable)", value=st.session_state.get("mcq_seed",""), height=160)
-    blocks = st.number_input("How many MCQ blocks? (x3 questions)", 1, 20, 1)
-
-    def stem_low(t, v):   return f"Which option best **{v}** a key concept in {t}?"
-    def stem_med(t, v):   return f"You need to **{v}** {t} in a new context. What is the **most appropriate** first step?"
-    def stem_high(t, v):  return f"Given constraints, **{v}** two approaches to {t}. Which choice **best justifies** the recommendation?"
-
-    if st.button("Generate MCQ Blocks"):
-        questions=[]
-        for _ in range(int(blocks)):
-            questions.extend([("Low",stem_low,ADI_LOW),("Medium",stem_med,ADI_MED),("High",stem_high,ADI_HIGH)])
-
-        edited_blocks=[]
-        for i,(tier, builder, verb_list) in enumerate(questions, start=1):
-            auto_verb = random.choice(verb_list)
-            sel = st.selectbox(f"Verb for Q{i} — {tier}", options=verb_list, index=verb_list.index(auto_verb), key=f"verb_{i}")
-            stem = builder(topic or "this topic", sel)
-
-            if tier=="Low":
-                opts=["A) A vague opinion","B) A precise statement with essential characteristics","C) An unrelated anecdote","D) A random number"]; ans="B"
-            elif tier=="Medium":
-                opts=["A) Repeat the definition","B) Identify variables/constraints; choose a method to apply","C) Collect unrelated data","D) Ignore context and proceed"]; ans="B"
-            else:
-                opts=["A) Cites unrelated evidence","B) States assumptions and criteria, weighing trade-offs","C) Focuses on formatting over reasoning","D) Mentions outcomes without criteria"]; ans="B"
-
-            st.markdown(f"""
-            <div class='card'>
-              <h4>📝 Question {i}</h4>
-              <div class='meta'>Policy tier: {tier}</div>
-              <div>{stem}</div>
-              <div style='margin-top:6px;'>{'<br/>'.join(opts)}</div>
-              <div style='margin-top:8px;'>Answer: <span class='answer-badge'>{ans}</span></div>
+    <!-- Activity Parameters Card -->
+    <div class="card">
+      <h2>Activity Parameters</h2>
+      <div class="row">
+        <div class="col">
+          <label>Number of Activities</label>
+          <input id="activities" class="input" type="number" min="1" value="3" />
+        </div>
+        <div class="col">
+          <label>Duration (mins)</label>
+          <input id="duration" class="input" type="number" min="5" step="5" value="45" />
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <div class="caption">ADI Bloom tiers for MCQs</div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px; margin-top:6px;">
+          <div>
+            <div class="caption"><strong>Low</strong></div>
+            <div class="pills">
+              <span class="pill low">define</span>
+              <span class="pill low">identify</span>
+              <span class="pill low">list</span>
+              <span class="pill low">recall</span>
+              <span class="pill low">describe</span>
+              <span class="pill low">label</span>
             </div>
-            """, unsafe_allow_html=True)
-
-            q_text = stem + "\n" + "\n".join(opts) + f"\nAnswer: {ans}"
-            box = st.text_area(f"✏️ Edit Q{i}", q_text, key=f"mcq_edit_{i}", height=118)
-
-            # Optional passage/image slots (preserved for export)
-            st.text_area(f"📄 Passage (optional) for Q{i}", value=st.session_state.get(f"mcq_passage_{i}",""), key=f"mcq_passage_{i}", height=80)
-            st.file_uploader(f"🖼️ Image (optional) for Q{i}", type=["png","jpg","jpeg"], key=f"mcq_img_{i}")
-
-            edited_blocks.append(box)
-
-        # ---- Export MCQs
-        def mcq_blocks_to_docx(blocks_text):
-            if not DOCX_AVAILABLE: return None
-            doc = Document(); s=doc.styles['Normal']; s.font.name='Calibri'; s.font.size=Pt(11)
-            doc.add_heading('ADI Builder — Knowledge MCQs (Policy Blocks)', level=1)
-            doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
-            for idx, blk in enumerate(blocks_text,1):
-                tier = "Low" if idx%3==1 else "Medium" if idx%3==2 else "High"
-                lines=[l.rstrip() for l in blk.splitlines() if l.strip()]
-                if not lines: continue
-                stem=lines[0]; options=[l for l in lines[1:] if re.match(r"^[A-D]\)", l)]
-                ans_line = next((l for l in lines if l.lower().startswith("answer:")), "")
-                doc.add_heading(f"Question {idx} — {tier}", level=2)
-
-                ptxt = st.session_state.get(f"mcq_passage_{idx}", "").strip()
-                if ptxt: doc.add_heading("Passage", level=3); doc.add_paragraph(ptxt)
-
-                doc.add_paragraph(stem)
-
-                img = st.session_state.get(f"mcq_img_{idx}")
-                if img is not None:
-                    try: img.seek(0); doc.add_picture(img, width=Inches(4.5))
-                    except Exception: doc.add_paragraph("[Image could not be embedded]")
-
-                for opt in options: doc.add_paragraph(opt, style="List Bullet")
-                if ans_line:
-                    p = doc.add_paragraph(ans_line)
-                    if p.runs: p.runs[0].italic = True
-                doc.add_paragraph("")
-            bio = BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
-
-        txt_payload = "\n\n".join(edited_blocks)
-        st.download_button("🗎 Word (.rtf)", to_rtf("ADI Builder — Knowledge MCQs (Policy Blocks)", txt_payload), file_name="mcqs_policy.rtf")
-        docx_payload = mcq_blocks_to_docx(edited_blocks)
-        if docx_payload:
-            st.download_button("📝 Word (.docx)", docx_payload, file_name="mcqs_policy.docx")
-        st.session_state["mcq_blocks"] = edited_blocks
-
-# ---------- Activities ----------
-with act_tab:
-    st.subheader("Generate Skills Activities")
-    context_text = st.text_area("Context from eBook / notes (editable)", value=st.session_state.get("act_seed",""), height=160)
-
-    if st.button("Generate Activities", type="primary"):
-        activities=[]
-        for i in range(1, num_activities+1):
-            t_intro = max(3, round(0.15*duration))
-            t_work  = max(10, duration - t_intro - 5)
-            t_share = max(2, duration - t_intro - t_work)
-
-            step1 = f"Read/skim the provided context and highlight key terms related to the learning outcome. ({t_intro} min)"
-            step2 = f"In pairs/small groups, apply the concept to the scenario: identify variables, assumptions, and constraints. ({t_work} min)"
-            step3 = f"Create a concise output (diagram or 3–slide mini-deck). Prepare a 1-minute share-out. ({t_share} min)"
-
-            checks = [
-                "Output correctly applies the concept",
-                "Assumptions and constraints are noted",
-                "Visual is clear and labeled",
-                "Team justifies choices during share-out",
-            ]
-            materials = "Markers, sticky notes or Miro; slides/handout template (optional)."
-            grouping = "Pairs or groups of 3."
-
-            act_text = (
-                f"Activity {i} — {duration} mins\n"
-                f"Grouping: {grouping}\n"
-                f"Materials: {materials}\n"
-                f"Context:\n{context_text.strip() or '[Add notes or use selected Lesson/Week extract]'}\n\n"
-                f"Steps:\n1) {step1}\n2) {step2}\n3) {step3}\n\n"
-                f"Output: Diagram or 3-slide mini-deck (export to LMS).\n"
-                f"Evidence: Photo or upload to LMS.\n"
-                f"Success criteria:\n- " + "\n- ".join(checks)
-            )
-            activities.append(act_text)
-
-            st.markdown(f"""
-            <div class='card'>
-              <h4>⭐ Activity {i} — {duration} mins</h4>
-              <div class='meta'>Grouping: {grouping}</div>
-              <div><b>🧩 Context:</b> {('Provided' if context_text else 'Add notes or use Lesson/Week extract')}</div>
-              <div style='margin-top:8px;'><b>🛠️ Materials:</b> {materials}</div>
-              <div style='margin-top:8px;'><b>📋 Steps:</b>
-                <ol><li>{step1}</li><li>{step2}</li><li>{step3}</li></ol>
-              </div>
-              <div><b>📊 Output:</b> Diagram or 3-slide mini-deck.</div>
-              <div><b>📤 Evidence:</b> Photo or upload to LMS.</div>
-              <div style='margin-top:8px;'><b>✅ Success criteria:</b>
-                <ul>{''.join([f'<li>{c}</li>' for c in checks])}</ul>
-              </div>
+          </div>
+          <div>
+            <div class="caption"><strong>Medium</strong></div>
+            <div class="pills">
+              <span class="pill med">apply</span>
+              <span class="pill med">demonstrate</span>
+              <span class="pill med">solve</span>
+              <span class="pill med">illustrate</span>
             </div>
-            """, unsafe_allow_html=True)
+          </div>
+          <div>
+            <div class="caption"><strong>High</strong></div>
+            <div class="pills">
+              <span class="pill hi">evaluate</span>
+              <span class="pill hi">synthesize</span>
+              <span class="pill hi">design</span>
+              <span class="pill hi">justify</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        text_output = "\n\n".join(activities)
-        edited_output = st.text_area("✏️ Review & edit before export:", text_output, key="act_edit", height=220)
+    <!-- Generate MCQs Card (main content simplified) -->
+    <div class="card">
+      <h2>Generate MCQs — Policy Blocks (Low → Medium → High)</h2>
+      <label>Topic / Outcome (optional)</label>
+      <input class="input" id="topic" placeholder="Module description, knowledge & skills outcomes" />
 
-        st.session_state["activities_list"] = activities
+      <label style="margin-top:10px;">Source text (optional, editable)</label>
+      <textarea id="source"></textarea>
 
-        st.download_button("🗎 Word (.rtf)", to_rtf("ADI Builder — Skills Activities", edited_output), file_name="activities.rtf")
-        if DOCX_AVAILABLE:
-            doc = Document(); s=doc.styles['Normal']; s.font.name='Calibri'; s.font.size=Pt(11)
-            doc.add_heading('ADI Builder — Skills Activities', level=1)
-            doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
-            for block in activities:
-                lines=[l.rstrip() for l in block.split('\n')]
-                title = next((l for l in lines if l.startswith("Activity ")), "Activity")
-                doc.add_heading(title, level=2)
-                doc.add_paragraph("\n".join(lines))
-                doc.add_paragraph("")
-            bio = BytesIO(); doc.save(bio); bio.seek(0)
-            st.download_button("📝 Word (.docx)", bio.getvalue(), file_name="activities.docx")
+      <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+        <span class="caption">How many MCQ blocks? (×3 questions)</span>
+        <div class="stepper" role="group" aria-label="MCQ block count">
+          <button type="button" id="minus">−</button>
+          <input id="mcqBlocks" type="text" value="1" inputmode="numeric" />
+          <button type="button" id="plus">+</button>
+        </div>
+      </div>
 
-# ---------- Full Pack (DOCX) ----------
-if DOCX_AVAILABLE and (st.session_state.get("mcq_blocks") or st.session_state.get("activities_list")):
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.subheader("Export — Full Pack (.docx)")
-    st.caption("One Word document with MCQs and Activities, ready for Moodle/print.")
+      <div class="space"></div>
+      <button class="btn" id="generate">Generate MCQ Blocks</button>
+    </div>
+  </div>
 
-    def build_full_pack_docx(mcq_blocks, activities_list):
-        doc = Document(); s=doc.styles['Normal']; s.font.name='Calibri'; s.font.size=Pt(11)
-        doc.add_heading('ADI Builder — Lesson Pack', 0)
-        doc.add_paragraph(datetime.now().strftime('%Y-%m-%d %H:%M'))
+  <script>
+    // Minimal JS for stepper and basic UX feedback
+    const input = document.getElementById('mcqBlocks');
+    document.getElementById('minus').addEventListener('click', () => {
+      const n = Math.max(1, (parseInt(input.value || '1', 10) - 1));
+      input.value = String(n);
+    });
+    document.getElementById('plus').addEventListener('click', () => {
+      const n = Math.min(20, (parseInt(input.value || '1', 10) + 1));
+      input.value = String(n);
+    });
 
-        if mcq_blocks:
-            doc.add_heading('Section A — Knowledge MCQs (Policy Blocks)', level=1)
-            for idx, blk in enumerate(mcq_blocks, 1):
-                tier = "Low" if idx%3==1 else "Medium" if idx%3==2 else "High"
-                lines=[l.rstrip() for l in blk.splitlines() if l.strip()]
-                if not lines: continue
-                stem=lines[0]; options=[l for l in lines[1:] if re.match(r"^[A-D]\)", l)]
-                ans_line = next((l for l in lines if l.lower().startswith('answer:')), '')
-                doc.add_heading(f"Question {idx} — {tier}", level=2)
-                ptxt = st.session_state.get(f"mcq_passage_{idx}", "").strip()
-                if ptxt: doc.add_heading("Passage", level=3); doc.add_paragraph(ptxt)
-                doc.add_paragraph(stem)
-                img = st.session_state.get(f"mcq_img_{idx}")
-                if img is not None:
-                    try: img.seek(0); doc.add_picture(img, width=Inches(4.5))
-                    except Exception: doc.add_paragraph("[Image could not be embedded]")
-                for opt in options: doc.add_paragraph(opt, style="List Bullet")
-                if ans_line:
-                    p = doc.add_paragraph(ans_line)
-                    if p.runs: p.runs[0].italic = True
-                doc.add_paragraph("")
-
-        if activities_list:
-            doc.add_page_break()
-            doc.add_heading('Section B — Skills Activities', level=1)
-            for block in activities_list:
-                lines=[l.rstrip() for l in block.split('\n')]
-                title = next((l for l in lines if l.startswith("Activity ")), "Activity")
-                doc.add_heading(title, level=2)
-                doc.add_paragraph("\n".join(lines))
-                doc.add_paragraph("")
-
-        out = BytesIO(); doc.save(out); out.seek(0); return out.getvalue()
-
-    full_docx = build_full_pack_docx(st.session_state.get("mcq_blocks", []),
-                                     st.session_state.get("activities_list", []))
-    st.download_button("🧾 Full Pack (.docx)", full_docx, file_name="adi_lesson_pack.docx")
+    // Placeholder handlers
+    document.getElementById('generate').addEventListener('click', () => {
+      google.script.host.toast('Generate clicked — hook up server next.');
+    });
+    document.getElementById('pullMcq').addEventListener('click', () => {
+      google.script.host.toast('Pull MCQs — wire later.');
+    });
+    document.getElementById('pullAct').addEventListener('click', () => {
+      google.script.host.toast('Pull Activities — wire later.');
+    });
+  </script>
+</body>
+</html>`;
+  return html;
+}
