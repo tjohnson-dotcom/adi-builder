@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Outlined Inputs + Prominent Green Tabs)
+# app.py — ADI Builder (Green Dots + Enhanced Buttons)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -40,11 +40,13 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{{font-weight:800; font-size:22px; margin:0;}}
 .adi-sub{{opacity:.92; font-size:12px; margin-top:2px;}}
 
-/* Prominent Tabs (green) */
+/* Prominent Tabs (green with green dot) */
 .adi-tabs [role="radiogroup"]{{ gap:10px; display:flex; flex-wrap:wrap; }}
 .adi-tabs label{{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }}
 .adi-tabs label:hover{{ background:#eaf5ec; }}
 .adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25), inset 0 -3px 0 #C8A85A; }}
+/* Make the radio dot green */
+.adi-tabs input[type="radio"]:checked + div::before{{ background-color: var(--adi-gold) !important; border-color: var(--adi-green) !important; }}
 
 /* Layout */
 .grid{{display:grid; grid-template-columns: 340px 1fr; gap:20px; margin-top:12px;}}
@@ -71,8 +73,8 @@ div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
 .pill.hi{{ background:var(--adi-stone); color:var(--adi-stone-text); }}
 
 /* Buttons */
-div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.55rem .9rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); }}
-div.stButton>button:hover{{ filter:brightness(.95); }}
+div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.7rem 1.2rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition: all .2s; }}
+div.stButton>button:hover{{ box-shadow:0 0 0 3px var(--adi-gold), 0 4px 12px rgba(31,76,44,.22); filter:brightness(.97); }}
 .btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
 
 </style>
@@ -127,7 +129,7 @@ with left:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
-    c1.selectbox("Lesson", options=["—", "1", "2", "3"], index=0)
+    c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
     c2.selectbox("Week", options=["—"] + [str(i) for i in range(1,15)], index=0)
     b1, b2 = st.columns(2)
     with b1:
@@ -172,4 +174,3 @@ with right:
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
     st.markdown('</div>', unsafe_allow_html=True)
-
