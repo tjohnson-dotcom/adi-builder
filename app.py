@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Green Dots + Enhanced Buttons)
+# app.py — ADI Builder (Green Dot Fix)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -40,13 +40,13 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{{font-weight:800; font-size:22px; margin:0;}}
 .adi-sub{{opacity:.92; font-size:12px; margin-top:2px;}}
 
-/* Prominent Tabs (green with green dot) */
+/* Prominent Tabs (green with ADI green dot) */
 .adi-tabs [role="radiogroup"]{{ gap:10px; display:flex; flex-wrap:wrap; }}
 .adi-tabs label{{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }}
 .adi-tabs label:hover{{ background:#eaf5ec; }}
 .adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25), inset 0 -3px 0 #C8A85A; }}
-/* Make the radio dot green */
-.adi-tabs input[type="radio"]:checked + div::before{{ background-color: var(--adi-gold) !important; border-color: var(--adi-green) !important; }}
+/* Force the radio dot inside the pill to be ADI green */
+.adi-tabs input[type="radio"]:checked {{ accent-color: var(--adi-green); }}
 
 /* Layout */
 .grid{{display:grid; grid-template-columns: 340px 1fr; gap:20px; margin-top:12px;}}
