@@ -1,14 +1,12 @@
-# app.py — ADI Builder (tabs instead of radios, polished ADI styling, dashed uploader)
+# app.py — ADI Builder (tabs, fixed selects, ADI styling)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
-import base64
-import os
-import streamlit as st
+import base64, os, streamlit as st
 
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
-# ------------------------ Logo (optional) ------------------------
+# Optional logo
 LOGO_PATH = os.path.join("assets", "adi-logo.png")
 logo_data_uri = None
 try:
@@ -16,9 +14,8 @@ try:
         with open(LOGO_PATH, "rb") as f:
             logo_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
 except Exception:
-    logo_data_uri = None
+    pass
 
-# ------------------------ THEME CSS ------------------------
 ADI_CSS = """
 <style>
 :root{
@@ -26,149 +23,124 @@ ADI_CSS = """
   --adi-gold:#C8A85A; --adi-sand:#f8f3e8; --adi-sand-text:#6a4b2d;
   --adi-stone:#f3f1ee; --adi-stone-text:#4a4a45;
   --adi-ink:#1f2937; --adi-muted:#6b7280;
-  --bg:#FAFAF7; --card:#ffffff; --border:#d9dfda;
-  --shadow:0 10px 24px rgba(0,0,0,.06);
+  --bg:#FAFAF7; --border:#d9dfda; --shadow:0 10px 24px rgba(0,0,0,.06);
   --radius:18px; --radius-pill:999px;
 }
 html,body{background:var(--bg)}
-main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
+main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px}
 
 /* Header */
-.adi-hero{
-  background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600));
-  color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);
-}
-.adi-hero-row{display:flex; align-items:center; gap:16px;}
+.adi-hero{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600));
+  color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow)}
+.adi-hero-row{display:flex; align-items:center; gap:16px}
 .logo-box{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08);
-  overflow:hidden; display:flex; align-items:center; justify-content:center;}
-.logo-box img{width:100%; height:100%; object-fit:contain;}
-.logo-fallback{font-weight:800; font-size:20px;}
-.adi-title{font-weight:800; font-size:22px; margin:0;}
-.adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
+  overflow:hidden; display:flex; align-items:center; justify-content:center}
+.logo-box img{width:100%; height:100%; object-fit:contain}
+.logo-fallback{font-weight:800; font-size:20px}
+.adi-title{font-weight:800; font-size:22px; margin:0}
+.adi-sub{opacity:.92; font-size:12px; margin-top:2px}
 
-/* Tabs (Streamlit native tabs) */
-.stTabs [data-baseweb="tab-list"]{
-  gap:10px; border-bottom: none;
-}
+/* Tabs (native Streamlit) */
+.stTabs [data-baseweb="tab-list"]{gap:10px; border-bottom:none}
 .stTabs [data-baseweb="tab"]{
-  background:#f3f7f3; border:2px solid var(--adi-green-50);
-  color:var(--adi-green-600); border-radius:14px; padding:10px 16px;
-  font-weight:700;
+  background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600);
+  border-radius:14px; padding:10px 16px; font-weight:700
 }
 .stTabs [aria-selected="true"]{
-  background:var(--adi-green) !important; color:#fff !important;
-  border-color:var(--adi-green-600) !important;
-  box-shadow:0 6px 14px rgba(36,90,52,.25);
+  background:var(--adi-green)!important; color:#fff!important; border-color:var(--adi-green-600)!important;
+  box-shadow:0 6px 14px rgba(36,90,52,.25)
 }
 
-/* Inputs pill style */
+/* Inputs + textareas */
 input, textarea, select{
-  border:1px solid var(--border) !important;
-  border-radius:var(--radius-pill) !important;
-  background:var(--adi-stone) !important;
-  padding:.5rem .9rem !important;
+  border:1px solid var(--border)!important; border-radius:var(--radius-pill)!important;
+  background:var(--adi-stone)!important; padding:.55rem .9rem!important
 }
-textarea{ border-radius:28px !important; }
-input:hover, textarea:hover, select:hover{ box-shadow:0 0 0 2px rgba(36,90,52,.10); }
+textarea{border-radius:28px!important}
+input:hover, textarea:hover, select:hover{box-shadow:0 0 0 2px rgba(36,90,52,.10)}
 input:focus, textarea:focus, select:focus{
-  outline:none !important; border-color:var(--adi-green) !important;
-  box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important;
+  outline:none!important; border-color:var(--adi-green)!important;
+  box-shadow:0 0 0 3px rgba(36,90,52,.25)!important; background:#fff!important
 }
+input::placeholder, textarea::placeholder{color:var(--adi-muted); opacity:.95; font-style:italic; font-weight:500}
 
-/* Select (BaseWeb) */
+/* Selectbox (BaseWeb) — precise, no overlays, pointer events on */
+.stSelectbox [data-baseweb="select"]{position:relative; pointer-events:auto!important}
+.stSelectbox [data-baseweb="select"] *{pointer-events:auto!important}
 .stSelectbox [data-baseweb="select"] > div{
-  border-radius: var(--radius-pill) !important;
-  border: 1px solid var(--border) !important;
-  background: var(--adi-stone) !important;
-  box-shadow: none !important;
-  padding: 8px 12px !important;
+  border-radius:var(--radius-pill)!important; border:1px solid var(--border)!important;
+  background:var(--adi-stone)!important; box-shadow:none!important; padding:8px 12px!important
 }
+/* remove stray pseudo rings & enhancers that caused clicks to miss */
 .stSelectbox [data-baseweb="select"] > div::before,
-.stSelectbox [data-baseweb="select"] > div::after{ content: none !important; }
-.stSelectbox [data-baseweb="select"] div[class*="enhancer"]{ display: none !important; }
+.stSelectbox [data-baseweb="select"] > div::after{content:none!important}
+.stSelectbox [data-baseweb="select"] div[class*="enhancer"]{display:none!important}
 .stSelectbox [data-baseweb="select"] > div:focus-within{
-  outline: none !important; border-color: var(--adi-green) !important;
-  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
+  border-color:var(--adi-green)!important; box-shadow:0 0 0 3px rgba(36,90,52,.25)!important
 }
-.stSelectbox [role="listbox"]{
-  border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important;
-}
+.stSelectbox [role="listbox"]{border-radius:12px!important; border:1px solid var(--border)!important; box-shadow:var(--shadow)!important}
 
 /* Number inputs */
 .stNumberInput > div{
-  border-radius: var(--radius-pill) !important;
-  border: 1px solid var(--border) !important;
-  background: var(--adi-stone) !important;
+  border-radius:var(--radius-pill)!important; border:1px solid var(--border)!important; background:var(--adi-stone)!important
 }
-.stNumberInput > div:focus-within{
-  border-color: var(--adi-green) !important;
-  box-shadow: 0 0 0 3px rgba(36,90,52,.25) !important;
-}
-.stNumberInput button{ background: transparent !important; border:none !important; box-shadow:none !important; }
-
-/* Placeholders */
-input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
+.stNumberInput > div:focus-within{border-color:var(--adi-green)!important; box-shadow:0 0 0 3px rgba(36,90,52,.25)!important}
+.stNumberInput button{background:transparent!important; border:none!important; box-shadow:none!important}
 
 /* Pills */
-.pills{ display:flex; flex-wrap:wrap; gap:8px; }
-.pill{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }
-.pill.low{ background:#eaf5ec; color:#1f4c2c; }
-.pill.med{ background:var(--adi-sand); color:var(--adi-sand-text); }
-.pill.hi{ background:var(--adi-stone); color:var(--adi-stone-text); }
-.pill.active{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }
+.pills{display:flex; flex-wrap:wrap; gap:8px}
+.pill{padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b}
+.pill.low{background:#eaf5ec; color:#1f4c2c}
+.pill.med{background:var(--adi-sand); color:var(--adi-sand-text)}
+.pill.hi{background:var(--adi-stone); color:var(--adi-stone-text)}
+.pill.active{box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600)}
 
 /* Buttons */
 div.stButton>button{
   background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill);
-  padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s;
+  padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s
 }
-div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }
-.btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
-.btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
+div.stButton>button:hover{filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45)}
+.btn-gold button{background:var(--adi-gold)!important; color:#1f2a1f!important; box-shadow:0 4px 12px rgba(200,168,90,.32)!important}
+.btn-sand button{background:var(--adi-sand)!important; color:var(--adi-sand-text)!important; box-shadow:0 4px 12px rgba(106,75,45,.25)!important}
 
 /* Uploader — dashed ADI panel with UP badge */
-.stFileUploader{ margin-top:.25rem; }
 .stFileUploader [data-testid="stFileUploadDropzone"]{
-  border:2px dashed var(--adi-green) !important;
-  background: var(--adi-green-50) !important;
-  border-radius:14px !important;
-  padding:16px !important;
-  display:flex !important; align-items:center !important; gap:12px !important;
+  border:2px dashed var(--adi-green)!important; background:var(--adi-green-50)!important;
+  border-radius:14px!important; padding:16px!important; display:flex!important; align-items:center!important; gap:12px!important
 }
 .stFileUploader [data-testid="stFileUploadDropzone"]::before{
   content:"UP"; display:flex; align-items:center; justify-content:center;
-  width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; margin-right:6px;
+  width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; margin-right:6px
 }
 .stFileUploader [data-testid="stFileUploadDropzone"] button{
-  background:#fff !important; color:var(--adi-ink) !important;
-  border:1px solid #e0e5e1 !important; border-radius:12px !important; box-shadow:none !important;
+  background:#fff!important; color:var(--adi-ink)!important; border:1px solid #e0e5e1!important; border-radius:12px!important; box-shadow:none!important
 }
-.stFileUploader [data-testid="stFileUploadDropzone"]:hover{ box-shadow:0 0 0 3px rgba(36,90,52,.18) !important; }
+.stFileUploader [data-testid="stFileUploadDropzone"]:hover{box-shadow:0 0 0 3px rgba(36,90,52,.18)!important}
 </style>
 """
 st.markdown(ADI_CSS, unsafe_allow_html=True)
 
-# ------------------------ Header ------------------------
-with st.container():
-    st.markdown(
-        f"""
-        <div class="adi-hero">
-          <div class="adi-hero-row">
-            <div class="logo-box">{('<img src="' + logo_data_uri + '" alt="ADI"/>') if logo_data_uri else '<div class="logo-fallback">A</div>'}</div>
-            <div>
-              <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
-              <div class="adi-sub">Professional, branded, editable and export-ready.</div>
-            </div>
-          </div>
+# Header
+st.markdown(
+    f"""
+    <div class="adi-hero">
+      <div class="adi-hero-row">
+        <div class="logo-box">{('<img src="'+logo_data_uri+'" alt="ADI"/>') if logo_data_uri else '<div class="logo-fallback">A</div>'}</div>
+        <div>
+          <div class="adi-title">ADI Builder - Lesson Activities & Questions</div>
+          <div class="adi-sub">Professional, branded, editable and export-ready.</div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-# ------------------------ Tabs (no red dot ever) ------------------------
+# Tabs (no radios → no red dot)
 tab_mcq, tab_skills = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-# ------------------------ MCQ TAB ------------------------
+# ---- MCQ tab
 with tab_mcq:
     left, right = st.columns([0.9, 2.1], gap="large")
 
@@ -180,8 +152,8 @@ with tab_mcq:
 
         st.markdown("### Pick from eBook / Plan / PPT")
         c1, c2 = st.columns(2)
-        lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
-        week = c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
+        lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0, key="lesson_sel")
+        week   = c2.selectbox("Week",   options=["—"]+[str(i) for i in range(1,15)], index=0, key="week_sel")
         st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted below.")
 
         b1, b2 = st.columns(2)
@@ -199,38 +171,26 @@ with tab_mcq:
         cc1.number_input("Activities", min_value=1, value=3, step=1, key="num_activities")
         cc2.number_input("Duration (mins)", min_value=5, value=45, step=5, key="num_duration")
 
-        # Bloom tiers auto-highlight based on Week
+        # Bloom highlight by week
         highlight = None
-        if week in ["1", "2", "3", "4"]:
+        if week in ["1","2","3","4"]:
             highlight = "low"
-        elif week in ["5", "6", "7", "8", "9"]:
+        elif week in ["5","6","7","8","9"]:
             highlight = "med"
-        elif week in ["10", "11", "12", "13", "14"]:
+        elif week in ["10","11","12","13","14"]:
             highlight = "hi"
 
         st.caption("ADI Bloom tiers used for MCQs:")
-        cols = st.columns(3)
-        with cols[0]:
+        cA, cB, cC = st.columns(3)
+        with cA:
             st.markdown("**Low tier**")
-            st.markdown(
-                '<div class="pills">' +
-                ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>'
-                         for w in ["define","identify","list","recall","describe","label"]]) +
-                '</div>', unsafe_allow_html=True)
-        with cols[1]:
+            st.markdown('<div class="pills">'+''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>' for w in ["define","identify","list","recall","describe","label"]])+'</div>', unsafe_allow_html=True)
+        with cB:
             st.markdown("**Medium tier**")
-            st.markdown(
-                '<div class="pills">' +
-                ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>'
-                         for w in ["apply","demonstrate","solve","illustrate"]]) +
-                '</div>', unsafe_allow_html=True)
-        with cols[2]:
+            st.markdown('<div class="pills">'+''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>' for w in ["apply","demonstrate","solve","illustrate"]])+'</div>', unsafe_allow_html=True)
+        with cC:
             st.markdown("**High tier**")
-            st.markdown(
-                '<div class="pills">' +
-                ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>'
-                         for w in ["evaluate","synthesize","design","justify"]]) +
-                '</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pills">'+''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>' for w in ["evaluate","synthesize","design","justify"]])+'</div>', unsafe_allow_html=True)
 
     with right:
         st.markdown("### Generate MCQs - Policy Blocks (Low → Medium → High)")
@@ -240,7 +200,7 @@ with tab_mcq:
         st.number_input(" ", min_value=1, value=1, step=1, key="mcq_blocks")
         st.button("Generate MCQ Blocks")
 
-# ------------------------ SKILLS TAB ------------------------
+# ---- Skills tab
 with tab_skills:
     st.markdown("### Build Skills Activities")
     st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
