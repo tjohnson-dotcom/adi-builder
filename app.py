@@ -1,4 +1,4 @@
-# app.py — ADI Builder (Green Dot Fix)
+# app.py — ADI Builder (Tabs Green, Inputs Glow, Buttons Glow)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -40,13 +40,15 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{{font-weight:800; font-size:22px; margin:0;}}
 .adi-sub{{opacity:.92; font-size:12px; margin-top:2px;}}
 
-/* Prominent Tabs (green with ADI green dot) */
+/* Prominent Tabs */
 .adi-tabs [role="radiogroup"]{{ gap:10px; display:flex; flex-wrap:wrap; }}
 .adi-tabs label{{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }}
 .adi-tabs label:hover{{ background:#eaf5ec; }}
-.adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25), inset 0 -3px 0 #C8A85A; }}
-/* Force the radio dot inside the pill to be ADI green */
-.adi-tabs input[type="radio"]:checked {{ accent-color: var(--adi-green); }}
+.adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }}
+
+/* Force radio dot color */
+.adi-tabs input[type="radio"]{{ accent-color: var(--adi-green); }}
+.adi-tabs input[type="radio"]:focus-visible{{ outline:2px solid var(--adi-gold); outline-offset:2px; }}
 
 /* Layout */
 .grid{{display:grid; grid-template-columns: 340px 1fr; gap:20px; margin-top:12px;}}
@@ -57,13 +59,14 @@ main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-card h3{{ margin:0 0 8px 0; color:var(--adi-green); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }}
 
 /* Upload */
-[data-testid="stFileUploaderDropzone"]{{ border:2px dashed var(--adi-green); background:var(--adi-green-50); border-radius:14px; padding:14px; }}
-[data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderDropzone"]{{ border:none; }}
-[data-testid="stFileUploaderDropzone"] *{{ font-family: inherit; }}
+.adi-upload{{ border:2px dashed var(--adi-green); background:var(--adi-green-50); border-radius:14px; padding:12px; display:flex; gap:10px; align-items:center; }}
+.adi-upload .icon{{ width:28px; height:28px; border-radius:7px; background:var(--adi-green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }}
+.adi-upload small{{ color:var(--adi-muted) }}
 
 /* Inputs with outline */
-input, textarea, select{{ border:1.5px solid #98b29d !important; border-radius:12px !important; }}
+input, textarea, select{{ border:2px solid var(--adi-green) !important; border-radius:12px !important; }}
 div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
+input:focus, textarea:focus, select:focus{{ outline:none !important; border-color:var(--adi-green-600) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; }}
 
 /* Pills */
 .pills{{ display:flex; flex-wrap:wrap; gap:8px; }}
@@ -73,8 +76,8 @@ div[data-baseweb="input"] input{{ border-radius:var(--radius-pill); }}
 .pill.hi{{ background:var(--adi-stone); color:var(--adi-stone-text); }}
 
 /* Buttons */
-div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.7rem 1.2rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition: all .2s; }}
-div.stButton>button:hover{{ box-shadow:0 0 0 3px var(--adi-gold), 0 4px 12px rgba(31,76,44,.22); filter:brightness(.97); }}
+div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.7rem 1.1rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s; }}
+div.stButton>button:hover{{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }}
 .btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
 
 </style>
@@ -123,14 +126,20 @@ with left:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Upload eBook / Lesson Plan / PPT")
     st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
-    st.file_uploader("Drag and drop your eBook / Plan / PPT, or Browse", type=["pdf", "docx", "pptx"], key="file")
+    st.markdown(
+        '<div class="adi-upload"><div class="icon">UP</div>'
+        '<div><strong>Drag and drop</strong> your file here, or <u>Browse</u><br>'
+        '<small>We recommend eBooks (PDF) as source for best results.</small></div></div>',
+        unsafe_allow_html=True,
+    )
+    st.file_uploader(" ", type=["pdf", "docx", "pptx"], label_visibility="collapsed")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Pick from eBook / Plan / PPT")
     c1, c2 = st.columns(2)
     c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
-    c2.selectbox("Week", options=["—"] + [str(i) for i in range(1,15)], index=0)
+    c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
     b1, b2 = st.columns(2)
     with b1:
         st.button("Pull → MCQs", use_container_width=True)
@@ -174,3 +183,4 @@ with right:
         st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
         st.button("Generate Activity Plan", key="gen_act")
     st.markdown('</div>', unsafe_allow_html=True)
+
