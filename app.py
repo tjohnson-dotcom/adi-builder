@@ -58,6 +58,14 @@ st.markdown(f"""
       background: {ADI_GREEN};
       color: white;
   }}
+  /* Section headers */
+  .adi-section-header {{
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: {ADI_GREEN};
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,12 +163,23 @@ with left:
 # RIGHT SIDE
 # ======================================================
 with right:
-    st.markdown('<div class="adi-card"><h3>Generate MCQs - Policy Blocks</h3>'
-                '<p>(Low → Medium → High)</p></div>', unsafe_allow_html=True)
+    tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-    topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-    source_text = st.text_area("Source text (optional, editable)", placeholder="Paste or edit source text here…")
+    # --- Tab 1 ---
+    with tabs[0]:
+        st.markdown('<div class="adi-section-header">Knowledge MCQs (ADI Policy)</div>', unsafe_allow_html=True)
 
-    mcq_blocks = st.slider("How many MCQ blocks? (≥3 questions each)", 1, 10, 1)
-    if st.button("Generate MCQ Blocks", type="primary"):
-        st.success(f"✅ Generated {mcq_blocks} MCQ block(s) for {topic if topic else 'selected content'}")
+        topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
+        source_text = st.text_area("Source text (optional, editable)", placeholder="Paste or edit source text here…")
+
+        mcq_blocks = st.slider("How many MCQ blocks? (≥3 questions each)", 1, 10, 1)
+        if st.button("Generate MCQ Blocks", type="primary"):
+            st.success(f"✅ Generated {mcq_blocks} MCQ block(s) for {topic if topic else 'selected content'}")
+
+    # --- Tab 2 ---
+    with tabs[1]:
+        st.markdown('<div class="adi-section-header">Skills Activities</div>', unsafe_allow_html=True)
+
+        st.text_area("Activity Instructions", placeholder="Write or paste skills-based activity here…")
+        if st.button("Generate Activity", type="primary"):
+            st.success("✅ Skills activity generated")
