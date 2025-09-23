@@ -1,4 +1,4 @@
-# app.py — ADI Builder (polished UI, stable CSS, custom ADI-green radios, uploader panel)
+# app.py — ADI Builder (tabs instead of radios, polished ADI styling, dashed uploader)
 # Run:  pip install streamlit
 #       streamlit run app.py
 
@@ -46,29 +46,22 @@ main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 .adi-title{font-weight:800; font-size:22px; margin:0;}
 .adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
 
-/* ——— Tabs (we still render radio, but we style the Streamlit radio directly below) ——— */
-.adi-tabs{ margin-bottom:.25rem; }
-
-/* 1) Custom ADI-green radios for ALL Streamlit radios */
-.stRadio > div{ display:flex; gap:14px; align-items:center; }
-.stRadio label{ display:inline-flex; align-items:center; gap:10px; font-weight:600; color:var(--adi-ink); }
-
-.stRadio input[type="radio"]{
-  appearance:none; -webkit-appearance:none; -moz-appearance:none;
-  width:18px; height:18px; border:2px solid var(--adi-green);
-  border-radius:50%; display:inline-block; position:relative; background:#fff; outline:none;
+/* Tabs (Streamlit native tabs) */
+.stTabs [data-baseweb="tab-list"]{
+  gap:10px; border-bottom: none;
 }
-.stRadio input[type="radio"]:checked{
-  background:
-    radial-gradient(var(--adi-green) 0 45%, transparent 46%);
-  border-color:var(--adi-green);
+.stTabs [data-baseweb="tab"]{
+  background:#f3f7f3; border:2px solid var(--adi-green-50);
+  color:var(--adi-green-600); border-radius:14px; padding:10px 16px;
+  font-weight:700;
 }
-.stRadio input[type="radio"]:focus-visible{
-  box-shadow:0 0 0 3px rgba(200,168,90,.45);
-  border-color:var(--adi-green);
+.stTabs [aria-selected="true"]{
+  background:var(--adi-green) !important; color:#fff !important;
+  border-color:var(--adi-green-600) !important;
+  box-shadow:0 6px 14px rgba(36,90,52,.25);
 }
 
-/* 2) Inputs pill style (stone bg, green glow on focus) */
+/* Inputs pill style */
 input, textarea, select{
   border:1px solid var(--border) !important;
   border-radius:var(--radius-pill) !important;
@@ -82,7 +75,7 @@ input:focus, textarea:focus, select:focus{
   box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important;
 }
 
-/* 3) Streamlit selectbox (BaseWeb) pill style + remove ghost circle */
+/* Select (BaseWeb) */
 .stSelectbox [data-baseweb="select"] > div{
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
@@ -101,7 +94,7 @@ input:focus, textarea:focus, select:focus{
   border-radius: 12px !important; border:1px solid var(--border) !important; box-shadow: var(--shadow) !important;
 }
 
-/* 4) Number inputs wrapper pill style */
+/* Number inputs */
 .stNumberInput > div{
   border-radius: var(--radius-pill) !important;
   border: 1px solid var(--border) !important;
@@ -113,10 +106,10 @@ input:focus, textarea:focus, select:focus{
 }
 .stNumberInput button{ background: transparent !important; border:none !important; box-shadow:none !important; }
 
-/* 5) Placeholders readable */
+/* Placeholders */
 input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
 
-/* 6) Pills */
+/* Pills */
 .pills{ display:flex; flex-wrap:wrap; gap:8px; }
 .pill{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }
 .pill.low{ background:#eaf5ec; color:#1f4c2c; }
@@ -124,7 +117,7 @@ input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95;
 .pill.hi{ background:var(--adi-stone); color:var(--adi-stone-text); }
 .pill.active{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }
 
-/* 7) Buttons */
+/* Buttons */
 div.stButton>button{
   background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill);
   padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s;
@@ -133,27 +126,26 @@ div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200
 .btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
 .btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
 
-/* 8) Uploader – dashed ADI panel with UP badge (the one you liked) */
+/* Uploader — dashed ADI panel with UP badge */
 .stFileUploader{ margin-top:.25rem; }
-[data-testid="stFileUploadDropzone"]{
+.stFileUploader [data-testid="stFileUploadDropzone"]{
   border:2px dashed var(--adi-green) !important;
   background: var(--adi-green-50) !important;
   border-radius:14px !important;
   padding:16px !important;
   display:flex !important; align-items:center !important; gap:12px !important;
 }
-[data-testid="stFileUploadDropzone"]::before{
+.stFileUploader [data-testid="stFileUploadDropzone"]::before{
   content:"UP"; display:flex; align-items:center; justify-content:center;
   width:36px; height:36px; border-radius:8px; background:var(--adi-green); color:#fff; font-weight:700; margin-right:6px;
 }
-[data-testid="stFileUploadDropzone"] button{
+.stFileUploader [data-testid="stFileUploadDropzone"] button{
   background:#fff !important; color:var(--adi-ink) !important;
   border:1px solid #e0e5e1 !important; border-radius:12px !important; box-shadow:none !important;
 }
-[data-testid="stFileUploadDropzone"]:hover{ box-shadow:0 0 0 3px rgba(36,90,52,.18) !important; }
+.stFileUploader [data-testid="stFileUploadDropzone"]:hover{ box-shadow:0 0 0 3px rgba(36,90,52,.18) !important; }
 </style>
 """
-
 st.markdown(ADI_CSS, unsafe_allow_html=True)
 
 # ------------------------ Header ------------------------
@@ -173,109 +165,88 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# ------------------------ Tabs ------------------------
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "Knowledge MCQs (ADI Policy)"
+# ------------------------ Tabs (no red dot ever) ------------------------
+tab_mcq, tab_skills = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-with st.container():
-    st.markdown('<div class="adi-tabs">', unsafe_allow_html=True)
-    tab_choice = st.radio(
-        label="choose",
-        options=["Knowledge MCQs (ADI Policy)", "Skills Activities"],
-        index=0 if st.session_state.active_tab.startswith("Knowledge") else 1,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="adi_tabs_radio",
-    )
-    st.session_state.active_tab = tab_choice
-    st.markdown("</div>", unsafe_allow_html=True)
+# ------------------------ MCQ TAB ------------------------
+with tab_mcq:
+    left, right = st.columns([0.9, 2.1], gap="large")
 
-# ------------------------ Layout ------------------------
-left, right = st.columns([0.9, 2.1], gap="large")
+    with left:
+        st.markdown("### Upload eBook / Lesson Plan / PPT")
+        st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
+        st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"])
+        st.caption("We recommend eBooks (PDF) as source for best results.")
 
-with left:
-    # Upload card
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Upload eBook / Lesson Plan / PPT")
-    st.caption("Accepted: PDF · DOCX · PPTX (≤200MB)")
-    st.file_uploader("Drag and drop your file", type=["pdf", "docx", "pptx"])
-    st.caption("We recommend eBooks (PDF) as source for best results.")
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("### Pick from eBook / Plan / PPT")
+        c1, c2 = st.columns(2)
+        lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
+        week = c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
+        st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted below.")
 
-    # Picker card
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Pick from eBook / Plan / PPT")
-    c1, c2 = st.columns(2)
-    lesson = c1.selectbox("Lesson", options=["—", "1", "2", "3", "4", "5"], index=0)
-    week = c2.selectbox("Week", options=["—"] + [str(i) for i in range(1, 15)], index=0)
-    st.caption("**ADI policy:** Weeks 1–4 → Low, 5–9 → Medium, 10–14 → High. The appropriate Bloom tier will be auto-highlighted below.")
-    b1, b2 = st.columns(2)
-    with b1:
-        st.markdown('<div class="btn-gold">', unsafe_allow_html=True)
-        st.button("Pull → MCQs", use_container_width=True, key="pull_mcq")
-        st.markdown("</div>", unsafe_allow_html=True)
-    with b2:
-        st.markdown('<div class="btn-sand">', unsafe_allow_html=True)
-        st.button("Pull → Activities", use_container_width=True, key="pull_act")
-        st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        b1, b2 = st.columns(2)
+        with b1:
+            st.markdown('<div class="btn-gold">', unsafe_allow_html=True)
+            st.button("Pull → MCQs", use_container_width=True, key="pull_mcq")
+            st.markdown("</div>", unsafe_allow_html=True)
+        with b2:
+            st.markdown('<div class="btn-sand">', unsafe_allow_html=True)
+            st.button("Pull → Activities", use_container_width=True, key="pull_act")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    # Activity Parameters card
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    st.markdown("### Activity Parameters")
-    cc1, cc2 = st.columns(2)
-    cc1.number_input("Activities", min_value=1, value=3, step=1, key="num_activities")
-    cc2.number_input("Duration (mins)", min_value=5, value=45, step=5, key="num_duration")
+        st.markdown("### Activity Parameters")
+        cc1, cc2 = st.columns(2)
+        cc1.number_input("Activities", min_value=1, value=3, step=1, key="num_activities")
+        cc2.number_input("Duration (mins)", min_value=5, value=45, step=5, key="num_duration")
 
-    # Bloom tiers auto-highlight based on Week
-    highlight = None
-    if week in ["1", "2", "3", "4"]:
-        highlight = "low"
-    elif week in ["5", "6", "7", "8", "9"]:
-        highlight = "med"
-    elif week in ["10", "11", "12", "13", "14"]:
-        highlight = "hi"
+        # Bloom tiers auto-highlight based on Week
+        highlight = None
+        if week in ["1", "2", "3", "4"]:
+            highlight = "low"
+        elif week in ["5", "6", "7", "8", "9"]:
+            highlight = "med"
+        elif week in ["10", "11", "12", "13", "14"]:
+            highlight = "hi"
 
-    st.caption("ADI Bloom tiers used for MCQs:")
-    cols = st.columns(3)
-    with cols[0]:
-        st.markdown("**Low tier**")
-        st.markdown(
-            '<div class="pills">' +
-            ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>'
-                     for w in ["define","identify","list","recall","describe","label"]]) +
-            '</div>', unsafe_allow_html=True)
-    with cols[1]:
-        st.markdown("**Medium tier**")
-        st.markdown(
-            '<div class="pills">' +
-            ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>'
-                     for w in ["apply","demonstrate","solve","illustrate"]]) +
-            '</div>', unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown("**High tier**")
-        st.markdown(
-            '<div class="pills">' +
-            ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>'
-                     for w in ["evaluate","synthesize","design","justify"]]) +
-            '</div>', unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+        st.caption("ADI Bloom tiers used for MCQs:")
+        cols = st.columns(3)
+        with cols[0]:
+            st.markdown("**Low tier**")
+            st.markdown(
+                '<div class="pills">' +
+                ''.join([f'<span class="pill low {"active" if highlight=="low" else ""}">{w}</span>'
+                         for w in ["define","identify","list","recall","describe","label"]]) +
+                '</div>', unsafe_allow_html=True)
+        with cols[1]:
+            st.markdown("**Medium tier**")
+            st.markdown(
+                '<div class="pills">' +
+                ''.join([f'<span class="pill med {"active" if highlight=="med" else ""}">{w}</span>'
+                         for w in ["apply","demonstrate","solve","illustrate"]]) +
+                '</div>', unsafe_allow_html=True)
+        with cols[2]:
+            st.markdown("**High tier**")
+            st.markdown(
+                '<div class="pills">' +
+                ''.join([f'<span class="pill hi {"active" if highlight=="hi" else ""}">{w}</span>'
+                         for w in ["evaluate","synthesize","design","justify"]]) +
+                '</div>', unsafe_allow_html=True)
 
-with right:
-    st.markdown('<div class="adi-card">', unsafe_allow_html=True)
-    if st.session_state.active_tab.startswith("Knowledge"):
+    with right:
         st.markdown("### Generate MCQs - Policy Blocks (Low → Medium → High)")
         st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
         st.text_area("Source text (optional, editable)", height=140, placeholder="Paste or edit source text here...")
         st.caption("How many MCQ blocks? (×3 questions)")
         st.number_input(" ", min_value=1, value=1, step=1, key="mcq_blocks")
         st.button("Generate MCQ Blocks")
-    else:
-        st.markdown("### Build Skills Activities")
-        st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
-        st.text_input("Learning goal", placeholder="What should learners be able to do?")
-        st.text_area("Materials / Inputs", height=120, placeholder="Links, readings, slides, equipment...")
-        st.number_input("Groups", min_value=1, value=4)
-        st.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
-        st.button("Generate Activity Plan", key="gen_act")
-    st.markdown("</div>", unsafe_allow_html=True)
+
+# ------------------------ SKILLS TAB ------------------------
+with tab_skills:
+    st.markdown("### Build Skills Activities")
+    st.selectbox("Activity type", ["Case Study", "Role Play", "Scenario MCQ", "Group Discussion", "Practical Demo"])
+    st.text_input("Learning goal", placeholder="What should learners be able to do?")
+    st.text_area("Materials / Inputs", height=120, placeholder="Links, readings, slides, equipment...")
+    s1, s2 = st.columns(2)
+    s1.number_input("Groups", min_value=1, value=4)
+    s2.number_input("Duration (mins)", min_value=5, value=30, step=5, key="skill_dur")
+    st.button("Generate Activity Plan", key="gen_act")
