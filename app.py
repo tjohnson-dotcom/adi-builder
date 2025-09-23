@@ -1,11 +1,11 @@
-# app.py — ADI Builder (Streamlit, ADI Bloom Policy, Polished UI)
-# - MCQs: policy 3-question blocks (Low→Medium→High), optional per-question verb swap (from approved list)
-# - Activities: clear steps, exports DOCX/RTF, Full Pack DOCX
-# - Upload PDF/DOCX/PPTX, pull Lesson/Week text
+# app.py — ADI Builder (Streamlit, ADI Bloom Policy, Auto-Picker, Polished UI)
+# - MCQs: policy 3-question blocks (Low→Medium→High), auto verb pick from ADI lists + tiny per-question swap
+# - Activities: clear steps; Exports: DOCX/RTF; Full Pack DOCX
+# - Upload PDF/DOCX/PPTX; pull Lesson/Week text
 # - Brand styling + strong input outlines + green slider; safe file_uploader handling
 
 from __future__ import annotations
-import os, re
+import os, re, random
 from io import BytesIO
 from datetime import datetime
 import streamlit as st
@@ -121,12 +121,12 @@ sidebar_brand()
 # ---------- RTF helper ----------
 def to_rtf(title: str, body: str) -> bytes:
     def esc(s: str) -> str:
-        s = s.replace("\\", r"\\").replace("{", r"\{").replace("}", r"\}")
-        return s.replace("\r\n","\n").replace("\r","\n").replace("\n", r"\line ")
-    parts = [r"{\rtf1\ansi\deff0", r"{\fonttbl{\f0 Calibri;}}", r"\fs22", r"\pard\f0 "]
-    if title: parts.append(r"\b "+esc(title)+r"\b0\line\line ")
+        s = s.replace("\\", r"\\").replace("{", r"\\{").replace("}", r"\\}")
+        return s.replace("\\r\\n","\\n").replace("\\r","\\n").replace("\\n", r"\\line ")
+    parts = [r"{\\rtf1\\ansi\\deff0", r"{\\fonttbl{\\f0 Calibri;}}", r"\\fs22", r"\\pard\\f0 "]
+    if title: parts.append(r"\\b "+esc(title)+r"\\b0\\line\\line ")
     parts.append(esc(body)); parts.append("}")
-    return "\n".join(parts).encode("utf-8")
+    return "\\n".join(parts).encode("utf-8")
 
 # ---------- ADI Bloom Policy (approved verbs per tier) ----------
 ADI_LOW   = ["define","identify","list","recall","describe","label","recognize","state","name","select"]
@@ -147,7 +147,7 @@ def parse_file(file):
         from docx import Document as _D
         doc = _D(file); return "\n".join(p.text for p in doc.paragraphs)
     if name.endswith(".pptx") and PPTX_AVAILABLE:
-        prs = Presentation(file); parts=[]; 
+        prs = Presentation(file); parts=[]
         for s in prs.slides:
             for shp in s.shapes:
                 if hasattr(shp, "text"): parts.append(shp.text)
@@ -216,7 +216,7 @@ st.sidebar.markdown("<div class='chips'>"+"".join(f"<span class='chip'>{v}</span
 # ---------- Tabs ----------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-# ---------- MCQs (Policy Block of 3) ----------
+# ---------- MCQs (Policy Block of 3 with Auto-Picker) ----------
 with mcq_tab:
     st.subheader("Generate MCQs — Policy Blocks (Low → Medium → High)")
     if st.session_state.get("mcq_seed"): st.success("Lesson/Week text inserted into MCQ editor.")
@@ -224,49 +224,50 @@ with mcq_tab:
     base_text = st.text_area("Source text (optional, editable)", value=st.session_state.get("mcq_seed",""), height=160)
     blocks = st.number_input("How many MCQ blocks? (x3 questions)", 1, 20, 1)
 
-    # stem builders that allow verb override per tier
-    def stem_low(t, v="identify"):
-        v = v or "identify"
-        return f"Which option best **{v}** a key concept in {t}?"
-    def stem_med(t, v="apply"):
-        v = v or "apply"
-        return f"You need to **{v}** {t} in a new context. What is the **most appropriate** first step?"
-    def stem_high(t, v="evaluate"):
-        v = v or "evaluate"
-        return f"Given constraints, **{v}** two approaches to {t}. Which choice **best justifies** the recommendation?"
+    # stem builders (verb required — we auto-pick, user can swap)
+    def stem_low(t, v):   return f"Which option best **{v}** a key concept in {t}?"
+    def stem_med(t, v):   return f"You need to **{v}** {t} in a new context. What is the **most appropriate** first step?"
+    def stem_high(t, v):  return f"Given constraints, **{v}** two approaches to {t}. Which choice **best justifies** the recommendation?"
 
     if st.button("Generate MCQ Blocks"):
-        all_q = []
-        # build blocks (3 per block)
+        questions = []
         for _ in range(int(blocks)):
-            all_q.extend([("Low", stem_low, ADI_LOW), ("Medium", stem_med, ADI_MED), ("High", stem_high, ADI_HIGH)])
+            questions.extend([
+                ("Low",   stem_low,  ADI_LOW),
+                ("Medium",stem_med,  ADI_MED),
+                ("High",  stem_high, ADI_HIGH),
+            ])
 
         edited_blocks=[]
-        for i,(tier, builder, verb_list) in enumerate(all_q, start=1):
-            # optional verb swap (policy list)
-            sv = st.selectbox(f"Verb (optional) for Q{i} — {tier}", options=["(auto)"] + verb_list, index=0, key=f"verb_{i}")
-            chosen = None if sv=="(auto)" else sv
-            stem = builder(topic, chosen)
+        for i,(tier, builder, verb_list) in enumerate(questions, start=1):
+            # Auto-pick a verb from the tier list
+            auto_verb = random.choice(verb_list)
+            # Tiny dropdown to allow swap (preselected to auto-picked verb)
+            sel = st.selectbox(f"Verb for Q{i} — {tier}", options=verb_list, index=verb_list.index(auto_verb), key=f"verb_{i}")
+            stem = builder(topic or "this topic", sel)
 
-            # unified options set per pattern/tier
+            # Tiered options set
             if tier=="Low":
-                opts = ["A) A vague opinion",
-                        "B) A precise statement with essential characteristics",
-                        "C) An unrelated anecdote",
-                        "D) A random number"]
-                ans = "B"
+                opts = [
+                    "A) A vague opinion",
+                    "B) A precise statement with essential characteristics",
+                    "C) An unrelated anecdote",
+                    "D) A random number"
+                ]; ans="B"
             elif tier=="Medium":
-                opts = ["A) Repeat the definition",
-                        "B) Identify variables/constraints; choose a method to apply",
-                        "C) Collect unrelated data",
-                        "D) Ignore context and proceed"]
-                ans = "B"
-            else:  # High
-                opts = ["A) Cites unrelated evidence",
-                        "B) States assumptions and criteria, weighing trade-offs",
-                        "C) Focuses on formatting over reasoning",
-                        "D) Mentions outcomes without criteria"]
-                ans = "B"
+                opts = [
+                    "A) Repeat the definition",
+                    "B) Identify variables/constraints; choose a method to apply",
+                    "C) Collect unrelated data",
+                    "D) Ignore context and proceed"
+                ]; ans="B"
+            else:
+                opts = [
+                    "A) Cites unrelated evidence",
+                    "B) States assumptions and criteria, weighing trade-offs",
+                    "C) Focuses on formatting over reasoning",
+                    "D) Mentions outcomes without criteria"
+                ]; ans="B"
 
             st.markdown(f"""
             <div class='card'>
@@ -318,7 +319,7 @@ with mcq_tab:
 
                 for opt in options: doc.add_paragraph(opt, style="List Bullet")
                 if ans_line:
-                    p = doc.add_paragraph(ans_line); 
+                    p = doc.add_paragraph(ans_line)
                     if p.runs: p.runs[0].italic = True
                 doc.add_paragraph("")
             bio = BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
@@ -435,7 +436,7 @@ if DOCX_AVAILABLE and (st.session_state.get("mcq_blocks") or st.session_state.ge
                     except Exception: doc.add_paragraph("[Image could not be embedded]")
                 for opt in options: doc.add_paragraph(opt, style="List Bullet")
                 if ans_line:
-                    p = doc.add_paragraph(ans_line); 
+                    p = doc.add_paragraph(ans_line)
                     if p.runs: p.runs[0].italic = True
                 doc.add_paragraph("")
 
