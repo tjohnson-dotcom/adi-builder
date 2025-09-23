@@ -21,7 +21,7 @@ except Exception:
 # ------------------------ Theme CSS -------------------------
 ADI_CSS = f"""
 <style>
-:root{{
+:root{
   --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-green-50:#EEF5F0;
   --adi-gold:#C8A85A; --adi-sand:#f8f3e8; --adi-sand-text:#6a4b2d;
   --adi-stone:#f3f1ee; --adi-stone-text:#4a4a45;
@@ -29,57 +29,51 @@ ADI_CSS = f"""
   --bg:#FAFAF7; --card:#ffffff; --border:#d9dfda;
   --shadow:0 10px 24px rgba(0,0,0,.06);
   --radius:18px; --radius-pill:999px;
-}}
-html,body{{background:var(--bg)}}
-main .block-container{{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}}
+}
+html,body{background:var(--bg)}
+main .block-container{padding-top:1rem; padding-bottom:2rem; max-width:1220px;}
 
 /* Header */
-.adi-hero{{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600)); color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);}}
-.adi-hero-row{{display:flex; align-items:center; gap:16px;}}
-.logo-box{{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08); overflow:hidden; display:flex; align-items:center; justify-content:center;}}
-.logo-box img{{width:100%; height:100%; object-fit:contain;}}
-.logo-fallback{{font-weight:800; font-size:20px;}}
-.adi-title{{font-weight:800; font-size:22px; margin:0;}}
-.adi-sub{{opacity:.92; font-size:12px; margin-top:2px;}}
+.adi-hero{background:linear-gradient(90deg,var(--adi-green),var(--adi-green-600)); color:#fff; border-radius:20px; padding:18px 20px; box-shadow:var(--shadow);} 
+.adi-hero-row{display:flex; align-items:center; gap:16px;} 
+.logo-box{width:48px; height:48px; border-radius:12px; background:rgba(0,0,0,.08); overflow:hidden; display:flex; align-items:center; justify-content:center;} 
+.logo-box img{width:100%; height:100%; object-fit:contain;} 
+.logo-fallback{font-weight:800; font-size:20px;} 
+.adi-title{font-weight:800; font-size:22px; margin:0;} 
+.adi-sub{opacity:.92; font-size:12px; margin-top:2px;}
 
-/* Prominent Tabs */
-.adi-tabs [role="radiogroup"]{{ gap:10px; display:flex; flex-wrap:wrap; }}
-.adi-tabs label{{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }}
-.adi-tabs label:hover{{ background:#eaf5ec; }}
-.adi-tabs label[aria-checked="true"]{{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }}
+/* Tabs */
+.adi-tabs [role="radiogroup"]{ gap:10px; display:flex; flex-wrap:wrap; }
+.adi-tabs label{ background:#f3f7f3; border:2px solid var(--adi-green-50); color:var(--adi-green-600); border-radius:14px; padding:10px 18px; cursor:pointer; font-weight:600; transition:all .2s; }
+.adi-tabs label:hover{ background:#eaf5ec; }
+.adi-tabs label[aria-checked="true"]{ background:var(--adi-green); color:#fff; border-color:var(--adi-green-600); box-shadow:0 6px 14px rgba(36,90,52,.25); }
 
-/* Force radio dot color */
-.adi-tabs input[type="radio"]{{ accent-color: var(--adi-green); }}
-.adi-tabs input[type="radio"]:focus-visible{{ outline:2px solid var(--adi-gold); outline-offset:2px; }}
-
-/* Inputs pill style */
-input, textarea, select{{ border:1px solid var(--border) !important; border-radius:var(--radius-pill) !important; background:var(--adi-stone) !important; padding:.4rem .8rem !important; }}
-input:focus, textarea:focus, select:focus{{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }}
-
-/* Pills */
-.pills{{ display:flex; flex-wrap:wrap; gap:8px; }}
-.pill{{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }}
-.pill.low{{ background:#eaf5ec; color:#1f4c2c; }}
-.pill.med{{ background:var(--adi-sand); color:var(--adi-sand-text); }}
-.pill.hi{{ background:var(--adi-stone); color:var(--adi-stone-text); }}
-.pill.active{{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }}
-
-/* Buttons */
-div.stButton>button{{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.7rem 1.1rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s; }}
-div.stButton>button:hover{{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }}
-.btn-gold button{{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }}
-.btn-sand button{{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }}
-
-/* --- Global radio dot color (force ADI green) --- */
-/* Standard browsers */
-input[type="radio"]{ accent-color: var(--adi-green) !important; }
-/* Streamlit containers */
-.stRadio input[type="radio"], [role="radiogroup"] input[type="radio"]{ accent-color: var(--adi-green) !important; }
-/* Fallback: show green ring when focused */
+/* Global radio dot color (force ADI green) */
+input[type="radio"], .stRadio input[type="radio"], [role="radiogroup"] input[type="radio"]{ accent-color: var(--adi-green) !important; }
 .stRadio [role="radio"]:focus-visible{ outline:2px solid var(--adi-gold); outline-offset:2px; }
 
-/* Placeholder visibility */
-input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity: .95; font-style: italic; font-weight: 500; }
+/* Inputs pill style (stone bg, green glow on focus) */
+input, textarea, select{ border:1px solid var(--border) !important; border-radius:var(--radius-pill) !important; background:var(--adi-stone) !important; padding:.5rem .9rem !important; }
+textarea{ border-radius:28px !important; } /* bigger radius for large text area */
+input:hover, textarea:hover, select:hover{ box-shadow:0 0 0 2px rgba(36,90,52,.10); }
+input:focus, textarea:focus, select:focus{ outline:none !important; border-color:var(--adi-green) !important; box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; background:#fff !important; }
+
+/* Placeholders darker for readability */
+input::placeholder, textarea::placeholder{ color: var(--adi-muted); opacity:.95; font-style:italic; font-weight:500; }
+
+/* Pills */
+.pills{ display:flex; flex-wrap:wrap; gap:8px; }
+.pill{ padding:6px 12px; border-radius:999px; border:1px solid #e3e7e3; background:#f3f7f3; font-size:13px; color:#25402b; }
+.pill.low{ background:#eaf5ec; color:#1f4c2c; }
+.pill.med{ background:var(--adi-sand); color:var(--adi-sand-text); }
+.pill.hi{ background:var(--adi-stone); color:var(--adi-stone-text); }
+.pill.active{ box-shadow:0 0 0 3px rgba(36,90,52,.25); border-color:var(--adi-green-600); }
+
+/* Buttons */
+div.stButton>button{ background:var(--adi-green); color:#fff; border:none; border-radius:var(--radius-pill); padding:.75rem 1.15rem; font-weight:600; box-shadow:0 4px 12px rgba(31,76,44,.22); transition:all .25s; }
+div.stButton>button:hover{ filter:brightness(.97); box-shadow:0 0 0 3px rgba(200,168,90,.45); }
+.btn-gold button{ background:var(--adi-gold) !important; color:#1f2a1f !important; box-shadow:0 4px 12px rgba(200,168,90,.32) !important; }
+.btn-sand button{ background:var(--adi-sand) !important; color:var(--adi-sand-text) !important; box-shadow:0 4px 12px rgba(106,75,45,.25) !important; }
 
 </style>
 """
