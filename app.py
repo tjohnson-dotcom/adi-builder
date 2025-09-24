@@ -1,5 +1,5 @@
 # ADI Builder — Lesson Activities & Questions
-# Final polish: stronger right-side emphasis (Bloom focus, tabs, labels)
+# Final polish: compact sidebar headers, bold pickers, outlined Quick pick box
 
 import base64, io, os
 from datetime import datetime
@@ -43,26 +43,50 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
-/* SIDEBAR (lighter premium) */
+/* SIDEBAR (lighter, compact) */
 section[data-testid='stSidebar']>div{background:#F5F4EE}
 .side-card{
   background:linear-gradient(180deg,#fff,#f6f6f2);
   border:1.6px solid #d8ddd8;
-  border-radius:16px;
-  padding:18px 16px 20px;
-  margin:14px 6px;
+  border-radius:14px;
+  padding:12px 14px 14px;
+  margin:12px 6px;
   box-shadow:0 6px 14px rgba(0,0,0,.05), inset 0 1px 0 #ffffff;
 }
 .side-card:hover{box-shadow:0 8px 18px rgba(0,0,0,.07)}
-.side-cap{display:flex; align-items:center; gap:10px; font-size:15px; font-weight:800; color:var(--adi-green);
-  text-transform:uppercase; letter-spacing:.08em; margin:0 0 12px}
-.side-cap i{font-style:normal; width:18px; text-align:center; color:var(--adi-gold)}
-.rule{height:2.5px; border:0; margin:6px 0 14px; background:linear-gradient(90deg,var(--adi-gold),transparent)}
-section[data-testid='stSidebar'] label,
-section[data-testid='stSidebar'] .stSelectbox div,
-section[data-testid='stSidebar'] .stNumberInput input {font-size:14.5px !important;}
+.side-cap{
+  display:flex; align-items:center; gap:6px;
+  font-size:13px; line-height:1.2; font-weight:800;
+  color:var(--adi-green); text-transform:uppercase; letter-spacing:.05em;
+  margin:0 0 4px; padding:4px 6px; background:#f9f9f7; border-radius:6px;
+}
+.side-cap i{font-style:normal; width:14px; text-align:center; color:var(--adi-gold)}
+.rule{height:0.5px; border:0; margin:2px 0 6px; background:linear-gradient(90deg,var(--adi-gold),transparent)}
 .side-card.upload{border-color:#C8A85A}.side-card.context{border-color:#245a34}
 .side-card.mcqs{border-color:#C8A85A}.side-card.skills{border-color:#245a34}
+
+/* Sidebar labels + inputs (pickers pop) */
+section[data-testid='stSidebar'] label{font-size:14.5px!important; font-weight:800; color:var(--adi-green)}
+section[data-testid='stSidebar'] .stSelectbox div[role='combobox'],
+section[data-testid='stSidebar'] .stNumberInput input{
+  border:2px solid var(--adi-green)!important; border-radius:10px!important;
+  font-weight:900; font-size:15px; color:#1d3a27;
+}
+section[data-testid='stSidebar'] .stSelectbox div[role='combobox']:focus,
+section[data-testid='stSidebar'] .stNumberInput input:focus{
+  box-shadow:0 0 0 3px rgba(36,90,52,.22)!important;
+}
+/* Quick pick OUTLINE box */
+.qp{
+  border:1.6px solid var(--adi-gold);
+  border-radius:12px;
+  padding:8px 10px;
+  background:#fffef9;
+  box-shadow:inset 0 1px 0 #fff;
+}
+.qp:hover{box-shadow:0 0 0 3px rgba(200,168,90,.18)}
+.qp [role='radiogroup']{gap:10px}
+.qp [role='radiogroup'] label{font-weight:800; color:#2b2f28}
 
 /* Upload dropzone */
 div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1.5px dashed #c8d1c8; background:#ffffff}
@@ -74,27 +98,18 @@ div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); b
 h3.hsharp{margin:6px 0 6px; font-size:18px; color:#2a2f28}
 h4.hsub{margin:2px 0 10px; font-size:13px; color:#6b7280}
 
-/* Inputs */
+/* Inputs (right) */
 .stTextArea textarea, .stTextInput input{border:2px solid var(--adi-green)!important; border-radius:12px!important}
 .stTextArea textarea:focus, .stTextInput input:focus{box-shadow:0 0 0 3px rgba(36,90,52,.18)!important}
 
-/* >>> Right-side refinements <<< */
-
-/* Stronger form labels on right */
-main [data-testid="stAppViewContainer"] label{font-weight:800; color:var(--adi-green); font-size:13.5px}
-
-/* Darker placeholder text */
-.stTextInput input::placeholder, .stTextArea textarea::placeholder{color:#4b5563; opacity:.9}
-
-/* Tabs: uppercase + gold underline for active */
+/* Tabs (right) */
 [data-testid='stTabs'] button{font-weight:750; text-transform:uppercase; letter-spacing:.02em; color:#3e4a3e}
-[data-testid='stTabs'] button[aria-selected='true']{color:var(--adi-green)!important; font-weight:900!important;
-  border-bottom:3px solid var(--adi-gold)!important}
+[data-testid='stTabs'] button[aria-selected='true']{color:var(--adi-green)!important; font-weight:900!important; border-bottom:3px solid var(--adi-gold)!important}
 
-/* Bloom focus pill (right side) */
+/* Bloom focus pill (right) */
 .bloom-focus{font-weight:900; color:var(--adi-green); letter-spacing:.02em}
 
-/* BLOOM grouping (unchanged visually from your last build) */
+/* Bloom grouping */
 .bloom-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
 .bloom-col{background:#fff; border:1px solid var(--border); border-radius:14px; padding:0; overflow:hidden; box-shadow:var(--shadow)}
 .tier-head{display:flex; align-items:center; gap:10px; padding:10px 12px; font-weight:900; letter-spacing:.02em; border-bottom:1px solid var(--border)}
@@ -121,6 +136,11 @@ main [data-testid="stAppViewContainer"] label{font-weight:800; color:var(--adi-g
 
 /* Sharper tables/editors */
 [data-testid="stDataFrame"] {border-radius:14px; border:1px solid var(--border); box-shadow:var(--shadow)}
+
+/* Right-side label selector fix so emphasis always applies */
+main .block-container label{font-weight:800; color:var(--adi-green); font-size:13.5px}
+main .block-container .stTextInput input::placeholder,
+main .block-container .stTextArea textarea::placeholder{color:#4b5563; opacity:.9}
 </style>
 """
 st.markdown(ADI_CSS, unsafe_allow_html=True)
@@ -299,8 +319,11 @@ with st.sidebar:
 
     with st.container():
         st.markdown("<div class='side-card mcqs'><div class='side-cap'><i>🎯</i> KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
+        # QUICK PICK wrapped in outlined box
+        st.markdown("<div class='qp'>", unsafe_allow_html=True)
         pick = st.radio("Quick pick blocks", [5,10,20,30], horizontal=True,
                         index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
+        st.markdown("</div>", unsafe_allow_html=True)
         st.session_state.mcq_blocks = pick
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -314,7 +337,7 @@ with st.sidebar:
     if up_file:
         st.session_state.upload_text = extract_text_from_upload(up_file)
 
-# ---------- Bloom grid renderer ----------
+# ---------- Bloom grid ----------
 def render_bloom_grid(current_focus:str):
     low_class = "badge low " + ("active-glow" if current_focus=="Low" else "")
     med_class = "badge med " + ("active-amber" if current_focus=="Medium" else "")
