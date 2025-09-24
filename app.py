@@ -1,4 +1,4 @@
-# app.py — ADI Builder (polished UI + eBook-aware generators)
+# app.py — ADI Builder (sidebar polish + ADI policy MCQs/Activities)
 
 import base64
 import io
@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import streamlit as st
 
-# Optional parsers (install if you want DOCX/PDF/PPTX ingestion)
+# Optional parsers (install if you want PDF/DOCX/PPTX ingestion)
 #   pip install python-docx python-pptx PyPDF2
 try:
     from docx import Document as DocxDocument
@@ -53,7 +53,7 @@ def _read_logo_data_uri(path: str) -> str | None:
 
 logo_uri = _read_logo_data_uri(LOGO_PATH)
 
-# ----------------------------- ONE CSS block (polished UI + shaded policy groups) -----------------------------
+# ----------------------------- ONE CSS block -----------------------------
 ADI_CSS = """
 <style>
 :root{
@@ -71,22 +71,44 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
-/* SIDEBAR */
-section[data-testid='stSidebar']>div{background:#F3F2ED; height:100%}
-.side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 12px 14px; margin:12px 6px; box-shadow:var(--shadow)}
-.side-cap{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
-.side-cap .dot{width:8px;height:8px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.15)}
-.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 12px}
+/* SIDEBAR (only) */
+section[data-testid='stSidebar']>div{background:linear-gradient(180deg,#F3F2ED,#F7F7F4); height:100%}
+section[data-testid='stSidebar'] * { box-sizing: border-box; }
+.side-card{background:#fff; border:1px solid var(--border); border-radius:18px; padding:14px 14px 16px; margin:14px 8px; box-shadow:0 8px 18px rgba(0,0,0,.06)}
+.side-cap{display:flex; align-items:center; gap:10px; font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.08em; font-weight:700; margin:0 0 8px}
+.side-cap .dot{width:9px;height:9px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 4px rgba(200,168,90,.18)}
+.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:8px 0 10px}
 
-/* uploader */
-div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff}
-div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
+/* prettier uploader */
+section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff; margin-top:8px}
+section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
+section[data-testid='stSidebar'] [data-testid="stFileUploader"] p{color:#6b7280; font-size:12px}
 
-/* CARDS */
+/* inputs focus consistency */
+section[data-testid='stSidebar'] input, 
+section[data-testid='stSidebar'] select,
+section[data-testid='stSidebar'] textarea{border-radius:12px!important}
+section[data-testid='stSidebar'] .stNumberInput > div > input,
+section[data-testid='stSidebar'] .stSelectbox > div > div { border:1.5px solid #cfd6cf!important; }
+section[data-testid='stSidebar'] .stNumberInput > div > input:focus,
+section[data-testid='stSidebar'] .stSelectbox > div > div:focus-within{
+  box-shadow:0 0 0 3px rgba(36,90,52,.18)!important; border-color: var(--adi-green)!important;
+}
+
+/* radio → pill style */
+section[data-testid='stSidebar'] [role='radiogroup'] label {
+  border:1px solid var(--border); padding:6px 10px; margin-right:8px; border-radius:999px;
+  background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.04);
+}
+section[data-testid='stSidebar'] [role='radiogroup'] input:checked + div {
+  border-color:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.25);
+}
+
+/* MAIN (unchanged visual system) */
 .card{background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); padding:16px; margin:10px 0}
 .cap{color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; font-size:12px; margin:0 0 10px}
 
-/* INPUTS */
+/* INPUTS in main content */
 .stTextArea textarea, .stTextInput input{border:2px solid var(--adi-green)!important; border-radius:12px!important}
 .stTextArea textarea:focus, .stTextInput input:focus{box-shadow:0 0 0 3px rgba(36,90,52,.18)!important}
 
@@ -107,11 +129,11 @@ div.stButton>button:hover{filter:brightness(.98); box-shadow:0 0 0 3px rgba(200,
 .active-amber{box-shadow:0 0 0 3px rgba(200,168,90,.35)}
 .active-gray{box-shadow:0 0 0 3px rgba(120,120,120,.25)}
 
-/* BLOOM POLICY GROUP PANELS (shaded) */
+/* BLOOM POLICY GROUP PANELS (shaded in main) */
 .policy-group{position:relative; border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow); padding:12px 12px; margin:10px 0}
-.policy-group.low{background:linear-gradient(180deg,#eef6f0, #ffffff)}
-.policy-group.med{background:linear-gradient(180deg,#fbf6ec, #ffffff)}
-.policy-group.high{background:linear-gradient(180deg,#f5f4f1, #ffffff)}
+.policy-group.low{background:linear-gradient(180deg,#eef6f0,#ffffff)}
+.policy-group.med{background:linear-gradient(180deg,#fbf6ec,#ffffff)}
+.policy-group.high{background:linear-gradient(180deg,#f5f4f1,#ffffff)}
 .policy-label{position:absolute; right:12px; top:10px; font-size:11px; color:#6b7280}
 
 /* DOWNLOAD STRIP */
@@ -136,21 +158,25 @@ def ensure_state():
 
 ensure_state()
 
-LOW_VERBS = ["define", "identify", "list", "recall", "describe", "label"]
-MED_VERBS = ["apply", "demonstrate", "solve", "illustrate", "analyze"]
-HIGH_VERBS = ["evaluate", "synthesize", "design", "justify"]
+LOW_VERBS = ["define","identify","list","recall","describe","label"]
+MED_VERBS = ["apply","demonstrate","solve","illustrate","analyze"]
+HIGH_VERBS = ["evaluate","synthesize","design","justify"]
+
+# ADI policy verb sets for activities
+ADI_VERBS = {
+    "Low":    ["define", "identify", "recall", "list", "describe", "label"],
+    "Medium": ["apply", "demonstrate", "interpret", "compare", "solve", "illustrate"],
+    "High":   ["analyze", "evaluate", "justify", "synthesize", "design", "formulate"],
+}
 
 
 # ----------------------------- Utilities -----------------------------
 def _fallback(text: str | None, default: str) -> str:
     return text.strip() if text and str(text).strip() else default
 
-
-def bloom_focus_for_week(week: int) -> str:
-    if 1 <= week <= 4:
-        return "Low"
-    if 5 <= week <= 9:
-        return "Medium"
+def bloom_focus_for_week(week:int)->str:
+    if 1<=week<=4: return "Low"
+    if 5<=week<=9: return "Medium"
     return "High"
 
 
@@ -165,11 +191,8 @@ _VERB_HINTS = re.compile(
     re.I,
 )
 
-
 def extract_text_from_upload(up_file) -> str:
-    """
-    Extract compact text from PDF/DOCX/PPTX for the source box.
-    """
+    """Extract compact text from PDF/DOCX/PPTX for the source box."""
     if up_file is None:
         return ""
     name = up_file.name.lower()
@@ -202,14 +225,13 @@ def extract_text_from_upload(up_file) -> str:
 
 # ----------------------------- Tiny NLP helpers -----------------------------
 _STOP = {
-    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "by", "as", "is", "are", "be", "was", "were",
-    "this", "that", "these", "those", "it", "its", "at", "from", "into", "over", "under", "about", "between", "within",
-    "use", "used", "using", "also", "than", "which", "such", "may", "can", "could", "should", "would", "will", "not",
-    "if", "when", "while", "after", "before", "each", "per", "via", "more", "most", "less", "least", "other", "another",
-    "module", "lesson", "overview", "content", "contents", "terms", "questions", "glossary", "sheet", "faq", "frequently",
-    "figure", "table"
+    "the","a","an","and","or","of","to","in","on","for","with","by","as","is","are","be","was","were",
+    "this","that","these","those","it","its","at","from","into","over","under","about","between","within",
+    "use","used","using","also","than","which","such","may","can","could","should","would","will","not",
+    "if","when","while","after","before","each","per","via","more","most","less","least","other","another",
+    "module","lesson","overview","content","contents","terms","questions","glossary","sheet","faq","frequently",
+    "figure","table"
 }
-
 
 def _sentences(text: str) -> list[str]:
     """Split text and keep only teaching sentences (drop headings/page junk)."""
@@ -219,25 +241,22 @@ def _sentences(text: str) -> list[str]:
         for p in parts:
             if p:
                 rough.append(p)
-
     out, seen = [], set()
     for s in rough:
         s_clean = re.sub(r"\s+", " ", s).strip()
         words = s_clean.split()
-        if not (8 <= len(words) <= 35):
+        if not (8 <= len(words) <= 35):  # sentence-ish
             continue
         if s_clean.isupper() or _PAGE_JUNK.match(s_clean) or _HEADING_HINTS.match(s_clean):
             continue
-        if sum(ch.isdigit() for ch in s_clean) > max(6, len(s_clean) // 5):
+        if sum(ch.isdigit() for ch in s_clean) > max(6, len(s_clean)//5):
             continue
-        if not _VERB_HINTS.search(s_clean):  # must look like a sentence
+        if not _VERB_HINTS.search(s_clean):
             continue
         k = s_clean.lower()
         if k not in seen:
-            out.append(s_clean)
-            seen.add(k)
+            out.append(s_clean); seen.add(k)
     return out[:160]
-
 
 def _keywords(text: str, top_n: int = 20) -> list[str]:
     from collections import Counter
@@ -255,14 +274,12 @@ def _keywords(text: str, top_n: int = 20) -> list[str]:
             break
     return roots
 
-
 def _find_sentence_with(term: str, sentences: list[str]) -> str | None:
     t = term.lower()
     for s in sentences:
         if t in s.lower():
             return s.strip()
     return None
-
 
 def _extract_glossary(sentences: list[str]) -> dict:
     """Detect simple definition-like sentences → {term: definition}."""
@@ -271,14 +288,12 @@ def _extract_glossary(sentences: list[str]) -> dict:
         m = re.match(r"([A-Z][A-Za-z0-9\- ]{2,40})\s+(is|means|refers to|defines?)\s+(.*)$", s)
         if m:
             term = m.group(1).strip().rstrip("-:")
-            glos.setdefault(term.lower(), s)
-            continue
+            glos.setdefault(term.lower(), s); continue
         m2 = re.match(r"([A-Z][A-Za-z0-9\- ]{2,40})\s*[:\-]\s+(.*)$", s)
         if m2 and len(m2.group(2).split()) > 4:
             term = m2.group(1).strip().rstrip("-:")
             glos.setdefault(term.lower(), s)
     return glos
-
 
 def _distractors_from_sentences(correct: str, pool: list[str], n: int) -> list[str]:
     """Near-miss distractors chosen from other good sentences."""
@@ -295,7 +310,6 @@ def _distractors_from_sentences(correct: str, pool: list[str], n: int) -> list[s
             break
     return out
 
-
 _TEMPLATED_WRONGS = [
     "The statement is partially true but misses a required constraint.",
     "This describes a related concept that does not apply in this context.",
@@ -304,25 +318,44 @@ _TEMPLATED_WRONGS = [
 ]
 
 
-# ----------------------------- Generators (eBook-aware, polished stems) -----------------------------
+# ----------------------------- Generators (ADI policy) -----------------------------
 def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int) -> pd.DataFrame:
     """
-    Build MCQs from cleaned eBook text:
-    - LOW: definition (uses glossary-style sentences if found)
-    - MEDIUM: apply/analyze (action-oriented stem)
-    - HIGH: evaluate/justify (implication/justification)
+    ADI policy MCQs:
+    - Exactly 3 questions per block (Q1 Low, Q2 Medium, Q3 High)
+    - Stems rotate across Bloom-appropriate templates (not all 'Which…')
+    - Correct options mined from eBook sentences; distractors are near-miss sentences
     """
     topic = _fallback(topic, "the module")
     src = _fallback(source, "")
     sents = _sentences(src)
     glossary = _extract_glossary(sents)
-    keys = _keywords(src or topic, top_n=max(15, num_blocks * 2)) or [
-        "principles", "process", "safety", "quality", "evidence", "procedure"
+    keys = _keywords(src or topic, top_n=max(24, num_blocks * 6)) or \
+           ["principles","process","safety","quality","evidence","procedure","criteria","constraints","standards"]
+
+    # Stem templates (rotation)
+    low_stems = [
+        lambda t: f"Define {t}: which statement is correct in *{topic}*?",
+        lambda t: f"Identify the accurate description of {t}.",
+        lambda t: f"Recall: what does {t} mean in the context of *{topic}*?",
+        lambda t: f"Which option best describes {t}?"
+    ]
+    med_stems = [
+        lambda t: f"How would you apply {t} when working on *{topic}*?",
+        lambda t: f"Interpretation: which action correctly uses {t}?",
+        lambda t: f"Compare the options — which best operationalises {t}?",
+        lambda t: f"What is the next appropriate step when using {t}?"
+    ]
+    high_stems = [
+        lambda t: f"Which option best evaluates/justifies a decision involving {t} for *{topic}*?",
+        lambda t: f"Analyze: which reasoning is strongest regarding {t}?",
+        lambda t: f"Which design choice best satisfies constraints related to {t}?",
+        lambda t: f"Which response best synthesizes the considerations for {t}?"
     ]
 
     rows: list[dict[str, Any]] = []
 
-    def add(block: int, tier: str, stem: str, correct: str, wrongs: list[str]):
+    def add_row(block: int, tier: str, stem_txt: str, correct: str, wrongs: list[str]):
         wr = wrongs[:3]
         i = 0
         while len(wr) < 3:
@@ -330,61 +363,62 @@ def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int) -> 
             i += 1
         options = [correct, wr[0], wr[1], wr[2]]
         import random
-        rnd = random.Random(123 + block)
+        rnd = random.Random(2025 + block + len(rows))
         rnd.shuffle(options)
-        ans = ["A", "B", "C", "D"][options.index(correct)]
+        ans = ["A","B","C","D"][options.index(correct)]
         rows.append({
-            "Block": block, "Tier": tier, "Question": stem.strip(),
+            "Block": block, "Tier": tier, "Question": stem_txt.strip(),
             "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-            "Answer": ans,
-            "Explanation": "Chosen option aligns best with the definition/context in the source.",
+            "Answer": ans, "Explanation": "Chosen option aligns with the source context."
         })
 
     for b in range(1, num_blocks + 1):
-        t1 = keys[(b - 1) % len(keys)]
-        t2 = keys[(b + 3) % len(keys)]
-        t3 = keys[(b + 6) % len(keys)]
+        # choose distinct terms so questions feel different
+        t_low  = keys[(b*3 - 3) % len(keys)]
+        t_med  = keys[(b*3 - 2) % len(keys)]
+        t_high = keys[(b*3 - 1) % len(keys)]
 
-        # LOW — definition
-        c1 = glossary.get(t1.lower()) or _find_sentence_with(t1, sents) \
-             or f"{t1.capitalize()} is a foundational element of {topic}."
+        # LOW (prefer glossary/definition)
+        c1 = glossary.get(t_low.lower()) or _find_sentence_with(t_low, sents) \
+             or f"{t_low.capitalize()} is a foundational element of {topic}."
         d1 = _distractors_from_sentences(c1, sents, 3)
-        stem1 = f"Which statement best **defines** **{t1}** in the context of *{topic}*?"
-        add(b, "Low", stem1, c1, d1)
+        stem1 = low_stems[(b-1) % len(low_stems)](t_low)
+        add_row(b, "Low", stem1, c1, d1)
 
-        # MEDIUM — apply/analyze
-        c2 = _find_sentence_with(t2, sents) \
-             or f"When applying {t2} in {topic}, practitioners follow steps that respect constraints and safety."
+        # MEDIUM (apply/interpret/compare)
+        c2 = _find_sentence_with(t_med, sents) \
+             or f"When applying {t_med} in {topic}, follow steps that respect constraints and safety."
         d2 = _distractors_from_sentences(c2, sents, 3)
-        stem2 = f"Which action best **applies** **{t2}** when working on *{topic}*?"
-        add(b, "Medium", stem2, c2, d2)
+        stem2 = med_stems[(b-1) % len(med_stems)](t_med)
+        add_row(b, "Medium", stem2, c2, d2)
 
-        # HIGH — evaluate/justify
-        c3 = _find_sentence_with(t3, sents) \
-             or f"An effective approach to {t3} in {topic} prioritizes evidence, feasibility and constraints."
+        # HIGH (evaluate/justify/design)
+        c3 = _find_sentence_with(t_high, sents) \
+             or f"An effective approach to {t_high} in {topic} prioritizes evidence, feasibility, and constraints."
         d3 = _distractors_from_sentences(c3, sents, 3)
-        stem3 = f"Which option best **justifies** a decision related to **{t3}** for *{topic}*?"
-        add(b, "High", stem3, c3, d3)
+        stem3 = high_stems[(b-1) % len(high_stems)](t_high)
+        add_row(b, "High", stem3, c3, d3)
 
     return pd.DataFrame(rows)
 
 
 def generate_activities(count: int, duration: int, tier: str, topic: str, source: str = "") -> pd.DataFrame:
-    """Structured activities using Bloom verbs; mines procedural hints from the eBook if available."""
+    """
+    Activities aligned to ADI Bloom levels.
+    - Verbs chosen from ADI_VERBS[tier]
+    - If the eBook contains procedural hints (first/then/ensure…), weave one into the Main step
+    """
     topic = _fallback(topic, "the module")
-    verbs = {
-        "Low": ["identify", "list", "describe", "recall"],
-        "Medium": ["apply", "demonstrate", "analyze", "solve"],
-        "High": ["evaluate", "synthesize", "design", "justify"],
-    }[tier]
+    verbs = ADI_VERBS.get(tier, ADI_VERBS["Medium"])
 
+    # mine procedural hints from source
     steps_hints = []
     if source:
         sents = _sentences(source)
         for s in sents:
-            if re.search(r"\b(first|then|next|after|before|ensure|use|apply|select|measure|calculate|record)\b", s, re.I):
+            if re.search(r"\b(first|then|next|after|before|ensure|use|apply|select|measure|calculate|record|verify|inspect|document)\b", s, re.I):
                 steps_hints.append(s)
-        steps_hints = steps_hints[:12]
+        steps_hints = steps_hints[:16]
 
     rows = []
     for i in range(1, count + 1):
@@ -392,20 +426,27 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, source
         t1 = max(5, int(duration * 0.2))
         t2 = max(10, int(duration * 0.5))
         t3 = max(5, duration - (t1 + t2))
-        main_step = (steps_hints[(i - 1) % len(steps_hints)] if steps_hints
-                     else f"{v} a case/task related to {topic}; capture outcomes on a mini-whiteboard.")
-        steps = [
-            f"Starter ({t1}m): {v.capitalize()} prior knowledge of {topic} using a quick think-pair-share.",
-            f"Main ({t2}m): {main_step}",
-            f"Plenary ({t3}m): Share, compare and refine answers; agree success criteria.",
-        ]
+
+        main_step = (steps_hints[(i - 1) % len(steps_hints)]
+                     if steps_hints else f"In small groups, {v} a case/task related to {topic}; capture outcomes on a mini-whiteboard.")
+
+        assess = {
+            "Low":    "5-item exit ticket (recall/identify).",
+            "Medium": "Performance check using worked example rubric.",
+            "High":   "Criteria-based critique or design justification; short reflective write-up.",
+        }[tier]
+
         rows.append({
             "Tier": tier,
             "Title": f"{tier} Activity {i}",
             "Objective": f"Students will {v} key ideas from {topic}.",
-            "Steps": " ".join(steps),
+            "Steps": " ".join([
+                f"Starter ({t1}m): {v.capitalize()} prior knowledge of {topic} via think-pair-share.",
+                f"Main ({t2}m): {main_step}",
+                f"Plenary ({t3}m): Share, compare and refine answers; agree success criteria."
+            ]),
             "Materials": "Slides/board, markers, handouts (optional), timer",
-            "Assessment": "Observe group work, check exemplars; quick exit ticket (1–2 prompts).",
+            "Assessment": assess,
             "Duration (mins)": duration,
         })
     return pd.DataFrame(rows)
@@ -415,71 +456,46 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, source
 def df_to_docx_mcqs(df: pd.DataFrame, topic: str) -> bytes:
     if DocxDocument is None:
         raise RuntimeError("python-docx not installed")
-    doc = DocxDocument()
-    doc.add_heading(f"ADI MCQs — {topic}", 1)
+    doc = DocxDocument(); doc.add_heading(f"ADI MCQs — {topic}", 1)
     doc.add_paragraph(f"Generated: {datetime.now():%Y-%m-%d %H:%M}")
-    p = doc.add_paragraph("Each block: Low → Medium → High")
-    p.runs[0].italic = True
+    p = doc.add_paragraph("Each block: Low → Medium → High"); p.runs[0].italic = True
     for b in sorted(df["Block"].unique()):
         doc.add_heading(f"Block {b}", 2)
         for _, r in df[df["Block"] == b].iterrows():
-            pr = doc.add_paragraph().add_run(f"[{r['Tier']}] {r['Question']}")
-            pr.bold = True
-            doc.add_paragraph(f"A. {r['Option A']}")
-            doc.add_paragraph(f"B. {r['Option B']}")
-            doc.add_paragraph(f"C. {r['Option C']}")
-            doc.add_paragraph(f"D. {r['Option D']}")
-            doc.add_paragraph(f"Answer: {r['Answer']}")
-            doc.add_paragraph(f"Explanation: {r['Explanation']}")
-            doc.add_paragraph("")
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
-
+            pr = doc.add_paragraph().add_run(f"[{r['Tier']}] {r['Question']}"); pr.bold = True
+            doc.add_paragraph(f"A. {r['Option A']}"); doc.add_paragraph(f"B. {r['Option B']}")
+            doc.add_paragraph(f"C. {r['Option C']}"); doc.add_paragraph(f"D. {r['Option D']}")
+            doc.add_paragraph(f"Answer: {r['Answer']}"); doc.add_paragraph(f"Explanation: {r['Explanation']}"); doc.add_paragraph("")
+    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 def mcq_to_gift(df: pd.DataFrame, topic: str) -> bytes:
     lines = [f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
     for i, row in df.reset_index(drop=True).iterrows():
         qname = f"Block{row['Block']}-{row['Tier']}-{i+1}"
-        stem = row["Question"].replace("\n", " ").strip()
-        opts = [row["Option A"], row["Option B"], row["Option C"], row["Option D"]]
-        ans_idx = {"A": 0, "B": 1, "C": 2, "D": 3}.get(row["Answer"].strip().upper(), 0)
-
-        def esc(s: str) -> str:
-            return s.replace("{", r"\{").replace("}", r"\}")
-
+        stem = row['Question'].replace("\n", " ").strip()
+        opts = [row['Option A'], row['Option B'], row['Option C'], row['Option D']]
+        ans_idx = {"A":0, "B":1, "C":2, "D":3}.get(row['Answer'].strip().upper(), 0)
+        def esc(s): return s.replace('{','\\{').replace('}','\\}')
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j, o in enumerate(opts):
             lines.append(f"={esc(o)}" if j == ans_idx else f"~{esc(o)}")
-        lines.append("}")
-        lines.append("")
+        lines.append("}"); lines.append("")
     return "\n".join(lines).encode("utf-8")
 
-
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    bio = io.BytesIO()
-    df.to_csv(bio, index=False)
-    return bio.getvalue()
-
+    bio = io.BytesIO(); df.to_csv(bio, index=False); return bio.getvalue()
 
 def df_to_docx_activities(df: pd.DataFrame, topic: str) -> bytes:
     if DocxDocument is None:
         raise RuntimeError("python-docx not installed")
-    doc = DocxDocument()
-    doc.add_heading(f"ADI Activities — {topic}", 1)
+    doc = DocxDocument(); doc.add_heading(f"ADI Activities — {topic}", 1)
     doc.add_paragraph(f"Generated: {datetime.now():%Y-%m-%d %H:%M}")
     for _, r in df.iterrows():
-        doc.add_heading(r["Title"], 2)
-        doc.add_paragraph(f"Tier: {r['Tier']}")
-        doc.add_paragraph(f"Objective: {r['Objective']}")
-        doc.add_paragraph(f"Steps: {r['Steps']}")
-        doc.add_paragraph(f"Materials: {r['Materials']}")
-        doc.add_paragraph(f"Assessment: {r['Assessment']}")
-        doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
-        doc.add_paragraph("")
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
+        doc.add_heading(r['Title'], 2)
+        doc.add_paragraph(f"Tier: {r['Tier']}"); doc.add_paragraph(f"Objective: {r['Objective']}")
+        doc.add_paragraph(f"Steps: {r['Steps']}"); doc.add_paragraph(f"Materials: {r['Materials']}")
+        doc.add_paragraph(f"Assessment: {r['Assessment']}"); doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins"); doc.add_paragraph("")
+    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 
 # ----------------------------- Header -----------------------------
@@ -497,64 +513,52 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# ----------------------------- Sidebar -----------------------------
+# ----------------------------- Sidebar (only area we styled) -----------------------------
 with st.sidebar:
-    # Upload
     with st.container():
         st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>UPLOAD (OPTIONAL)</div><hr class='rule'/>", unsafe_allow_html=True)
-        up_file = st.file_uploader(
-            "Choose a file",
-            type=["pdf", "docx", "pptx"],
-            label_visibility="collapsed",
-            help="Drop an eBook, lesson plan, or PPT to prefill Source text.",
-        )
+        up_file = st.file_uploader("Choose a file", type=["pdf","docx","pptx"], label_visibility="collapsed",
+                                   help="Drop an eBook, lesson plan, or PPT to prefill Source text.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Course context
     with st.container():
         st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>COURSE CONTEXT</div><hr class='rule'/>", unsafe_allow_html=True)
-        st.session_state.lesson = st.selectbox("Lesson", list(range(1, 7)), index=st.session_state.lesson - 1)
-        st.session_state.week = st.selectbox("Week", list(range(1, 15)), index=st.session_state.week - 1)
+        st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
+        st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
         bloom = bloom_focus_for_week(st.session_state.week)
         st.markdown(
             f"<span class='policy-chip'><span class='pill'></span> Week {st.session_state.week} • <strong>{bloom}</strong> focus</span>"
             "<div style='font-size:11px;color:#6b7280;margin-top:6px'>ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.</div>",
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # MCQ blocks
     with st.container():
         st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
-        pick = st.radio(
-            "Quick pick blocks",
-            [5, 10, 20, 30],
-            horizontal=True,
-            index=[5, 10, 20, 30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5, 10, 20, 30] else 1,
-        )
+        pick = st.radio("Quick pick blocks", [5,10,20,30], horizontal=True,
+                        index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
         st.session_state.mcq_blocks = pick
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Activities refs
     with st.container():
         st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>SKILLS ACTIVITIES</div><hr class='rule'/>", unsafe_allow_html=True)
-        st.session_state.setdefault("ref_act_n", 3)
-        st.session_state.setdefault("ref_act_d", 45)
+        st.session_state.setdefault("ref_act_n",3)
+        st.session_state.setdefault("ref_act_d",45)
         st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
         st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Parse upload after UI so spinner doesn't block
     if up_file:
         st.session_state.upload_text = extract_text_from_upload(up_file)
 
-# ----------------------------- Tabs -----------------------------
+
+# ----------------------------- Tabs (main area unchanged) -----------------------------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
 with mcq_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>MCQ Generator</p>", unsafe_allow_html=True)
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns([1,1])
     with col1:
         topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
     with col2:
@@ -562,12 +566,10 @@ with mcq_tab:
 
     source = st.text_area("Source text (editable)", value=st.session_state.upload_text, height=220)
 
-    # Bloom legend with shaded policy panels
     st.markdown("**Bloom’s verbs (ADI Policy)**  \n<small>Grouped by policy tiers and week ranges</small>", unsafe_allow_html=True)
-    low_class = "badge low " + ("active-glow" if bloom == "Low" else "")
-    med_class = "badge med " + ("active-amber" if bloom == "Medium" else "")
-    high_class = "badge high " + ("active-gray" if bloom == "High" else "")
-
+    low_class = "badge low " + ("active-glow" if bloom=="Low" else "")
+    med_class = "badge med " + ("active-amber" if bloom=="Medium" else "")
+    high_class = "badge high " + ("active-gray" if bloom=="High" else "")
     st.markdown(
         f"""
         <div class='policy-group low'>
@@ -599,27 +601,21 @@ with mcq_tab:
         edited = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", use_container_width=True, key="mcq_editor")
         st.session_state.mcq_df = edited
         st.markdown("<div class='dl-row'>", unsafe_allow_html=True)
-        st.download_button(
-            "Download Word (.docx)",
-            df_to_docx_mcqs(edited, _fallback(topic, "Module")),
-            file_name="adi_mcqs.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        st.download_button(
-            "Download Moodle (GIFT)",
-            mcq_to_gift(edited, _fallback(topic, "Module")),
-            file_name="adi_mcqs_gift.txt",
-            mime="text/plain",
-        )
-        st.download_button("Download CSV", df_to_csv_bytes(edited), file_name="adi_mcqs.csv", mime="text/csv")
+        st.download_button("Download Word (.docx)", df_to_docx_mcqs(edited, _fallback(topic,"Module")),
+                           file_name="adi_mcqs.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        st.download_button("Download Moodle (GIFT)", mcq_to_gift(edited, _fallback(topic,"Module")),
+                           file_name="adi_mcqs_gift.txt", mime="text/plain")
+        st.download_button("Download CSV", df_to_csv_bytes(edited),
+                           file_name="adi_mcqs.csv", mime="text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 with act_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>Activities Planner</p>", unsafe_allow_html=True)
-    default_idx = ["Low", "Medium", "High"].index(bloom if bloom in ["Low", "Medium", "High"] else "Medium")
-    tier = st.radio("Emphasis", ["Low", "Medium", "High"], horizontal=True, index=default_idx)
+    default_idx = ["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium")
+    tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=default_idx)
     topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
 
     if st.button("Generate Activities"):
@@ -629,7 +625,7 @@ with act_tab:
                 int(st.session_state.ref_act_d),
                 tier,
                 topic2,
-                source,  # pass mined eBook text for hints
+                source,   # pass mined eBook text for hints
             )
 
     if st.session_state.act_df is None:
@@ -638,13 +634,11 @@ with act_tab:
         act_edit = st.data_editor(st.session_state.act_df, num_rows="dynamic", use_container_width=True, key="act_editor")
         st.session_state.act_df = act_edit
         st.markdown("<div class='dl-row'>", unsafe_allow_html=True)
-        st.download_button(
-            "Download Word (.docx)",
-            df_to_docx_activities(act_edit, _fallback(topic2, "Module")),
-            file_name="adi_activities.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        st.download_button("Download CSV", df_to_csv_bytes(act_edit), file_name="adi_activities.csv", mime="text/csv")
+        st.download_button("Download Word (.docx)", df_to_docx_activities(act_edit, _fallback(topic2,"Module")),
+                           file_name="adi_activities.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        st.download_button("Download CSV", df_to_csv_bytes(act_edit),
+                           file_name="adi_activities.csv", mime="text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
