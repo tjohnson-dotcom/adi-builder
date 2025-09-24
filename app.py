@@ -33,6 +33,7 @@ ADI_CSS = """
   --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-gold:#C8A85A;
   --ink:#1f2937; --muted:#6b7280; --bg:#F7F7F4; --card:#ffffff; --border:#E3E8E3;
   --shadow:0 12px 28px rgba(0,0,0,.07);
+  --low-bg:#eaf5ec; --med-bg:#f8f3e8; --high-bg:#f3f1ee;
 }
 html,body{background:var(--bg);} main .block-container{max-width:1180px; padding-top:0.6rem}
 
@@ -44,15 +45,23 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
-/* SIDEBAR */
-section[data-testid='stSidebar']>div{background:#F3F2ED; height:100%}
-.side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 12px 14px; margin:12px 6px; box-shadow:var(--shadow)}
+/* SIDEBAR (outlined, premium) */
+section[data-testid='stSidebar']>div{background:#F1F0EA}
+.side-card{
+  background:linear-gradient(180deg,#fff, #faf9f6);
+  border:1.5px solid #d6ddd6;
+  border-radius:16px;
+  padding:12px 12px 14px;
+  margin:12px 6px;
+  box-shadow:0 8px 18px rgba(0,0,0,.06), inset 0 1px 0 #ffffff;
+}
+.side-card:hover{box-shadow:0 10px 22px rgba(0,0,0,.08)}
 .side-cap{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
 .side-cap .dot{width:8px;height:8px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.15)}
 .rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 12px}
 
 /* Upload dropzone */
-div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff}
+div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1.5px dashed #c8d1c8; background:#ffffff}
 div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
 
 /* MAIN cards */
@@ -73,24 +82,32 @@ div.stButton>button:hover{filter:brightness(.98); box-shadow:0 0 0 3px rgba(200,
 [data-testid='stTabs'] button{font-weight:700; color:#445;}
 [data-testid='stTabs'] button[aria-selected='true']{color:var(--adi-green)!important; border-bottom:3px solid var(--adi-gold)!important}
 
-/* Bloom badges */
+/* BLOOM grouping (standout headers) */
+.bloom-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
+.bloom-col{background:#fff; border:1px solid var(--border); border-radius:14px; padding:0; overflow:hidden; box-shadow:var(--shadow)}
+.tier-head{display:flex; align-items:center; gap:10px; padding:10px 12px; font-weight:900; letter-spacing:.02em; border-bottom:1px solid var(--border)}
+.tier-low{background:linear-gradient(180deg,var(--low-bg),#fff)}
+.tier-med{background:linear-gradient(180deg,var(--med-bg),#fff)}
+.tier-high{background:linear-gradient(180deg,var(--high-bg),#fff)}
+.tier-pill{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 3px rgba(0,0,0,.04)}
+.tier-pill.low{background:#2f6f46}
+.tier-pill.med{background:#8b5a2b}
+.tier-pill.high{background:#555}
+.tier-sub{font-size:12px; color:#445; margin-left:auto; opacity:.85}
+.bloom-body{padding:12px}
+
+/* BLOOM badges */
 .badge{display:inline-flex; align-items:center; justify-content:center; padding:10px 16px; border-radius:999px; border:2px solid #cfd6cf; margin:6px 10px 10px 0; font-weight:800}
-.low{background:#eaf5ec; color:#245a34}
-.med{background:#f8f3e8; color:#6a4b2d}
-.high{background:#f3f1ee; color:#4a4a45}
+.low{background:var(--low-bg); color:#245a34}
+.med{background:var(--med-bg); color:#6a4b2d}
+.high{background:var(--high-bg); color:#4a4a45}
 .active-glow{box-shadow:0 0 0 4px rgba(36,90,52,.22)}
 .active-amber{box-shadow:0 0 0 4px rgba(200,168,90,.26)}
 .active-gray{box-shadow:0 0 0 4px rgba(120,120,120,.22)}
 
-/* Bloom grouping */
-.bloom-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
-.bloom-col{background:#fff; border:1px dashed #e2e8e2; border-radius:14px; padding:12px}
-.bloom-title{font-weight:900; margin:0 0 6px; font-size:14px; color:#1f3a27}
-.bloom-week{font-size:12px; color:#6b7280; margin:0 0 10px}
-
 /* Policy chip */
 .policy-chip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-weight:700; background:#f4f6f3; color:#1f3a27; border:1px solid #dfe6df}
-.policy-chip .pill{width:8px;height:8px;border-radius:999px;background:var(--adi-green)}
+.policy-chip .pill{width:8px;height:8px;border-radius:999px;background:#245a34}
 
 /* Sharper tables/editors */
 [data-testid="stDataFrame"] {border-radius:14px; border:1px solid var(--border); box-shadow:var(--shadow)}
@@ -292,23 +309,38 @@ with st.sidebar:
     if up_file:
         st.session_state.upload_text = extract_text_from_upload(up_file)
 
-# ----------------------------- Tabs -----------------------------
-mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
-
-# Helper: render Bloom grid with headings
+# ----------------------------- Bloom grid -----------------------------
 def render_bloom_grid(current_focus:str):
     low_class = "badge low " + ("active-glow" if current_focus=="Low" else "")
     med_class = "badge med " + ("active-amber" if current_focus=="Medium" else "")
     high_class = "badge high " + ("active-gray" if current_focus=="High" else "")
     st.markdown("<h3 class='hsharp'>Bloom’s verbs (ADI Policy)</h3><h4 class='hsub'>Grouped by policy tiers and week ranges</h4>", unsafe_allow_html=True)
     st.markdown("<div class='bloom-grid'>", unsafe_allow_html=True)
-    st.markdown("<div class='bloom-col'><div class='bloom-title'>Low (Weeks 1–4)</div><div class='bloom-week'>Remember / Understand</div>" +
-                " ".join([f"<span class='{low_class}'>{w}</span>" for w in LOW_VERBS]) + "</div>", unsafe_allow_html=True)
-    st.markdown("<div class='bloom-col'><div class='bloom-title'>Medium (Weeks 5–9)</div><div class='bloom-week'>Apply / Analyze</div>" +
-                " ".join([f"<span class='{med_class}'>{w}</span>" for w in MED_VERBS]) + "</div>", unsafe_allow_html=True)
-    st.markdown("<div class='bloom-col'><div class='bloom-title'>High (Weeks 10–14)</div><div class='bloom-week'>Evaluate / Create</div>" +
-                " ".join([f"<span class='{high_class}'>{w}</span>" for w in HIGH_VERBS]) + "</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='bloom-col'>"
+          "<div class='tier-head tier-low'><span class='tier-pill low'></span> Low (Weeks 1–4)"
+          "<span class='tier-sub'>Remember / Understand</span></div>"
+          "<div class='bloom-body'>" +
+          " ".join([f"<span class='{low_class}'>{w}</span>" for w in LOW_VERBS]) +
+          "</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='bloom-col'>"
+          "<div class='tier-head tier-med'><span class='tier-pill med'></span> Medium (Weeks 5–9)"
+          "<span class='tier-sub'>Apply / Analyze</span></div>"
+          "<div class='bloom-body'>" +
+          " ".join([f"<span class='{med_class}'>{w}</span>" for w in MED_VERBS]) +
+          "</div></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='bloom-col'>"
+          "<div class='tier-head tier-high'><span class='tier-pill high'></span> High (Weeks 10–14)"
+          "<span class='tier-sub'>Evaluate / Create</span></div>"
+          "<div class='bloom-body'>" +
+          " ".join([f"<span class='{high_class}'>{w}</span>" for w in HIGH_VERBS]) +
+          "</div></div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ----------------------------- Tabs -----------------------------
+mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
 with mcq_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -318,7 +350,6 @@ with mcq_tab:
         topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
     with col2:
         st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True)
-
     source = st.text_area("Source text (editable)", value=st.session_state.upload_text, height=140)
 
     render_bloom_grid(bloom)
