@@ -138,17 +138,20 @@ def extract_text_from_upload(up_file) -> str:
         if name.endswith(".pdf"):
             reader = PdfReader(up_file)
             for page in reader.pages[:6]:
-                text += (page.extract_text() or "") + "\n"  # fixed newline
+                text += (page.extract_text() or "") + "
+"  # fixed newline
         elif name.endswith(".docx"):
             doc = Document(up_file)
             for p in doc.paragraphs[:60]:
-                text += p.text + "\n"
+                text += p.text + "
+"
         elif name.endswith(".pptx"):
             prs = Presentation(up_file)
             for slide in prs.slides[:15]:
                 for shape in slide.shapes:
                     if hasattr(shape, "text") and shape.text:
-                        text += shape.text + "\n"
+                        text += shape.text + "
+"
         return text.strip()[:1000]
     except Exception as e:
         return f"[Could not parse file: {e}]"
@@ -222,16 +225,18 @@ def mcq_to_docx(df:pd.DataFrame, topic:str)->bytes:
 def mcq_to_gift(df:pd.DataFrame, topic:str)->bytes:
     lines=[f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
     for i, row in df.reset_index(drop=True).iterrows():
-        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("\n"," ").strip()
+        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("
+"," ").strip()
         opts=[row['Option A'],row['Option B'],row['Option C'],row['Option D']]
         ans_idx={"A":0,"B":1,"C":2,"D":3}.get(row['Answer'].strip().upper(),0)
-        def esc(s): return s.replace('{','\\{').replace('}','\\}')
+        def esc(s): return s.replace('{','\{').replace('}','\}')
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j,o in enumerate(opts):
             lines.append(f"={'=' if j==ans_idx else '~'}{esc(o)}" if j==ans_idx else f"~{esc(o)}")
         lines.append("}")
         lines.append("")
-    return "\n".join(lines).encode("utf-8")
+    return "
+".join(lines).encode("utf-8")
 
 
 def df_to_csv_bytes(df:pd.DataFrame)->bytes:
@@ -273,28 +278,42 @@ with st.container():
 # Sidebar (appealing panels + policy emphasis)
 # ---------------------------------------------------------------
 with st.sidebar:
-    st.markdown("<div class='side-card'><div class='side-cap'>Upload (optional)</div><hr class='rule'/>", unsafe_allow_html=True)
-    up_file = st.file_uploader("PDF / DOCX / PPTX", type=["pdf","docx","pptx"], help="Drop an eBook, lesson plan, or PPT to prefill Source text.")
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown("<div class='side-card'><div class='side-cap'>Upload (optional)</div><hr class='rule'/>", unsafe_allow_html=True)
+        up_file = st.file_uploader(
+            "Choose a file",
+            type=["pdf","docx","pptx"],
+            label_visibility="collapsed",
+            help="Drop an eBook, lesson plan, or PPT to prefill Source text."
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='side-card'><div class='side-cap'>Course context</div><hr class='rule'/>", unsafe_allow_html=True)
-    st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
-    st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
-    bloom = bloom_focus_for_week(st.session_state.week)
-    st.caption(f"ADI policy → Week {st.session_state.week}: **{bloom}** focus (1–4 Low, 5–9 Medium, 10–14 High)")
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown("<div class='side-card'><div class='side-cap'>Course Context</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
+        st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
+        bloom = bloom_focus_for_week(st.session_state.week)
+        st.caption(f"ADI policy → Week {st.session_state.week}: **{bloom}** focus (1–4 Low, 5–9 Medium, 10–14 High)")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='side-card'><div class='side-cap'>Knowledge MCQs (ADI Policy)</div><hr class='rule'/>", unsafe_allow_html=True)
-    pick = st.radio("Quick pick blocks", [5,10,20,30], horizontal=True, index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
-    st.session_state.mcq_blocks = pick
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown("<div class='side-card'><div class='side-cap'>Knowledge MCQs (ADI Policy)</div><hr class='rule'/>", unsafe_allow_html=True)
+        pick = st.radio(
+            "Quick pick blocks",
+            [5,10,20,30],
+            horizontal=True,
+            index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1,
+        )
+        st.session_state.mcq_blocks = pick
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='side-card'><div class='side-cap'>Skills Activities</div><hr class='rule'/>", unsafe_allow_html=True)
-    st.session_state.setdefault("ref_act_n",3)
-    st.session_state.setdefault("ref_act_d",45)
-    st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
-    st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
-    st.markdown("</div>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown("<div class='side-card'><div class='side-cap'>Skills Activities</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.session_state.setdefault("ref_act_n",3)
+        st.session_state.setdefault("ref_act_d",45)
+        st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
+        st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if up_file:
         st.session_state.upload_text = extract_text_from_upload(up_file)
