@@ -45,20 +45,41 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
-/* SIDEBAR (outlined, premium) */
-section[data-testid='stSidebar']>div{background:#F1F0EA}
+/* SIDEBAR polished (slightly lighter than main) */
+section[data-testid='stSidebar']>div{background:#F5F4EE}
+
 .side-card{
-  background:linear-gradient(180deg,#fff, #faf9f6);
-  border:1.5px solid #d6ddd6;
+  background:linear-gradient(180deg,#fff,#f6f6f2);
+  border:1.6px solid #d8ddd8;
   border-radius:16px;
-  padding:12px 12px 14px;
-  margin:12px 6px;
-  box-shadow:0 8px 18px rgba(0,0,0,.06), inset 0 1px 0 #ffffff;
+  padding:18px 16px 20px;
+  margin:14px 6px;
+  box-shadow:0 6px 14px rgba(0,0,0,.05), inset 0 1px 0 #ffffff;
 }
-.side-card:hover{box-shadow:0 10px 22px rgba(0,0,0,.08)}
-.side-cap{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
-.side-cap .dot{width:8px;height:8px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.15)}
-.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 12px}
+.side-card:hover{box-shadow:0 8px 18px rgba(0,0,0,.07)}
+
+.side-cap{
+  display:flex; align-items:center; gap:10px;
+  font-size:15px; font-weight:800;
+  color:var(--adi-green);
+  text-transform:uppercase; letter-spacing:.08em;
+  margin:0 0 12px
+}
+.side-cap i{font-style:normal; width:18px; text-align:center; color:var(--adi-gold)}
+.side-cap .dot{
+  display:none; /* replaced by icon */
+}
+.rule{
+  height:2.5px; border:0; margin:6px 0 14px;
+  background:linear-gradient(90deg,var(--adi-gold),transparent)
+}
+
+/* Sidebar inputs bigger */
+section[data-testid='stSidebar'] label,
+section[data-testid='stSidebar'] .stSelectbox div,
+section[data-testid='stSidebar'] .stNumberInput input {
+  font-size:14.5px !important;
+}
 
 /* Upload dropzone */
 div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1.5px dashed #c8d1c8; background:#ffffff}
@@ -272,14 +293,14 @@ with st.container():
 with st.sidebar:
     # Upload
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>UPLOAD (OPTIONAL)</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><i>📂</i> UPLOAD (OPTIONAL)</div><hr class='rule'/>", unsafe_allow_html=True)
         up_file = st.file_uploader("Choose a file", type=["pdf","docx","pptx"], label_visibility="collapsed",
                                    help="Drop an eBook, lesson plan, or PPT to prefill Source text.")
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Course context
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>COURSE CONTEXT</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><i>📘</i> COURSE CONTEXT</div><hr class='rule'/>", unsafe_allow_html=True)
         st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
         st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
         bloom = bloom_focus_for_week(st.session_state.week)
@@ -292,7 +313,7 @@ with st.sidebar:
 
     # MCQ blocks
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><i>🎯</i> KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
         pick = st.radio("Quick pick blocks", [5,10,20,30], horizontal=True,
                         index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
         st.session_state.mcq_blocks = pick
@@ -300,7 +321,7 @@ with st.sidebar:
 
     # Activities refs
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>SKILLS ACTIVITIES</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><i>🛠</i> SKILLS ACTIVITIES</div><hr class='rule'/>", unsafe_allow_html=True)
         st.session_state.setdefault("ref_act_n",3); st.session_state.setdefault("ref_act_d",45)
         st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
         st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
