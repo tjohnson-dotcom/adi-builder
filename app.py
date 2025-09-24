@@ -149,22 +149,29 @@ def extract_text_from_upload(up_file) -> str:
             reader = PdfReader(up_file)
             for page in reader.pages[:10]:
                 txt = page.extract_text() or ""
-                text += txt + "\n"
+                text += txt + "
+"
         elif name.endswith(".docx") and Document:
             doc = Document(up_file)
             for p in doc.paragraphs[:150]:
-                text += (p.text or "") + "\n"
+                text += (p.text or "") + "
+"
         elif name.endswith(".pptx") and Presentation:
             prs = Presentation(up_file)
             for slide in prs.slides[:30]:
                 for shp in slide.shapes:
                     if hasattr(shp, "text") and shp.text:
-                        text += shp.text + "\n"
+                        text += shp.text + "
+"
         # tidy
-        text = text.replace("\r", "\n")
-        lines = [ln.strip() for ln in text.split("\n")]
+        text = text.replace("
+", "
+")
+        lines = [ln.strip() for ln in text.split("
+")]
         lines = [ln for ln in lines if ln]
-        return "\n".join(lines)[:2000]
+        return "
+".join(lines)[:2000]
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
@@ -178,7 +185,8 @@ _STOP = {
 
 def _sentences(text: str) -> list[str]:
     rough = []
-    for chunk in text.split("\n"):
+    for chunk in text.split("
+"):
         parts = [p.strip() for p in chunk.replace("•", ". ").replace("–", "-").split(".")]
         for p in parts:
             if p:
@@ -353,16 +361,18 @@ def mcq_to_gift(df: pd.DataFrame, topic: str) -> bytes:
     lines = [f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
     for i, row in df.reset_index(drop=True).iterrows():
         qname = f"Block{row['Block']}-{row['Tier']}-{i+1}"
-        stem = row['Question'].replace("\n", " ").strip()
+        stem = row['Question'].replace("
+", " ").strip()
         opts = [row['Option A'], row['Option B'], row['Option C'], row['Option D']]
         ans_idx = {"A":0, "B":1, "C":2, "D":3}.get(row['Answer'].strip().upper(), 0)
-        def esc(s): return s.replace('{','\\{').replace('}','\\}')
+        def esc(s): return s.replace('{','\{').replace('}','\}')
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j, o in enumerate(opts):
             lines.append(f"={esc(o)}" if j == ans_idx else f"~{esc(o)}")
         lines.append("}")
         lines.append("")
-    return "\n".join(lines).encode("utf-8")
+    return "
+".join(lines).encode("utf-8")
 
 
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
