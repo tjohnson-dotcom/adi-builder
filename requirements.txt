@@ -4,4 +4,4 @@ python-docx>=0.8.11
 PyPDF2>=3.0.0
 python-pptx>=0.6.21
 lxml>=4.9.0
-openpyxl>=3.1.0   # optional but useful for CSV/Excel flows
+openpyxl>=3.1.0
