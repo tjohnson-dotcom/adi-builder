@@ -52,13 +52,18 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
-/* SIDEBAR */
+/* SIDEBAR (elegant) */
 section[data-testid='stSidebar']>div{background:#F3F2ED; height:100%}
-.side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px; margin:10px 6px; box-shadow:var(--shadow)}
-.side-cap{font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
-.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 10px}
+.side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px 12px 14px; margin:12px 6px; box-shadow:var(--shadow)}
+.side-cap{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
+.side-cap .dot{width:8px;height:8px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.15)}
+.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 12px}
 
-/* CARDS */
+/* prettier uploader */
+div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff}
+div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
+
+/* CARDS (main area) */
 .card{background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); padding:16px; margin:10px 0}
 .cap{color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; font-size:12px; margin:0 0 10px}
 
@@ -74,7 +79,7 @@ div.stButton>button:hover{filter:brightness(.98); box-shadow:0 0 0 3px rgba(200,
 [data-testid='stTabs'] button{font-weight:700; color:#445;}
 [data-testid='stTabs'] button[aria-selected='true']{color:var(--adi-green)!important; border-bottom:3px solid var(--adi-gold)!important}
 
-/* BADGES */
+/* BLOOM badges */
 .badge{display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:999px; border:1px solid var(--border); margin:2px 6px 2px 0; font-weight:600}
 .low{background:#eaf5ec; color:#245a34}
 .med{background:#f8f3e8; color:#6a4b2d}
@@ -82,6 +87,10 @@ div.stButton>button:hover{filter:brightness(.98); box-shadow:0 0 0 3px rgba(200,
 .active-glow{box-shadow:0 0 0 3px rgba(36,90,52,.25)}
 .active-amber{box-shadow:0 0 0 3px rgba(200,168,90,.35)}
 .active-gray{box-shadow:0 0 0 3px rgba(120,120,120,.25)}
+
+/* Policy chip */
+.policy-chip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; font-weight:700; background:#f4f6f3; color:#1f3a27; border:1px solid #dfe6df}
+.policy-chip .pill{width:8px;height:8px;border-radius:999px;background:var(--adi-green)}
 
 /* DOWNLOAD STRIP */
 .dl-row{display:flex; gap:10px; flex-wrap:wrap}
@@ -123,7 +132,7 @@ def extract_text_from_upload(up_file) -> str:
         if name.endswith(".pdf"):
             reader = PdfReader(up_file)
             for page in reader.pages[:6]:
-                # ✅ correct newline; this line caused the earlier crash
+                # ✅ fixed newline bug
                 text += (page.extract_text() or "") + "\n"
         elif name.endswith(".docx"):
             doc = Document(up_file)
@@ -255,7 +264,7 @@ with st.container():
 with st.sidebar:
     # Upload
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'>Upload (optional)</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>UPLOAD (OPTIONAL)</div><hr class='rule'/>", unsafe_allow_html=True)
         up_file = st.file_uploader(
             "Choose a file",
             type=["pdf","docx","pptx"],
@@ -266,16 +275,20 @@ with st.sidebar:
 
     # Course context
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'>Course Context</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>COURSE CONTEXT</div><hr class='rule'/>", unsafe_allow_html=True)
         st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
         st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
         bloom = bloom_focus_for_week(st.session_state.week)
-        st.caption(f"ADI policy → Week {st.session_state.week}: **{bloom}** focus (1–4 Low, 5–9 Medium, 10–14 High)")
+        st.markdown(
+            f"<span class='policy-chip'><span class='pill'></span> Week {st.session_state.week} • <strong>{bloom}</strong> focus</span>"
+            "<div style='font-size:11px;color:#6b7280;margin-top:6px'>ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.</div>",
+            unsafe_allow_html=True
+        )
         st.markdown("</div>", unsafe_allow_html=True)
 
     # MCQ blocks
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'>Knowledge MCQs (ADI Policy)</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
         pick = st.radio(
             "Quick pick blocks", [5,10,20,30],
             horizontal=True,
@@ -286,7 +299,7 @@ with st.sidebar:
 
     # Activities refs
     with st.container():
-        st.markdown("<div class='side-card'><div class='side-cap'>Skills Activities</div><hr class='rule'/>", unsafe_allow_html=True)
+        st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>SKILLS ACTIVITIES</div><hr class='rule'/>", unsafe_allow_html=True)
         st.session_state.setdefault("ref_act_n",3)
         st.session_state.setdefault("ref_act_d",45)
         st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
@@ -349,9 +362,11 @@ with act_tab:
 
     if st.button("Generate Activities"):
         with st.spinner("Assembling activities…"):
-            st.session_state.act_df = generate_activities(int(st.session_state.ref_act_n),
-                                                          int(st.session_state.ref_act_d),
-                                                          tier, topic2)
+            st.session_state.act_df = generate_activities(
+                int(st.session_state.ref_act_n),
+                int(st.session_state.ref_act_d),
+                tier, topic2
+            )
 
     if st.session_state.act_df is None:
         st.info("No activities yet. Use the button above to generate.")
@@ -366,4 +381,3 @@ with act_tab:
                            file_name="adi_activities.csv", mime="text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-
