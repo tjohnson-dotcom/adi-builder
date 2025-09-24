@@ -1,11 +1,11 @@
-# app.py — ADI Builder (sidebar polish + ADI policy MCQs/Activities)
+# app.py — ADI Builder (policy-aligned MCQs & Activities, editors, sidebar polish)
 
 import base64
 import io
 import os
 import re
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any, List, Dict
 
 import pandas as pd
 import streamlit as st
@@ -79,7 +79,7 @@ section[data-testid='stSidebar'] * { box-sizing: border-box; }
 .side-cap .dot{width:9px;height:9px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 4px rgba(200,168,90,.18)}
 .rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:8px 0 10px}
 
-/* prettier uploader */
+/* uploader */
 section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff; margin-top:8px}
 section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
 section[data-testid='stSidebar'] [data-testid="stFileUploader"] p{color:#6b7280; font-size:12px}
@@ -104,7 +104,7 @@ section[data-testid='stSidebar'] [role='radiogroup'] input:checked + div {
   border-color:var(--adi-gold); box-shadow:0 0 0 3px rgba(200,168,90,.25);
 }
 
-/* MAIN (unchanged visual system) */
+/* MAIN */
 .card{background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); padding:16px; margin:10px 0}
 .cap{color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; font-size:12px; margin:0 0 10px}
 
@@ -162,8 +162,7 @@ LOW_VERBS = ["define","identify","list","recall","describe","label"]
 MED_VERBS = ["apply","demonstrate","solve","illustrate","analyze"]
 HIGH_VERBS = ["evaluate","synthesize","design","justify"]
 
-# ADI policy verb sets for activities
-ADI_VERBS = {
+ADI_VERBS = {  # for activities
     "Low":    ["define", "identify", "recall", "list", "describe", "label"],
     "Medium": ["apply", "demonstrate", "interpret", "compare", "solve", "illustrate"],
     "High":   ["analyze", "evaluate", "justify", "synthesize", "design", "formulate"],
@@ -245,7 +244,7 @@ def _sentences(text: str) -> list[str]:
     for s in rough:
         s_clean = re.sub(r"\s+", " ", s).strip()
         words = s_clean.split()
-        if not (8 <= len(words) <= 35):  # sentence-ish
+        if not (8 <= len(words) <= 35):
             continue
         if s_clean.isupper() or _PAGE_JUNK.match(s_clean) or _HEADING_HINTS.match(s_clean):
             continue
@@ -367,9 +366,13 @@ def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int) -> 
         rnd.shuffle(options)
         ans = ["A","B","C","D"][options.index(correct)]
         rows.append({
-            "Block": block, "Tier": tier, "Question": stem_txt.strip(),
+            "Block": block,
+            "Tier": tier,
+            "Q#": {"Low": 1, "Medium": 2, "High": 3}[tier],
+            "Question": stem_txt.strip(),
             "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-            "Answer": ans, "Explanation": "Chosen option aligns with the source context."
+            "Answer": ans, "Explanation": "Chosen option aligns with the source context.",
+            "Order": {"Low": 1, "Medium": 2, "High": 3}[tier],
         })
 
     for b in range(1, num_blocks + 1):
@@ -399,14 +402,18 @@ def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int) -> 
         stem3 = high_stems[(b-1) % len(high_stems)](t_high)
         add_row(b, "High", stem3, c3, d3)
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    df = df.sort_values(["Block","Order"], kind="stable").reset_index(drop=True)
+    return df
 
 
-def generate_activities(count: int, duration: int, tier: str, topic: str, source: str = "") -> pd.DataFrame:
+def generate_activities(count: int, duration: int, tier: str, topic: str, source: str = "",
+                        lesson: int = 1, week: int = 1) -> pd.DataFrame:
     """
     Activities aligned to ADI Bloom levels.
     - Verbs chosen from ADI_VERBS[tier]
     - If the eBook contains procedural hints (first/then/ensure…), weave one into the Main step
+    - Includes Lesson, Week, and Policy focus in titles/columns
     """
     topic = _fallback(topic, "the module")
     verbs = ADI_VERBS.get(tier, ADI_VERBS["Medium"])
@@ -437,8 +444,11 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, source
         }[tier]
 
         rows.append({
+            "Lesson": lesson,
+            "Week": week,
+            "Policy focus": tier,
+            "Title": f"Lesson {lesson} • Week {week} — {tier} Activity {i}",
             "Tier": tier,
-            "Title": f"{tier} Activity {i}",
             "Objective": f"Students will {v} key ideas from {topic}.",
             "Steps": " ".join([
                 f"Starter ({t1}m): {v.capitalize()} prior knowledge of {topic} via think-pair-share.",
@@ -452,50 +462,208 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, source
     return pd.DataFrame(rows)
 
 
+# ----------------------------- Editors (MCQ/Activities text round-trip) -----------------------------
+def mcq_df_to_text(df: pd.DataFrame) -> str:
+    out = []
+    for b in sorted(df["Block"].unique()):
+        blk = df[df["Block"] == b].sort_values(["Q#"] if "Q#" in df.columns else ["Tier"])
+        out.append(f"=== Block {b} ===")
+        for _, r in blk.reset_index(drop=True).iterrows():
+            qn = int(r.get("Q#", 0)) or {"Low":1,"Medium":2,"High":3}.get(r["Tier"],1)
+            out.append(f"Q{qn}. [{r['Tier']}] {r['Question']}")
+            out.append(f"A) {r['Option A']}")
+            out.append(f"B) {r['Option B']}")
+            out.append(f"C) {r['Option C']}")
+            out.append(f"D) {r['Option D']}")
+            out.append(f"Answer: {r['Answer']}")
+            out.append(f"Explanation: {r['Explanation']}")
+            out.append("")
+    return "\n".join(out).strip()
+
+def mcq_text_to_df(text: str, df_template: pd.DataFrame) -> pd.DataFrame:
+    lesson_override = None
+    week_override = None
+    rows, block = [], None
+    for line in text.splitlines():
+        line = line.rstrip()
+
+        m_les = re.match(r"Lesson\s*:\s*(\d+)", line, re.I)
+        m_wk  = re.match(r"Week\s*:\s*(\d+)", line, re.I)
+        if m_les:
+            lesson_override = int(m_les.group(1));  continue
+        if m_wk:
+            week_override = int(m_wk.group(1));     continue
+
+        if line.startswith("=== Block"):
+            block = int(re.findall(r"Block\s+(\d+)", line)[0]); continue
+        if not line:
+            continue
+        m_q = re.match(r"Q(\d+)\.\s*\[(Low|Medium|High)\]\s*(.*)", line, re.I)
+        if m_q:
+            qnum, tier, qtxt = int(m_q.group(1)), m_q.group(2).title(), m_q.group(3).strip()
+            rows.append({"Block": block, "Q#": qnum, "Tier": tier, "Question": qtxt}); continue
+        if rows:
+            cur = rows[-1]
+            if   line.startswith("A) "): cur["Option A"] = line[3:].strip()
+            elif line.startswith("B) "): cur["Option B"] = line[3:].strip()
+            elif line.startswith("C) "): cur["Option C"] = line[3:].strip()
+            elif line.startswith("D) "): cur["Option D"] = line[3:].strip()
+            elif line.startswith("Answer: "): cur["Answer"] = line.split(":",1)[1].strip().upper()[:1]
+            elif line.startswith("Explanation: "): cur["Explanation"] = line.split(":",1)[1].strip()
+
+    cols = ["Block","Q#","Tier","Question","Option A","Option B","Option C","Option D","Answer","Explanation"]
+    for r in rows:
+        for c in cols:
+            r.setdefault(c, "")
+    df = pd.DataFrame(rows)[cols] if rows else df_template
+    if lesson_override is not None: st.session_state.lesson = lesson_override
+    if week_override   is not None: st.session_state.week   = week_override
+    if df is df_template:
+        return df_template
+    return df.sort_values(["Block","Q#"], kind="stable").reset_index(drop=True)
+
+def acts_df_to_text(df: pd.DataFrame) -> str:
+    out = []
+    if {"Lesson","Week"}.issubset(df.columns) and not df.empty:
+        out.append(f"Lesson: {int(df.iloc[0]['Lesson'])}")
+        out.append(f"Week: {int(df.iloc[0]['Week'])}")
+        out.append("")
+    for _, r in df.iterrows():
+        title = r.get("Title", "")
+        out.append(f"### {title}")
+        out.append(f"Objective: {r.get('Objective','')}")
+        out.append(f"Steps: {r.get('Steps','')}")
+        out.append(f"Materials: {r.get('Materials','')}")
+        out.append(f"Assessment: {r.get('Assessment','')}")
+        out.append(f"Duration: {r.get('Duration (mins)','')} mins")
+        out.append("")
+    return "\n".join(out).strip()
+
+def acts_text_to_df(text: str, df_template: pd.DataFrame) -> pd.DataFrame:
+    lesson_override = None
+    week_override = None
+    rows, cur = [], {}
+
+    # capture overrides at top
+    for line in text.splitlines():
+        line = line.rstrip()
+        if re.match(r"Lesson\s*:\s*\d+", line, re.I):
+            lesson_override = int(re.findall(r"\d+", line)[0]); continue
+        if re.match(r"Week\s*:\s*\d+", line, re.I):
+            week_override = int(re.findall(r"\d+", line)[0]); continue
+        if line.startswith("### "):
+            break
+
+    # parse items
+    for line in text.splitlines():
+        line = line.rstrip()
+        if line.startswith("### "):
+            if cur: rows.append(cur); cur = {}
+            cur["Title"] = line[4:].strip()
+        elif line.startswith("Objective:"):  cur["Objective"] = line.split(":",1)[1].strip()
+        elif line.startswith("Steps:"):      cur["Steps"] = line.split(":",1)[1].strip()
+        elif line.startswith("Materials:"):  cur["Materials"] = line.split(":",1)[1].strip()
+        elif line.startswith("Assessment:"): cur["Assessment"] = line.split(":",1)[1].strip()
+        elif line.startswith("Duration:"):
+            nums = re.findall(r"\d+", line)
+            cur["Duration (mins)"] = int(nums[0]) if nums else df_template.get("Duration (mins)", [45])[0]
+    if cur: rows.append(cur)
+    if not rows:
+        return df_template
+
+    # defaults & carry context
+    out_rows = []
+    for i, r in enumerate(rows, 1):
+        o = {
+            "Lesson": lesson_override if lesson_override is not None else int(st.session_state.get("lesson", 1)),
+            "Week": week_override if week_override is not None else int(st.session_state.get("week", 1)),
+            "Policy focus": df_template.iloc[0].get("Tier", "Medium") if not df_template.empty else "Medium",
+            "Title": r.get("Title", f"Activity {i}"),
+            "Tier": df_template.iloc[0].get("Tier", "Medium") if not df_template.empty else "Medium",
+            "Objective": r.get("Objective", ""),
+            "Steps": r.get("Steps", ""),
+            "Materials": r.get("Materials", "Slides/board, markers, handouts (optional), timer"),
+            "Assessment": r.get("Assessment", "Performance check / exit ticket"),
+            "Duration (mins)": r.get("Duration (mins)", df_template.iloc[0].get("Duration (mins)", 45) if not df_template.empty else 45),
+        }
+        out_rows.append(o)
+
+    if lesson_override is not None: st.session_state.lesson = lesson_override
+    if week_override is not None:   st.session_state.week   = week_override
+    return pd.DataFrame(out_rows)
+
+
 # ----------------------------- Exporters (DOCX, CSV, GIFT) -----------------------------
 def df_to_docx_mcqs(df: pd.DataFrame, topic: str) -> bytes:
     if DocxDocument is None:
         raise RuntimeError("python-docx not installed")
-    doc = DocxDocument(); doc.add_heading(f"ADI MCQs — {topic}", 1)
+    doc = DocxDocument()
+    doc.add_heading(f"ADI MCQs — {topic}", 1)
     doc.add_paragraph(f"Generated: {datetime.now():%Y-%m-%d %H:%M}")
-    p = doc.add_paragraph("Each block: Low → Medium → High"); p.runs[0].italic = True
+    p = doc.add_paragraph("Each block: Low → Medium → High")
+    p.runs[0].italic = True
     for b in sorted(df["Block"].unique()):
         doc.add_heading(f"Block {b}", 2)
-        for _, r in df[df["Block"] == b].iterrows():
-            pr = doc.add_paragraph().add_run(f"[{r['Tier']}] {r['Question']}"); pr.bold = True
-            doc.add_paragraph(f"A. {r['Option A']}"); doc.add_paragraph(f"B. {r['Option B']}")
-            doc.add_paragraph(f"C. {r['Option C']}"); doc.add_paragraph(f"D. {r['Option D']}")
-            doc.add_paragraph(f"Answer: {r['Answer']}"); doc.add_paragraph(f"Explanation: {r['Explanation']}"); doc.add_paragraph("")
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+        blk = df[df["Block"] == b].sort_values(["Q#"])
+        for _, r in blk.iterrows():
+            pr = doc.add_paragraph().add_run(f"Q{int(r.get('Q#',0))}. [{r['Tier']}] {r['Question']}")
+            pr.bold = True
+            doc.add_paragraph(f"A. {r['Option A']}")
+            doc.add_paragraph(f"B. {r['Option B']}")
+            doc.add_paragraph(f"C. {r['Option C']}")
+            doc.add_paragraph(f"D. {r['Option D']}")
+            doc.add_paragraph(f"Answer: {r['Answer']}")
+            doc.add_paragraph(f"Explanation: {r['Explanation']}")
+            doc.add_paragraph("")
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
 
 def mcq_to_gift(df: pd.DataFrame, topic: str) -> bytes:
     lines = [f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
-    for i, row in df.reset_index(drop=True).iterrows():
-        qname = f"Block{row['Block']}-{row['Tier']}-{i+1}"
-        stem = row['Question'].replace("\n", " ").strip()
-        opts = [row['Option A'], row['Option B'], row['Option C'], row['Option D']]
-        ans_idx = {"A":0, "B":1, "C":2, "D":3}.get(row['Answer'].strip().upper(), 0)
-        def esc(s): return s.replace('{','\\{').replace('}','\\}')
+    df = df.sort_values(["Block","Q#"], kind="stable")
+    for _, row in df.reset_index(drop=True).iterrows():
+        qnum = int(row.get("Q#", 0))
+        qname = f"Block{row['Block']}-Q{qnum}-{row['Tier']}"
+        stem = row["Question"].replace("\n", " ").strip()
+        opts = [row["Option A"], row["Option B"], row["Option C"], row["Option D"]]
+        ans_idx = {"A": 0, "B": 1, "C": 2, "D": 3}.get(row["Answer"].strip().upper(), 0)
+
+        def esc(s: str) -> str:
+            return s.replace("{", r"\{").replace("}", r"\}")
+
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j, o in enumerate(opts):
             lines.append(f"={esc(o)}" if j == ans_idx else f"~{esc(o)}")
-        lines.append("}"); lines.append("")
+        lines.append("}")
+        lines.append("")
     return "\n".join(lines).encode("utf-8")
 
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    bio = io.BytesIO(); df.to_csv(bio, index=False); return bio.getvalue()
+    bio = io.BytesIO()
+    df.to_csv(bio, index=False)
+    return bio.getvalue()
 
 def df_to_docx_activities(df: pd.DataFrame, topic: str) -> bytes:
     if DocxDocument is None:
         raise RuntimeError("python-docx not installed")
-    doc = DocxDocument(); doc.add_heading(f"ADI Activities — {topic}", 1)
+    doc = DocxDocument()
+    doc.add_heading(f"ADI Activities — {topic}", 1)
     doc.add_paragraph(f"Generated: {datetime.now():%Y-%m-%d %H:%M}")
+    if {"Lesson","Week","Policy focus"}.issubset(df.columns) and not df.empty:
+        doc.add_paragraph(f"Lesson {int(df.iloc[0]['Lesson'])} • Week {int(df.iloc[0]['Week'])} • Focus: {df.iloc[0]['Policy focus']}")
     for _, r in df.iterrows():
         doc.add_heading(r['Title'], 2)
-        doc.add_paragraph(f"Tier: {r['Tier']}"); doc.add_paragraph(f"Objective: {r['Objective']}")
-        doc.add_paragraph(f"Steps: {r['Steps']}"); doc.add_paragraph(f"Materials: {r['Materials']}")
-        doc.add_paragraph(f"Assessment: {r['Assessment']}"); doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins"); doc.add_paragraph("")
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+        doc.add_paragraph(f"Tier: {r['Tier']}")
+        doc.add_paragraph(f"Objective: {r['Objective']}")
+        doc.add_paragraph(f"Steps: {r['Steps']}")
+        doc.add_paragraph(f"Materials: {r['Materials']}")
+        doc.add_paragraph(f"Assessment: {r['Assessment']}")
+        doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
+        doc.add_paragraph("")
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
 
 
 # ----------------------------- Header -----------------------------
@@ -513,7 +681,7 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# ----------------------------- Sidebar (only area we styled) -----------------------------
+# ----------------------------- Sidebar (styled) -----------------------------
 with st.sidebar:
     with st.container():
         st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>UPLOAD (OPTIONAL)</div><hr class='rule'/>", unsafe_allow_html=True)
@@ -552,20 +720,35 @@ with st.sidebar:
         st.session_state.upload_text = extract_text_from_upload(up_file)
 
 
-# ----------------------------- Tabs (main area unchanged) -----------------------------
+# ----------------------------- Tabs (main area) -----------------------------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
 with mcq_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>MCQ Generator</p>", unsafe_allow_html=True)
+
+    # Inline Lesson/Week pickers (keep in sync with sidebar)
+    cL, cW, _ = st.columns([1,1,6])
+    with cL:
+        _les_mcq = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1, key="lesson_inline_mcq")
+    with cW:
+        _wek_mcq = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1, key="week_inline_mcq")
+    if (_les_mcq != st.session_state.lesson) or (_wek_mcq != st.session_state.week):
+        st.session_state.lesson = int(_les_mcq)
+        st.session_state.week = int(_wek_mcq)
+        bloom = bloom_focus_for_week(st.session_state.week)
+
     col1, col2 = st.columns([1,1])
     with col1:
         topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
     with col2:
         st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True)
 
-    source = st.text_area("Source text (editable)", value=st.session_state.upload_text, height=220)
+    # eBook source in expander (optional)
+    with st.expander("Source (from upload) — optional", expanded=False):
+        source = st.text_area("", value=st.session_state.upload_text, height=160, label_visibility="collapsed")
 
+    # Bloom legend (shaded)
     st.markdown("**Bloom’s verbs (ADI Policy)**  \n<small>Grouped by policy tiers and week ranges</small>", unsafe_allow_html=True)
     low_class = "badge low " + ("active-glow" if bloom=="Low" else "")
     med_class = "badge med " + ("active-amber" if bloom=="Medium" else "")
@@ -595,18 +778,31 @@ with mcq_tab:
         with st.spinner("Building MCQ blocks…"):
             st.session_state.mcq_df = generate_mcq_blocks(topic, source, int(st.session_state.mcq_blocks), int(st.session_state.week))
 
-    if st.session_state.mcq_df is None:
+    if st.session_state.mcq_df is None or st.session_state.mcq_df.empty:
         st.info("No MCQs yet. Use the button above to generate.")
     else:
-        edited = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", use_container_width=True, key="mcq_editor")
+        # ensure sorted & numbered
+        st.session_state.mcq_df = st.session_state.mcq_df.sort_values(["Block","Q#"], kind="stable").reset_index(drop=True)
+
+        cols = ["Block","Q#","Tier","Question","Option A","Option B","Option C","Option D","Answer","Explanation"]
+        view = st.session_state.mcq_df[cols] if all(c in st.session_state.mcq_df.columns for c in cols) else st.session_state.mcq_df
+        edited = st.data_editor(view, num_rows="dynamic", use_container_width=True, key="mcq_editor")
         st.session_state.mcq_df = edited
+
+        # Text editor for MCQs
+        with st.expander("Edit MCQs as text", expanded=False):
+            txt_default = mcq_df_to_text(st.session_state.mcq_df)
+            txt_edit = st.text_area("", value=txt_default, height=320, label_visibility="collapsed", key="mcq_text_box")
+            if st.button("Apply text edits to MCQs"):
+                st.session_state.mcq_df = mcq_text_to_df(txt_edit, st.session_state.mcq_df)
+
         st.markdown("<div class='dl-row'>", unsafe_allow_html=True)
-        st.download_button("Download Word (.docx)", df_to_docx_mcqs(edited, _fallback(topic,"Module")),
+        st.download_button("Download Word (.docx)", df_to_docx_mcqs(st.session_state.mcq_df, _fallback(topic,"Module")),
                            file_name="adi_mcqs.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        st.download_button("Download Moodle (GIFT)", mcq_to_gift(edited, _fallback(topic,"Module")),
+        st.download_button("Download Moodle (GIFT)", mcq_to_gift(st.session_state.mcq_df, _fallback(topic,"Module")),
                            file_name="adi_mcqs_gift.txt", mime="text/plain")
-        st.download_button("Download CSV", df_to_csv_bytes(edited),
+        st.download_button("Download CSV", df_to_csv_bytes(st.session_state.mcq_df),
                            file_name="adi_mcqs.csv", mime="text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -614,9 +810,25 @@ with mcq_tab:
 with act_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>Activities Planner</p>", unsafe_allow_html=True)
+
+    # Inline Lesson/Week pickers for Activities
+    cL2, cW2, _ = st.columns([1,1,6])
+    with cL2:
+        _les_act = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1, key="lesson_inline_act")
+    with cW2:
+        _wek_act = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1, key="week_inline_act")
+    if (_les_act != st.session_state.lesson) or (_wek_act != st.session_state.week):
+        st.session_state.lesson = int(_les_act)
+        st.session_state.week = int(_wek_act)
+        bloom = bloom_focus_for_week(st.session_state.week)
+
     default_idx = ["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium")
     tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=default_idx)
     topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
+
+    # eBook source (same var as MCQs, harmless if edited)
+    with st.expander("Source (from upload) — optional", expanded=False):
+        source2 = st.text_area("", value=st.session_state.upload_text, height=160, label_visibility="collapsed")
 
     if st.button("Generate Activities"):
         with st.spinner("Assembling activities…"):
@@ -625,19 +837,31 @@ with act_tab:
                 int(st.session_state.ref_act_d),
                 tier,
                 topic2,
-                source,   # pass mined eBook text for hints
+                source2,
+                lesson=int(st.session_state.lesson),
+                week=int(st.session_state.week),
             )
 
-    if st.session_state.act_df is None:
+    if st.session_state.act_df is None or st.session_state.act_df.empty:
         st.info("No activities yet. Use the button above to generate.")
     else:
-        act_edit = st.data_editor(st.session_state.act_df, num_rows="dynamic", use_container_width=True, key="act_editor")
+        act_edit_cols = ["Lesson","Week","Policy focus","Title","Tier","Objective","Steps","Materials","Assessment","Duration (mins)"]
+        act_view = st.session_state.act_df[act_edit_cols] if all(c in st.session_state.act_df.columns for c in act_edit_cols) else st.session_state.act_df
+        act_edit = st.data_editor(act_view, num_rows="dynamic", use_container_width=True, key="act_editor")
         st.session_state.act_df = act_edit
+
+        # Text editor for Activities
+        with st.expander("Edit activities as text", expanded=False):
+            txt_default = acts_df_to_text(st.session_state.act_df)
+            txt_edit = st.text_area("", value=txt_default, height=320, label_visibility="collapsed", key="act_text_box")
+            if st.button("Apply text edits to Activities"):
+                st.session_state.act_df = acts_text_to_df(txt_edit, st.session_state.act_df)
+
         st.markdown("<div class='dl-row'>", unsafe_allow_html=True)
-        st.download_button("Download Word (.docx)", df_to_docx_activities(act_edit, _fallback(topic2,"Module")),
+        st.download_button("Download Word (.docx)", df_to_docx_activities(st.session_state.act_df, _fallback(topic2,"Module")),
                            file_name="adi_activities.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        st.download_button("Download CSV", df_to_csv_bytes(act_edit),
+        st.download_button("Download CSV", df_to_csv_bytes(st.session_state.act_df),
                            file_name="adi_activities.csv", mime="text/csv")
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
