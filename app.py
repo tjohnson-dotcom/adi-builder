@@ -1,11 +1,8 @@
-# app.py — ADI Builder (Polished UI • Full Features)
+# app.py — ADI Builder (Polished UI • Sidebar & Bloom Highlights)
 # ---------------------------------------------------------------
 # Run locally:
 #   pip install -r requirements.txt
 #   streamlit run app.py
-#
-# Sleek ADI-branded UI + PDF/DOCX/PPTX parsing + Bloom policy highlight,
-# editable MCQs/Activities, and print‑ready Word exports (plus GIFT/CSV).
 
 import base64
 import io
@@ -54,10 +51,15 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
 
+/* SIDEBAR */
+section[data-testid='stSidebar']>div{background:#F3F2ED; height:100%}
+.side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px; margin:10px 6px; box-shadow:var(--shadow)}
+.side-cap{font-size:12px; color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; margin:0 0 8px}
+.rule{height:2px; background:linear-gradient(90deg,var(--adi-gold),transparent); border:0; margin:6px 0 10px}
+
 /* CARDS */
 .card{background:var(--card); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); padding:16px; margin:10px 0}
 .cap{color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; font-size:12px; margin:0 0 10px}
-.section-title{font-weight:800; color:var(--ink); margin:0 0 8px}
 
 /* INPUTS */
 .stTextArea textarea, .stTextInput input{border:2px solid var(--adi-green)!important; border-radius:12px!important}
@@ -67,21 +69,27 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 div.stButton>button{background:var(--adi-green); color:#fff; border:none; border-radius:999px; padding:.6rem 1.1rem; font-weight:700; box-shadow:0 8px 18px rgba(31,76,44,.25)}
 div.stButton>button:hover{filter:brightness(.98); box-shadow:0 0 0 3px rgba(200,168,90,.35)}
 
+/* TABS */
+[data-testid='stTabs'] button{font-weight:700; color:#445;}
+[data-testid='stTabs'] button[aria-selected='true']{color:var(--adi-green)!important; border-bottom:3px solid var(--adi-gold)!important}
+
 /* BADGES */
 .badge{display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:999px; border:1px solid var(--border); margin:2px 6px 2px 0; font-weight:600}
 .low{background:#eaf5ec; color:#245a34}
 .med{background:#f8f3e8; color:#6a4b2d}
 .high{background:#f3f1ee; color:#4a4a45}
+.active-glow{box-shadow:0 0 0 3px rgba(36,90,52,.25)}
+.active-amber{box-shadow:0 0 0 3px rgba(200,168,90,.35)}
+.active-gray{box-shadow:0 0 0 3px rgba(120,120,120,.25)}
 
 /* DOWNLOAD STRIP */
 .dl-row{display:flex; gap:10px; flex-wrap:wrap}
-.dl-btn{display:inline-block; padding:10px 14px; border-radius:999px; border:1px solid var(--border); background:#f8faf8}
 </style>
 """
 st.markdown(ADI_CSS, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------
-# Session state
+# Session state & constants
 # ---------------------------------------------------------------
 
 def ensure_state():
@@ -124,17 +132,20 @@ def extract_text_from_upload(up_file) -> str:
         if name.endswith(".pdf"):
             reader = PdfReader(up_file)
             for page in reader.pages[:6]:
-                text += (page.extract_text() or "") + "\n"
+                text += (page.extract_text() or "") + "
+"
         elif name.endswith(".docx"):
             doc = Document(up_file)
             for p in doc.paragraphs[:60]:
-                text += p.text + "\n"
+                text += p.text + "
+"
         elif name.endswith(".pptx"):
             prs = Presentation(up_file)
             for slide in prs.slides[:15]:
                 for shape in slide.shapes:
                     if hasattr(shape, "text") and shape.text:
-                        text += shape.text + "\n"
+                        text += shape.text + "
+"
         return text.strip()[:1000]
     except Exception as e:
         return f"[Could not parse file: {e}]"
@@ -208,16 +219,18 @@ def mcq_to_docx(df:pd.DataFrame, topic:str)->bytes:
 def mcq_to_gift(df:pd.DataFrame, topic:str)->bytes:
     lines=[f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
     for i, row in df.reset_index(drop=True).iterrows():
-        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("\n"," ").strip()
+        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("
+"," ").strip()
         opts=[row['Option A'],row['Option B'],row['Option C'],row['Option D']]
         ans_idx={"A":0,"B":1,"C":2,"D":3}.get(row['Answer'].strip().upper(),0)
-        def esc(s): return s.replace('{','\\{').replace('}','\\}')
+        def esc(s): return s.replace('{','\{').replace('}','\}')
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j,o in enumerate(opts):
             lines.append(f"={'=' if j==ans_idx else '~'}{esc(o)}" if j==ans_idx else f"~{esc(o)}")
         lines.append("}")
         lines.append("")
-    return "\n".join(lines).encode("utf-8")
+    return "
+".join(lines).encode("utf-8")
 
 
 def df_to_csv_bytes(df:pd.DataFrame)->bytes:
@@ -256,35 +269,38 @@ with st.container():
     )
 
 # ---------------------------------------------------------------
-# Sidebar (inputs only)
+# Sidebar (appealing panels + policy emphasis)
 # ---------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### Upload (optional)")
+    st.markdown("<div class='side-card'><div class='side-cap'>Upload (optional)</div><hr class='rule'/>", unsafe_allow_html=True)
     up_file = st.file_uploader("PDF / DOCX / PPTX", type=["pdf","docx","pptx"], help="Drop an eBook, lesson plan, or PPT to prefill Source text.")
-    if up_file:
-        st.session_state.upload_text = extract_text_from_upload(up_file)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### Course context")
+    st.markdown("<div class='side-card'><div class='side-cap'>Course context</div><hr class='rule'/>", unsafe_allow_html=True)
     st.session_state.lesson = st.selectbox("Lesson", list(range(1,7)), index=st.session_state.lesson-1)
     st.session_state.week = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
     bloom = bloom_focus_for_week(st.session_state.week)
     st.caption(f"ADI policy → Week {st.session_state.week}: **{bloom}** focus (1–4 Low, 5–9 Medium, 10–14 High)")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### MCQ blocks")
-    pick = st.radio("Quick pick", [5,10,20,30], horizontal=True, index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
+    st.markdown("<div class='side-card'><div class='side-cap'>Knowledge MCQs (ADI Policy)</div><hr class='rule'/>", unsafe_allow_html=True)
+    pick = st.radio("Quick pick blocks", [5,10,20,30], horizontal=True, index=[5,10,20,30].index(st.session_state.mcq_blocks) if st.session_state.mcq_blocks in [5,10,20,30] else 1)
     st.session_state.mcq_blocks = pick
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### Activities (for Activities tab)")
+    st.markdown("<div class='side-card'><div class='side-cap'>Skills Activities</div><hr class='rule'/>", unsafe_allow_html=True)
     st.session_state.setdefault("ref_act_n",3)
     st.session_state.setdefault("ref_act_d",45)
     st.session_state.ref_act_n = st.number_input("Activities count", min_value=1, value=st.session_state.ref_act_n, step=1)
     st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # parse upload after UI build so the spinner doesn't block panel
+    if up_file:
+        st.session_state.upload_text = extract_text_from_upload(up_file)
 
 # ---------------------------------------------------------------
-# Tabs (outputs only)
+# Tabs (outputs only) with Bloom highlight on selection
 # ---------------------------------------------------------------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
@@ -299,11 +315,14 @@ with mcq_tab:
 
     source = st.text_area("Source text (editable)", value=st.session_state.upload_text, height=140)
 
-    # Always-visible Bloom legend
+    # Bloom legend with policy highlight
     st.markdown("**Bloom’s verbs (ADI Policy)**")
-    st.markdown(" ".join([f"<span class='badge low'>{w}</span>" for w in LOW_VERBS]), unsafe_allow_html=True)
-    st.markdown(" ".join([f"<span class='badge med'>{w}</span>" for w in MED_VERBS]), unsafe_allow_html=True)
-    st.markdown(" ".join([f"<span class='badge high'>{w}</span>" for w in HIGH_VERBS]), unsafe_allow_html=True)
+    low_class = "badge low " + ("active-glow" if bloom=="Low" else "")
+    med_class = "badge med " + ("active-amber" if bloom=="Medium" else "")
+    high_class = "badge high " + ("active-gray" if bloom=="High" else "")
+    st.markdown(" ".join([f"<span class='{low_class}'>{w}</span>" for w in LOW_VERBS]), unsafe_allow_html=True)
+    st.markdown(" ".join([f"<span class='{med_class}'>{w}</span>" for w in MED_VERBS]), unsafe_allow_html=True)
+    st.markdown(" ".join([f"<span class='{high_class}'>{w}</span>" for w in HIGH_VERBS]), unsafe_allow_html=True)
 
     if st.button("Generate MCQ Blocks"):
         with st.spinner("Building MCQ blocks…"):
@@ -324,11 +343,9 @@ with mcq_tab:
 with act_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>Activities Planner</p>", unsafe_allow_html=True)
-    a_col1, a_col2 = st.columns([1,1])
-    with a_col1:
-        tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium"))
-    with a_col2:
-        topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
+    default_idx = ["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium")
+    tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=default_idx)
+    topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
 
     if st.button("Generate Activities"):
         with st.spinner("Assembling activities…"):
