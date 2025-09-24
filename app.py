@@ -1,4 +1,4 @@
-# app.py — ADI Builder V3 (polished UI, sidebar context, policy-aligned MCQs & Activities)
+# app.py — ADI Builder V3 (polished UI, sidebar master, mirrored context, policy-aligned MCQs & Activities)
 
 import base64
 import io
@@ -52,7 +52,7 @@ def _read_logo_data_uri(path: str) -> str | None:
 
 logo_uri = _read_logo_data_uri(LOGO_PATH)
 
-# ----------------------------- CSS (restores polished look) -----------------------------
+# ----------------------------- CSS (polished look + pill highlights) -----------------------------
 ADI_CSS = """
 <style>
 :root{
@@ -81,7 +81,7 @@ section[data-testid='stSidebar']>div{background:linear-gradient(180deg,#F3F2ED,#
 section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]{border-radius:14px; border:1px dashed #cfd6cf; background:#ffffff; margin-top:8px}
 section[data-testid='stSidebar'] div[data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green); box-shadow:0 0 0 3px rgba(36,90,52,.12)}
 
-/* radio pills */
+/* radio pills (sidebar quick picks) */
 section[data-testid='stSidebar'] [role='radiogroup'] label{
   border:1px solid var(--border); padding:6px 10px; margin-right:8px; border-radius:999px; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,.04);
 }
@@ -110,6 +110,10 @@ section[data-testid='stSidebar'] [role='radiogroup'] input:checked + div{
 .policy-group.high{background:linear-gradient(180deg,#f5f4f1,#ffffff)}
 .policy-label{position:absolute; right:12px; top:10px; font-size:11px; color:#6b7280}
 
+/* Selectable verb pills for Activities (multiselect tags) */
+div[data-baseweb="tag"]{border-radius:999px; border:1px solid var(--border)}
+div[data-baseweb="tag"][aria-selected="true"]{box-shadow:0 0 0 3px rgba(200,168,90,.25);}
+
 /* confirm CSS loaded */
 .adi-badge{position:fixed;top:10px;right:12px;z-index:9999;background:var(--adi-green);color:#fff;padding:6px 10px;border-radius:999px;font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
 </style>
@@ -126,6 +130,7 @@ def ensure_state():
     ss.setdefault("mcq_df", None)
     ss.setdefault("act_df", None)
     ss.setdefault("upload_text", "")
+    ss.setdefault("act_selected_verbs", [])  # for activities verb selection
 
 ensure_state()
 
@@ -135,7 +140,7 @@ HIGH_VERBS = ["evaluate", "synthesize", "design", "justify"]
 
 ADI_VERBS = {
     "Low": LOW_VERBS,
-    "Medium": ["apply", "demonstrate", "interpret", "compare", "solve", "illustrate"],
+    "Medium": ["apply", "demonstrate", "interpret", "compare", "solve", "illustrate", "analyze"],
     "High": ["analyze", "evaluate", "justify", "synthesize", "design", "formulate"],
 }
 
@@ -169,7 +174,6 @@ def extract_text_from_upload(up_file) -> str:
                 for shp in slide.shapes:
                     if hasattr(shp, "text") and shp.text:
                         text += shp.text + "\n"
-        # tidy
         lines = [ln.strip() for ln in text.replace("\r", "\n").split("\n") if ln.strip()]
         return "\n".join(lines)[:4000]
     except Exception as e:
@@ -195,7 +199,7 @@ def _sentences(text: str) -> list[str]:
     seen = set()
     for s in rough:
         s_clean = re.sub(r"\s+", " ", s).strip()
-        if not (30 <= len(s_clean) <= 180):  # keep usable lengths
+        if not (30 <= len(s_clean) <= 180):
             continue
         k = s_clean.lower()
         if k not in seen:
@@ -237,7 +241,6 @@ def _distractors_from_sentences(correct: str, pool: list[str], n: int) -> list[s
             out.append(s)
         if len(out) == n:
             break
-    # pad if needed
     filler = [
         "This option generalizes beyond the scope defined in the module.",
         "The statement is partially true but misses a required constraint.",
@@ -320,13 +323,13 @@ def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int) -> 
     return df.sort_values(["Block","Order"], kind="stable").reset_index(drop=True)
 
 
-def generate_activities(count: int, duration: int, tier: str, topic: str, source: str = "",
-                        lesson: int = 1, week: int = 1) -> pd.DataFrame:
+def generate_activities(count: int, duration: int, tier: str, topic: str, chosen_verbs: list[str],
+                        source: str = "", lesson: int = 1, week: int = 1) -> pd.DataFrame:
     """
-    Lesson/Week-linked activities with Bloom-appropriate verbs and timed steps.
+    Lesson/Week-linked activities with Bloom-appropriate verbs (user-selectable) and timed steps.
     """
     topic = _fallback(topic, "the module")
-    verbs = ADI_VERBS.get(tier, ADI_VERBS["Medium"])
+    verbs = chosen_verbs or ADI_VERBS.get(tier, ADI_VERBS["Medium"])
 
     # mine simple procedural hints from source (optional)
     steps_hints = []
@@ -448,7 +451,7 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# ----------------------------- Sidebar (controls live here) -----------------------------
+# ----------------------------- Sidebar (master controls) -----------------------------
 with st.sidebar:
     # Upload
     with st.container():
@@ -501,13 +504,22 @@ with st.sidebar:
 # ----------------------------- Tabs (main area) -----------------------------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
+# ===== MCQs tab =====
 with mcq_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>MCQ Generator</p>", unsafe_allow_html=True)
 
+    # Mirrored (read-only) context for confidence
+    col1, col2, col3 = st.columns([1,1,2])
+    with col1:
+        st.selectbox("Lesson", [st.session_state.lesson], index=0, disabled=True, key="mcq_mirror_lesson")
+    with col2:
+        st.selectbox("Week", [st.session_state.week], index=0, disabled=True, key="mcq_mirror_week")
+    with col3:
+        bloom = bloom_focus_for_week(int(st.session_state.week))
+        st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True)
+
     topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-    bloom = bloom_focus_for_week(int(st.session_state.week))
-    st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True)
 
     # eBook source (optional)
     with st.expander("Source (from upload) — optional", expanded=False):
@@ -538,7 +550,9 @@ with mcq_tab:
 
     if st.button("Generate MCQ Blocks"):
         with st.spinner("Building MCQ blocks…"):
-            st.session_state.mcq_df = generate_mcq_blocks(topic, source_mcq, int(st.session_state.mcq_blocks), int(st.session_state.week))
+            st.session_state.mcq_df = generate_mcq_blocks(
+                topic, source_mcq, int(st.session_state.mcq_blocks), int(st.session_state.week)
+            )
 
     if st.session_state.mcq_df is None or st.session_state.mcq_df.empty:
         st.info("No MCQs yet. Use the button above to generate.")
@@ -560,13 +574,33 @@ with mcq_tab:
         st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+# ===== Activities tab =====
 with act_tab:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>Activities Planner</p>", unsafe_allow_html=True)
 
+    # Mirrored (read-only) context for confidence
+    col1, col2, col3 = st.columns([1,1,2])
+    with col1:
+        st.selectbox("Lesson", [st.session_state.lesson], index=0, disabled=True, key="act_mirror_lesson")
+    with col2:
+        st.selectbox("Week", [st.session_state.week], index=0, disabled=True, key="act_mirror_week")
+    with col3:
+        bloom = bloom_focus_for_week(int(st.session_state.week))
+        st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True, key="act_mirror_bloom")
+
+    # Emphasis (can override week suggestion)
     default_idx = ["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium")
-    tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=default_idx)
-    topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
+    tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=default_idx, key="act_tier")
+
+    # Selectable verbs (highlighted chips)
+    verbs_for_tier = ADI_VERBS[tier]
+    st.markdown("**Select verbs to emphasise (optional)** — defaults use the policy verbs for this tier.")
+    st.session_state.act_selected_verbs = st.multiselect(
+        "Bloom verbs", options=verbs_for_tier, default=verbs_for_tier[:2], key="act_verbs"
+    )
+
+    topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus", key="act_topic")
 
     with st.expander("Source (from upload) — optional", expanded=False):
         source_activities = st.text_area("", value=st.session_state.upload_text, height=160, label_visibility="collapsed", key="source_activities")
@@ -578,6 +612,7 @@ with act_tab:
                 int(st.session_state.ref_act_d),
                 tier,
                 topic2,
+                st.session_state.act_selected_verbs,
                 source_activities,
                 lesson=int(st.session_state.lesson),
                 week=int(st.session_state.week),
@@ -610,3 +645,4 @@ st.markdown(
     • Gold underline on the active tab indicates the correct theme.  
     """
 )
+
