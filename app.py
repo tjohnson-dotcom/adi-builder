@@ -15,7 +15,6 @@ from typing import List, Dict, Any
 
 import pandas as pd
 import streamlit as st
-from docx import Document as DocxDocument
 from docx import Document
 from PyPDF2 import PdfReader
 from pptx import Presentation
@@ -116,18 +115,21 @@ def extract_text_from_upload(up_file) -> str:
         if name.endswith(".pdf"):
             reader = PdfReader(up_file)
             for page in reader.pages[:5]:
-                text += page.extract_text() or ""
+                text += (page.extract_text() or "") + "
+"
         elif name.endswith(".docx"):
-            doc = DocxDocument(up_file)
-            for p in doc.paragraphs[:30]:
-                text += p.text + "\n"
+            doc = Document(up_file)
+            for p in doc.paragraphs[:50]:
+                text += p.text + "
+"
         elif name.endswith(".pptx"):
             prs = Presentation(up_file)
-            for slide in prs.slides[:10]:
+            for slide in prs.slides[:12]:
                 for shape in slide.shapes:
                     if hasattr(shape, "text"):
-                        text += shape.text + "\n"
-        return text.strip()[:800]  # limit for UI
+                        text += shape.text + "
+"
+        return text.strip()[:800]
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
@@ -200,15 +202,21 @@ def mcq_to_docx(df:pd.DataFrame, topic:str)->bytes:
 def mcq_to_gift(df:pd.DataFrame, topic:str)->bytes:
     lines=[f"// ADI MCQs — {topic}", f"// Exported {datetime.now():%Y-%m-%d %H:%M}", ""]
     for i, row in df.reset_index(drop=True).iterrows():
-        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("\n"," ").strip()
+        qname=f"Block{row['Block']}-{row['Tier']}-{i+1}"; stem=row['Question'].replace("
+"," ").strip()
         opts=[row['Option A'],row['Option B'],row['Option C'],row['Option D']]
         ans_idx={"A":0,"B":1,"C":2,"D":3}.get(row['Answer'].strip().upper(),0)
-        def esc(s): return s.replace('{','\\{').replace('}','\\}')
+        def esc(s): return s.replace('{','\{').replace('}','\}')
         lines.append(f"::{qname}:: {esc(stem)} {{")
         for j,o in enumerate(opts):
-            lines.append(f"={'=' if j==ans_idx else '~'}{esc(o)}" if j==ans_idx else f"~{esc(o)}")
-        lines.append("}\n")
-    return "\n".join(lines).encode("utf-8")
+            if j==ans_idx:
+                lines.append(f"={esc(o)}")
+            else:
+                lines.append(f"~{esc(o)}")
+        lines.append("}")
+        lines.append("")
+    return "
+".join(lines).encode("utf-8")
 
 
 def df_to_csv_bytes(df:pd.DataFrame)->bytes:
@@ -302,4 +310,41 @@ with mcq_tab:
         with st.spinner("Building MCQ blocks…"):
             st.session_state.mcq_df = generate_mcq_blocks(topic, source, st.session_state.mcq_blocks, st.session_state.week)
 
-    if st.session_state
+    if st.session_state.mcq_df is None:
+        st.info("No MCQs yet. Use the button above to generate.")
+    else:
+        edited = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", use_container_width=True, key="mcq_editor")
+        st.session_state.mcq_df = edited
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.download_button("Download Word (.docx)", mcq_to_docx(edited, _fallback(topic,"Module")), file_name="adi_mcqs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        with c2:
+            st.download_button("Download Moodle (GIFT)", mcq_to_gift(edited, _fallback(topic,"Module")), file_name="adi_mcqs_gift.txt", mime="text/plain")
+        with c3:
+            st.download_button("Download CSV", df_to_csv_bytes(edited), file_name="adi_mcqs.csv", mime="text/csv")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with act_tab:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<p class='cap'>Activities Planner</p>", unsafe_allow_html=True)
+    a_col1, a_col2 = st.columns([1,1])
+    with a_col1:
+        tier = st.radio("Emphasis", ["Low","Medium","High"], horizontal=True, index=["Low","Medium","High"].index(bloom if bloom in ["Low","Medium","High"] else "Medium"))
+    with a_col2:
+        topic2 = st.text_input("Topic (optional)", value="", placeholder="Module or unit focus")
+
+    if st.button("Generate Activities"):
+        with st.spinner("Assembling activities…"):
+            st.session_state.act_df = generate_activities(int(st.session_state.ref_act_n), int(st.session_state.ref_act_d), tier, topic2)
+
+    if st.session_state.act_df is None:
+        st.info("No activities yet. Use the button above to generate.")
+    else:
+        act_edit = st.data_editor(st.session_state.act_df, num_rows="dynamic", use_container_width=True, key="act_editor")
+        st.session_state.act_df = act_edit
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button("Download Word (.docx)", activities_to_docx(act_edit, _fallback(topic2,"Module")), file_name="adi_activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        with c2:
+            st.download_button("Download CSV", df_to_csv_bytes(act_edit), file_name="adi_activities.csv", mime="text/csv")
+    st.markdown("</div>", unsafe_allow_html=True)
