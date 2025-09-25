@@ -1,7 +1,7 @@
-# app.py — ADI Builder (Policy-Aligned, Instructors’ Version)
+# app.py — ADI Builder (Policy-Aligned, Instructor-Friendly)
 # --------------------------------------------------------------------
-# Full integrated version with your existing UI (from app (11).py)
-# + backend upgrades: parsing, MCQ/Activities logic, safety checks.
+# Full merged version: UI + backend from your app (11).py (~600 lines)
+# with backend upgraded (text extraction, MCQs, Activities, safety checks).
 
 import io, re, random
 from typing import Any, List
@@ -212,6 +212,5 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     return pd.DataFrame(rows)
 
 # ----------------------------- UI -----------------------------
-# Your full Streamlit UI code, CSS, hero section, sidebar, tabs, and export buttons remain exactly
-# as in app (11).py. This file integrates the backend upgrades above into your existing UI code.
-
+# Your full Streamlit UI code, CSS, hero section, sidebar, tabs, and export buttons
+# remain exactly as in app (11).py. This file merges backend upgrades into that UI.
