@@ -1,6 +1,11 @@
-# ADI Builder — Lesson Activities & Questions (final)
-# UI matches your preferred screenshot (Topic in main pane, Bloom focus shown, Bloom verbs chips under source).
-# Includes robust parsing (PDF/DOCX/PPTX), MCQs (Low→Medium→High), Activities, CSV + Word exports.
+# ADI Builder — Lesson Activities & Questions (fresh build)
+# • Matches your reference UI (green ADI header, compact cards)
+# • Topic+Bloom row; Source field
+# • Bloom verbs with HIGHLIGHTS for the active tier (auto from Week)
+#   and in Activities tab highlights the user-selected tier
+# • Robust parsing for PDF/DOCX/PPTX
+# • MCQs (Low→Medium→High) + Activities
+# • CSV + Word (.docx) exports
 
 import io, re, random
 from typing import Any, List
@@ -26,7 +31,7 @@ try:
 except Exception:
     Presentation = None
 
-# Word exports
+# Word export deps
 from io import BytesIO
 try:
     from docx import Document
@@ -41,12 +46,14 @@ st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", p
 
 ADI_CSS = """
 <style>
-:root{ --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-gold:#C8A85A; --ink:#1f2937; --border:#E3E8E3; --bg:#F7F7F4; }
+:root{ --adi-green:#245a34; --adi-green-600:#1f4c2c; --adi-gold:#C8A85A; --ink:#1f2937; --muted:#6b7280; --border:#E3E8E3; --bg:#F7F7F4; --chip:#eef2ee; }
 html,body{background:var(--bg);} main .block-container{max-width:1180px; padding-top:0.6rem}
+/* Header */
 .adi-hero{display:flex; align-items:center; gap:14px; padding:18px 20px; border-radius:22px; color:#fff;
   background:linear-gradient(95deg,var(--adi-green),var(--adi-green-600)); box-shadow:0 12px 28px rgba(0,0,0,.07); margin-bottom:14px}
 .h-title{font-size:22px;font-weight:800;margin:0}
 .h-sub{font-size:12px;opacity:.95;margin:2px 0 0 0}
+/* Cards & sidebar */
 .side-card{background:#fff; border:1px solid var(--border); border-radius:16px; padding:10px 16px; margin:14px 8px; box-shadow:0 8px 18px rgba(0,0,0,.06)}
 .side-cap{display:flex; align-items:center; gap:10px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; margin:0 0 8px}
 .side-cap .dot{width:9px;height:9px;border-radius:999px;background:var(--adi-gold); box-shadow:0 0 0 4px rgba(200,168,90,.18)}
@@ -54,10 +61,19 @@ html,body{background:var(--bg);} main .block-container{max-width:1180px; padding
 .card{background:#fff; border:1px solid var(--border); border-radius:18px; box-shadow:0 12px 28px rgba(0,0,0,.07); padding:16px; margin:10px 0}
 .cap{color:var(--adi-green); text-transform:uppercase; letter-spacing:.06em; font-size:12px; margin:0 0 10px}
 .context-banner{background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px 12px; display:flex; gap:10px; align-items:center}
-.badge{display:inline-flex; align-items:center; border-radius:999px; padding:2px 8px; font-size:12px; border:1px solid var(--border); margin:2px 6px 2px 0; font-weight:600}
-.low{background:#eaf5ec; color:#245a34}
-.med{background:#fbf6ec; color:#6a4b2d}
-.high{background:#f3f1ee; color:#4a4a45}
+/* Chips */
+.row-head{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.row-cap{font-size:11px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap; gap:8px; margin-top:6px}
+.chip{display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:4px 10px; font-size:12px; background:#fff; box-shadow:0 1px 0 rgba(0,0,0,.02)}
+.chip.low{background:#eaf5ec}
+.chip.med{background:#fbf6ec}
+.chip.high{background:#f3f1ee}
+/* ACTIVE highlight for current tier */
+.row.active .chip{border-color:var(--adi-green-600); box-shadow:0 4px 10px rgba(36,90,52,.1)}
+.row.active .chip.low{background:#ddefe3}
+.row.active .chip.med{background:#f7eddc}
+.row.active .chip.high{background:#ece9e5}
 </style>
 """
 st.markdown(ADI_CSS, unsafe_allow_html=True)
@@ -303,7 +319,7 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
         })
     return pd.DataFrame(rows)
 
-# ----------------------------- Word (.docx) exports -----------------------------
+# ----------------------------- Word exports -----------------------------
 
 def _docx_heading(doc, text, level=0):
     p = doc.add_paragraph()
@@ -375,7 +391,6 @@ with st.sidebar:
     st.session_state.setdefault("week", 3)
     st.session_state.lesson = st.number_input("Lesson", 1, 20, st.session_state.lesson)
     st.session_state.week = st.number_input("Week", 1, 14, st.session_state.week)
-    # Topic moved to main pane (to match your screenshot)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='side-card'><div class='side-cap'><span class='dot'></span>KNOWLEDGE MCQs (ADI POLICY)</div><hr class='rule'/>", unsafe_allow_html=True)
@@ -396,7 +411,7 @@ with st.sidebar:
 # ----------------------------- Tabs -----------------------------
 mcq_tab, act_tab = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities"])
 
-# ===== MCQs tab (matches your screenshot) =====
+# ===== MCQs tab =====
 with mcq_tab:
     bloom = bloom_focus_for_week(int(st.session_state.week))
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -406,7 +421,7 @@ with mcq_tab:
         unsafe_allow_html=True
     )
 
-    # TOP ROW: Topic (left) + Bloom focus (right)
+    # Topic + Bloom row
     c1, c2 = st.columns([3, 1])
     st.session_state.topic = c1.text_input(
         "Topic / Outcome (optional)",
@@ -415,32 +430,27 @@ with mcq_tab:
     )
     c2.text_input("Bloom focus (auto)", value=f"Week {int(st.session_state.week)}: {bloom}", disabled=True)
 
-    # Source text
+    # Source
     source_mcq = st.text_area("Source text (editable)", value=st.session_state.upload_text or "", height=170)
 
-    # Bloom verbs section
+    # Bloom verbs (with highlight for active tier)
     st.markdown("**Bloom’s verbs (ADI Policy)**")
     st.caption("Grouped by policy tiers and week ranges")
 
-    def _chip_row(title: str, verbs: list[str], caption_right: str):
-        st.markdown(
-            f"""
-            <div style='display:flex;justify-content:space-between;align-items:center;margin-top:10px;'>
-              <div><strong style='margin-left:6px'>{title}</strong></div>
-              <div style='font-size:11px;color:#6b7280'>{caption_right}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    def _row(title: str, verbs: list[str], right: str, active: bool=False):
+        row_cls = "row active" if active else "row"
+        st.markdown(f"<div class='{row_cls}'>" \
+                    f"<div class='row-head'><div><strong>{title}</strong></div>" \
+                    f"<div class='row-cap'>{right}</div></div>", unsafe_allow_html=True)
+        # Render chips
         cls = 'low' if title.startswith('Low') else 'med' if title.startswith('Medium') else 'high'
-        ch = [f"<span class='badge {cls}'>{v}</span>" for v in verbs]
-        st.markdown("<div style='margin-top:6px'>" + " ".join(ch) + "</div>", unsafe_allow_html=True)
+        chips = " ".join([f"<span class='chip {cls}'>{v}</span>" for v in verbs])
+        st.markdown(f"<div class='chips'>{chips}</div>", unsafe_allow_html=True)
 
-    _chip_row("Low (Weeks 1–4)",  LOW_VERBS,  "Remember / Understand")
-    _chip_row("Medium (Weeks 5–9)", MED_VERBS, "Apply / Analyze")
-    _chip_row("High (Weeks 10–14)", HIGH_VERBS, "Evaluate / Create")
+    _row("Low (Weeks 1–4)",  LOW_VERBS,  "Remember / Understand", active=(bloom=="Low"))
+    _row("Medium (Weeks 5–9)", MED_VERBS, "Apply / Analyze",     active=(bloom=="Medium"))
+    _row("High (Weeks 10–14)", HIGH_VERBS, "Evaluate / Create",   active=(bloom=="High"))
 
-    # Generate button
     if st.button("Generate MCQ Blocks", type="primary"):
         df = generate_mcq_blocks(st.session_state.topic, source_mcq, num_blocks=int(st.session_state.mcq_blocks), week=int(st.session_state.week), lesson=int(st.session_state.lesson))
         try:
@@ -449,7 +459,6 @@ with mcq_tab:
             st.warning(str(e))
         st.session_state.mcq_df = df
 
-    # Results + downloads
     if "mcq_df" in st.session_state:
         st.dataframe(st.session_state.mcq_df, use_container_width=True)
         st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"), "mcqs.csv", "text/csv")
@@ -461,13 +470,19 @@ with mcq_tab:
 
 # ===== Activities tab =====
 with act_tab:
-    bloom = bloom_focus_for_week(int(st.session_state.week))
+    bloom_auto = bloom_focus_for_week(int(st.session_state.week))
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<p class='cap'>ACTIVITIES GENERATOR</p>", unsafe_allow_html=True)
-    st.markdown(f"<div class='context-banner'><strong>Context:</strong> Lesson {int(st.session_state.lesson)} • Week {int(st.session_state.week)} • <em>{bloom} focus</em></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='context-banner'><strong>Context:</strong> Lesson {int(st.session_state.lesson)} • Week {int(st.session_state.week)} • <em>{bloom_auto} focus</em></div>", unsafe_allow_html=True)
 
     source_act = st.text_area("(Optional) ADI/override source text", value=st.session_state.upload_text or "", height=160, key="act_src")
-    tier = st.selectbox("Policy focus", ["Low","Medium","High"], index=["Low","Medium","High"].index(bloom))
+    tier = st.selectbox("Policy focus", ["Low","Medium","High"], index=["Low","Medium","High"].index(bloom_auto))
+
+    # Show verbs with highlight for the selected tier (interactive guidance)
+    st.caption("Selected tier verbs highlighted")
+    _row("Low (Weeks 1–4)",  LOW_VERBS,  "Remember / Understand", active=(tier=="Low"))
+    _row("Medium (Weeks 5–9)", MED_VERBS, "Apply / Analyze",     active=(tier=="Medium"))
+    _row("High (Weeks 10–14)", HIGH_VERBS, "Evaluate / Create",   active=(tier=="High"))
 
     if st.button("Generate Activities"):
         act_df = generate_activities(count=int(st.session_state.ref_act_n), duration=int(st.session_state.ref_act_d), tier=tier, topic=st.session_state.get("topic", ""), lesson=int(st.session_state.lesson), week=int(st.session_state.week), source=source_act)
