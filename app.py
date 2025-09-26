@@ -1,3 +1,4 @@
+
 import streamlit as st
 import base64
 import re
@@ -56,4 +57,3 @@ for q in sample_questions:
 # Footer
 st.markdown("---")
 st.markdown("© ADI Builder | Streamlit App")
-
