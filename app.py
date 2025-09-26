@@ -1,8 +1,8 @@
-# app.py — ADI Builder (Full UI preserved + backend upgrades)
-# --------------------------------------------------------------------
-# One-file Streamlit app. Keeps your ADI look (header, chips, sidebar cards)
-# and upgrades parsing + generators. Includes CSV + Word (.docx) exports.
-# Drop this in as app.py and run: streamlit run app.py
+# ADI Builder — Lesson Activities & Questions
+# Full one-file Streamlit app.
+# UI look preserved (ADI banner, sidebar cards, chips).
+# Upgraded parsing (PDF/DOCX/PPTX), MCQs (Low→Med→High), Activities,
+# CSV + Word (.docx) exports.
 
 import io, re, random
 from typing import Any, List
@@ -28,7 +28,7 @@ try:
 except Exception:
     Presentation = None
 
-# For Word exports
+# Word exports
 from io import BytesIO
 try:
     from docx import Document
@@ -84,19 +84,22 @@ def bloom_focus_for_week(week: int) -> str:
     if 5 <= week <= 9: return "Medium"
     return "High"
 
-# ----------------------------- Upload parsing (robust, content-first) -----------------------------
+# ----------------------------- Upload parsing -----------------------------
 def _clean_lines(text: str) -> str:
     lines = [ln.strip() for ln in (text or "").replace("\r","\n").split("\n") if ln.strip()]
     lines = [ln for ln in lines if not re.fullmatch(r"(page\s*\d+|\d+)", ln, flags=re.I)]
     seen, out = set(), []
     for ln in lines:
         k = ln[:80].lower()
-        if k in seen:
+        if k in seen: 
             continue
         seen.add(k); out.append(ln)
     return "\n".join(out)[:6000]
 
 def extract_text_from_upload(up_file) -> str:
+    """
+    Robust extractor for PDF/DOCX/PPTX. Returns ~6k chars of clean text.
+    """
     if up_file is None:
         return ""
     name = (getattr(up_file, "name", "") or "").lower()
@@ -136,7 +139,7 @@ def extract_text_from_upload(up_file) -> str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# ----------------------------- Small NLP helpers -----------------------------
+# ----------------------------- Tiny NLP helpers -----------------------------
 _STOP = {
     "the","a","an","and","or","of","to","in","on","for","with","by","as","is","are","be","was","were","this","that","these","those",
     "it","its","at","from","into","over","under","about","between","within","use","used","using","also","than","which","such","may",
@@ -179,11 +182,12 @@ def _find_sentence_with(term: str, sentences: List[str]) -> str | None:
             return s
     return None
 
-# ----------------------------- MCQ generator (policy-aligned) -----------------------------
+# ----------------------------- MCQ generator -----------------------------
 def _distractors_from_sentences(correct: str, pool: list[str], n: int) -> list[str]:
     rand = random.Random(42)  # deterministic
     base = (correct or "").strip()
     outs: list[str] = []
+
     def tweak(s: str) -> str:
         s2 = re.sub(r"\b(increase[s]?|higher|more)\b", "decrease", s, flags=re.I)
         s2 = re.sub(r"\b(decrease[s]?|lower|less)\b", "increase", s2, flags=re.I)
@@ -191,20 +195,27 @@ def _distractors_from_sentences(correct: str, pool: list[str], n: int) -> list[s
         s2 = re.sub(r"\balways\b", "sometimes", s2, flags=re.I)
         s2 = re.sub(r"\bmust\b", "may", s2, flags=re.I)
         return s2 if s2.lower()!=s.lower() else s + " (in the wrong context)"
+
     if base:
         outs.append(tweak(base))
         outs.append(tweak(base[::-1])[::-1])
+
     ckey = base.lower()[:60]
     cands = [p for p in pool if p and 20 <= len(p) <= 160 and p.lower()[:60] != ckey]
     rand.shuffle(cands)
     for s in cands:
         if len(outs) == n: break
         if s not in outs: outs.append(s)
+
     while len(outs) < n:
         outs.append("This statement misinterprets a key constraint.")
     return outs[:n]
 
 def generate_mcq_blocks(topic: str, source: str, num_blocks: int, week: int, lesson: int = 1) -> pd.DataFrame:
+    """
+    Generates 3 MCQs per block (Low/Medium/High) from uploaded content.
+    Deterministic; same inputs -> same outputs.
+    """
     ctx_banner = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
     src_text = (source or "").strip()
     sents = _sentences(src_text)
@@ -272,9 +283,13 @@ def assert_policy(df: pd.DataFrame):
         assert list(sub["Tier"]) == ["Low","Medium","High"], f"Block {b} must be Low→Medium→High."
         assert list(sub["Q#"]) == [1,2,3], f"Block {b} Q# must be 1..3."
 
-# ----------------------------- Activities generator -----------------------------
+# ----------------------------- Activities -----------------------------
 def generate_activities(count: int, duration: int, tier: str, topic: str,
                         lesson: int, week: int, source: str = "", selected_verbs: list[str] | None = None) -> pd.DataFrame:
+    """
+    Lesson/Week-linked activities with ADI verbs + mined content cues.
+    Deterministic and safe to run multiple times.
+    """
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
     verbs = (selected_verbs or ADI_VERBS.get(tier, ADI_VERBS["Medium"]))[:6]
@@ -319,8 +334,7 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
         })
     return pd.DataFrame(rows)
 
-# ----------------------------- Word (.docx) export helpers -----------------------------
-
+# ----------------------------- Word (.docx) exports -----------------------------
 def _docx_heading(doc, text, level=0):
     p = doc.add_paragraph()
     run = p.add_run(text)
@@ -331,7 +345,6 @@ def _docx_heading(doc, text, level=0):
     else:
         run.font.size = Pt(11)
 
-
 def export_mcqs_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
     if Document is None:
         return b""
@@ -341,7 +354,6 @@ def export_mcqs_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
         sec.left_margin = Inches(0.8); sec.right_margin = Inches(0.8)
     _docx_heading(doc, f"Knowledge MCQs — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
-
     for b in sorted(df["Block"].unique()):
         _docx_heading(doc, f"Block {b}", 1)
         sub = df[df["Block"]==b].sort_values("Q#")
@@ -353,7 +365,6 @@ def export_mcqs_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
             doc.add_paragraph(f"D. {r['Option D']}")
             doc.add_paragraph()
         doc.add_paragraph()
-
     _docx_heading(doc, "Answer Key", 1)
     for b in sorted(df["Block"].unique()):
         sub = df[df["Block"]==b].sort_values("Q#")
@@ -361,7 +372,6 @@ def export_mcqs_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
             doc.add_paragraph(f"Block {int(b)} Q{int(r['Q#'])}: {r['Answer']}")
     bio = BytesIO(); doc.save(bio); bio.seek(0)
     return bio.getvalue()
-
 
 def export_activities_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
     if Document is None:
@@ -372,7 +382,6 @@ def export_activities_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
         sec.left_margin = Inches(0.8); sec.right_margin = Inches(0.8)
     _docx_heading(doc, f"Skills Activities — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
-
     for i, r in df.iterrows():
         _docx_heading(doc, r.get("Title", f"Activity {i+1}"), 1)
         doc.add_paragraph(f"Policy focus: {r['Policy focus']}")
@@ -382,7 +391,6 @@ def export_activities_to_docx(df, lesson:int, week:int, topic:str="") -> bytes:
         doc.add_paragraph(f"Assessment: {r['Assessment']}")
         doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
         doc.add_paragraph()
-
     bio = BytesIO(); doc.save(bio); bio.seek(0)
     return bio.getvalue()
 
@@ -412,7 +420,7 @@ with st.sidebar:
     st.session_state.ref_act_d = st.number_input("Duration (mins)", min_value=5, value=st.session_state.ref_act_d, step=5)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Late parse after controls so UI loads fast
+    # Parse upload late so UI loads instantly
     st.session_state.upload_text = extract_text_from_upload(up_file) if up_file else st.session_state.get("upload_text", "")
 
 # ----------------------------- Tabs -----------------------------
@@ -431,56 +439,3 @@ with mcq_tab:
     with col2:
         st.markdown("<div class='badge low'>Low</div><div class='badge med'>Medium</div><div class='badge high'>High</div>", unsafe_allow_html=True)
         st.caption("Each block generates 3 MCQs: Low → Medium → High")
-
-    if up_file and not st.session_state.upload_text:
-        st.warning("No readable text found. If the file is a scanned PDF or image-only slides, paste text in the box or install parsers: PyPDF2, python-docx, python-pptx (and optionally pdfplumber).")
-
-    if st.button("Generate MCQ Blocks", type="primary"):
-        df = generate_mcq_blocks(topic, source_mcq, num_blocks=int(st.session_state.mcq_blocks), week=int(st.session_state.week), lesson=int(st.session_state.lesson))
-        try:
-            assert_policy(df)
-        except AssertionError as e:
-            st.warning(str(e))
-        st.session_state.mcq_df = df
-
-    if "mcq_df" in st.session_state:
-        st.dataframe(st.session_state.mcq_df, use_container_width=True)
-        st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"), "mcqs.csv", "text/csv")
-        # Word export
-        if Document is not None:
-            docx_bytes = export_mcqs_to_docx(st.session_state.mcq_df, int(st.session_state.lesson), int(st.session_state.week), topic)
-            st.download_button("Download MCQs (Word)", data=docx_bytes, file_name="mcqs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ===== Activities tab =====
-with act_tab:
-    bloom = bloom_focus_for_week(int(st.session_state.week))
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<p class='cap'>ACTIVITIES GENERATOR</p>", unsafe_allow_html=True)
-    st.markdown(f"<div class='context-banner'><strong>Context:</strong> Lesson {int(st.session_state.lesson)} • Week {int(st.session_state.week)} • <em>{bloom} focus</em></div>", unsafe_allow_html=True)
-
-    source_act = st.text_area("(Optional) ADI/override source text", value=st.session_state.upload_text or "", height=160, key="act_src")
-    tier = st.selectbox("Policy focus", ["Low","Medium","High"], index=["Low","Medium","High"].index(bloom))
-
-    if st.button("Generate Activities"):
-        act_df = generate_activities(count=int(st.session_state.ref_act_n), duration=int(st.session_state.ref_act_d), tier=tier, topic=topic, lesson=int(st.session_state.lesson), week=int(st.session_state.week), source=source_act)
-        st.session_state.act_df = act_df
-
-    if "act_df" in st.session_state:
-        st.dataframe(st.session_state.act_df, use_container_width=True)
-        st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"), "activities.csv", "text/csv")
-        if Document is not None:
-            act_docx = export_activities_to_docx(st.session_state.act_df, int(st.session_state.lesson), int(st.session_state.week), topic)
-            st.download_button("Download Activities (Word)", data=act_docx, file_name="activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ----------------------------- Tips -----------------------------
-st.divider()
-st.markdown("""
-**Tips**  
-• Upload a source (PDF/DOCX/PPTX). The generator mines that text for terms, stems and steps.  
-• If styles look default, use Rerun & hard-refresh (Ctrl/Cmd+Shift+R).  
-• Look for the green ADI styling in the chips & cards.  
-""")
