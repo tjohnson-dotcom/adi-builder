@@ -1,3 +1,4 @@
+
 # ADI Builder — Lesson Activities & Questions (final)
 # UI matches your preferred screenshot (Topic in main pane, Bloom focus shown, Bloom verbs chips under source).
 # Includes robust parsing (PDF/DOCX/PPTX), MCQs (Low→Medium→High), Activities, CSV + Word exports.
