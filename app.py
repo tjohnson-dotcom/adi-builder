@@ -48,7 +48,7 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
 .stTabs [role="tab"] p{ margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem; }
 .stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; }
 .stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; }
-/* CHANGED: Generate tab number color to ADI gold */
+/* Generate tab = ADI gold */
 .stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#C8A85A; }
 .stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; }
 .stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
@@ -120,7 +120,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .chip.med{   background:#C8A85A; color:#111; border-color:#9c874b; }
 .chip.high{  background:#333;    color:#fff; border-color:#222; }
 .chip.hl{ outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
-/* NEW: dim non-active Bloom chips */
+/* Dim non-active Bloom chips */
 .chip.dimmed { opacity:0.55; }
 
 /* Pill radios */
@@ -141,7 +141,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .note-green{ padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0; background:linear-gradient(180deg,#f9fefb,#f3fbf6); color:#133c23; font-weight:600; }
 .note-amber{ padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7; background:linear-gradient(180deg,#fffdf7,#fffaf0); color:#4a3d14; font-weight:600; }
 
-/* Strong CTA buttons (Generate/Export) */
+/* Strong CTA buttons */
 .stButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
   color:#fff !important; border:1px solid #1f4e31 !important;
@@ -150,7 +150,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stButton>button:hover{ filter:brightness(1.06); transform:translateY(-1px); }
 
-/* Previews — tier-coloured borders + label separator */
+/* Previews */
 .preview-card{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:8px 0; }
 .mcq-low{   border-left-color:#245a34; }
@@ -166,7 +166,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width: 760px){ .export-grid{ grid-template-columns: 1fr; } }
 .export-card{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow:var(--shadow); }
-.export-title{ font-weight:900; color:var(--ink); margin-bottom:.3rem; }
+.export-title{ font-weight:900; color:#var(--ink); margin-bottom:.3rem; }
 .export-note{ color:#6b7280; font-size:13px; margin-bottom:.6rem; }
 .stDownloadButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi)) !important; color:#fff !important; border:1px solid #1f4e31 !important;
@@ -188,7 +188,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .nextbar .hint{ color:#374151; font-weight:700; }
 .nextbar .soft{ color:#6b7280; font-weight:600; }
 
-/* Soft secondary button style for "Next step" */
+/* Soft secondary button */
 .next-btn button{
   background:#ffffff !important; color:#245a34 !important; border:2px solid #cfe1d7 !important;
   font-weight:800 !important; border-radius:10px !important; padding:.55rem .9rem !important;
@@ -357,9 +357,13 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
+# ---------------- New config defaults
+st.session_state.setdefault("mcq_mode", "Mixed")
+st.session_state.setdefault("act_style", "Standard")
+
 # ---------------- MCQs
 
-def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1) -> pd.DataFrame:
+def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
     sents = _sentences(source or "")
@@ -367,6 +371,13 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     keys = _keywords(source or topic or "", top_n=max(24, total_q*4))
     if not keys: raise ValueError("Couldn’t mine keywords; upload a richer section.")
     rows=[]; rnd=random.Random(2025); made=0; tiers=["Low","Medium","High"]
+
+    def tier_for_q(i):
+        if mode == "All Low": return "Low"
+        if mode == "All Medium": return "Medium"
+        if mode == "All High": return "High"
+        return tiers[i % 3]
+
     for k in keys:
         try:
             idx = next(i for i,s in enumerate(sents) if k.lower() in s.lower())
@@ -380,7 +391,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             rnd.shuffle(extra); cand += extra[:8]
         options = _quality_gate([correct] + cand)
         if len(options) < 4: continue
-        tier = tiers[made % 3]
+        tier = tier_for_q(made)
         if tier == "Low":
             q = f"Which statement about **{k}** best fits *{ctx}*?"
         elif tier == "Medium":
@@ -403,15 +414,13 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
 # ---------------- Activities
 
-def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "") -> pd.DataFrame:
+def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
     verbs = {"Low":LOW_VERBS,"Medium":MED_VERBS,"High":HIGH_VERBS}.get(tier, MED_VERBS)[:6]
     sents = _sentences(source or "")
     if len(sents) < 12: raise ValueError("Not enough source text to build activities (need ~12+ sentences).")
-    hints = [s for s in sents if re.search(
-        r"\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\b",
-        s, re.I)]
+    hints = [s for s in sents if re.search(r"\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\b", s, re.I)]
     hints = _uniq_keep(hints)[:60]
     if not hints: raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
     rnd = random.Random(99)
@@ -423,13 +432,18 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
         core_idx = sents.index(core) if core in sents else 0
         nearby = [h for h in _window(sents, core_idx, 2) if h != core]
         step_line = "; ".join(_uniq_keep([core] + nearby))[:360]
+        style_note = ""
+        if style == "Lab":
+            style_note = " Emphasize safety checks and hands-on measurement."
+        elif style == "Group Task":
+            style_note = " Organize into teams; assign roles for collaboration."
+        elif style == "Reflection":
+            style_note = " End with a written reflection on insights gained."
         rows.append({
             "Lesson": lesson, "Week": week, "Policy focus": tier,
             "Title": f"{ctx} — {tier} Activity {i}", "Tier": tier,
             "Objective": f"Students will {v} key ideas anchored to today’s source.",
-            "Steps": f"Starter ({t1}m): {v.capitalize()} prior knowledge. "
-                     f"Main ({t2}m): Follow these anchored steps — {step_line}. "
-                     f"Plenary ({t3}m): Compare outputs to the source; justify choices against constraints.",
+            "Steps": f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): Follow steps — {step_line}. Plenary ({t3}m): Compare outputs; justify choices.{style_note}",
             "Materials": "Lesson PDF/PPT, mini-whiteboards, markers; timer",
             "Assessment": "Performance check aligned to the anchored steps; short justification.",
             "Duration (mins)": duration,
@@ -475,6 +489,40 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
         doc.add_paragraph(f"Assessment: {r['Assessment']}")
         doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
         doc.add_paragraph()
+    bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+
+# NEW: Combined Word export (MCQs + Activities)
+
+def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | None, lesson:int, week:int, topic:str="")->bytes:
+    if Document is None: return b""
+    doc=Document(); sec=doc.sections[0]
+    if Inches: sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
+    title = f"Combined Lesson — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else "")
+    _docx_heading(doc, title, 0)
+    doc.add_paragraph()
+    if mcq_df is not None and len(mcq_df)>0:
+        _docx_heading(doc, "Part A — Knowledge MCQs", 1)
+        for i, r in mcq_df.reset_index(drop=True).iterrows():
+            doc.add_paragraph(f"{i+1}. ({r['Tier']}) {r['Question']}")
+            doc.add_paragraph(f"A. {r['Option A']}"); doc.add_paragraph(f"B. {r['Option B']}")
+            doc.add_paragraph(f"C. {r['Option C']}"); doc.add_paragraph(f"D. {r['Option D']}")
+            doc.add_paragraph()
+        _docx_heading(doc, "Answer Key", 1)
+        for i, r in mcq_df.reset_index(drop=True).iterrows():
+            doc.add_paragraph(f"Q{i+1}: {r['Answer']}")
+        doc.add_paragraph()
+    if act_df is not None and len(act_df)>0:
+        _docx_heading(doc, "Part B — Skills Activities", 1)
+        for i,r in act_df.reset_index(drop=True).iterrows():
+            _docx_heading(doc, r.get("Title", f"Activity {i+1}"), 2)
+            doc.add_paragraph(f"Policy focus: {r.get('Policy focus','')}")
+            doc.add_paragraph(f"Objective: {r.get('Objective','')}")
+            doc.add_paragraph(f"Steps: {r.get('Steps','')}")
+            doc.add_paragraph(f"Materials: {r.get('Materials','')}")
+            doc.add_paragraph(f"Assessment: {r.get('Assessment','')}")
+            dur = r.get('Duration (mins)', '')
+            if dur != '': doc.add_paragraph(f"Duration: {dur} mins")
+            doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
 
 _GIFT_ESCAPE = str.maketrans({"~": r"\~","=": r"\=","#": r"\#","{": r"\{","}": r"\}",":": r"\:","\n": r"\n"})
@@ -540,7 +588,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"
 ])
 
-
 def progress_fraction()->float:
     steps = 0
     total = 4
@@ -549,7 +596,6 @@ def progress_fraction()->float:
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     return steps/total
-
 
 def next_step_bar(text_left:str, text_right:str):
     st.markdown("<div class='nextbar'>", unsafe_allow_html=True)
@@ -570,7 +616,6 @@ with tab1:
             st.info("Tip: If a PPTX fails, export it as PDF and upload the PDF.")
         else:
             st.success(f"File parsed: **{up.name}** ({up.type})")
-            # Preview first ~2 lines for reassurance
             preview_lines = (st.session_state.src_text or "").split("\n")[:2]
             if any(preview_lines):
                 st.caption("Preview:")
@@ -584,7 +629,7 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    # Step 1 — Lesson & Week
+    # Step 1
     st.markdown("<div class='step green'><div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
     with c1:
@@ -592,9 +637,7 @@ with tab2:
     with c2:
         st.session_state.week   = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
     with c3:
-        st.text_input("Bloom focus (auto)",
-                      value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}",
-                      disabled=True)
+        st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}", disabled=True)
     _focus = bloom_focus_for_week(st.session_state.week)
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
     st.markdown(
@@ -607,17 +650,15 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 2 — Bloom review
+    # Step 2
     st.markdown("<div class='step neutral'><div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
 
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==_focus else ""
         weeks = "1–4" if label=="Low" else "5–9" if label=="Medium" else "10–14"
-        # Dim chips for non-active tiers
         chips = " ".join([
-            f"<span class='chip {cls}{hl}'>{v}</span>" if label==_focus 
-            else f"<span class='chip {cls} dimmed'>{v}</span>"
+            f"<span class='chip {cls}{hl}'>{v}</span>" if label==_focus else f"<span class='chip {cls} dimmed'>{v}</span>"
             for v in verbs
         ])
         st.markdown(f"**{label} (Weeks {weeks})**", unsafe_allow_html=True)
@@ -628,24 +669,20 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 3 — Topic
+    # Step 3
     st.markdown("<div class='step gold'><div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 4 — Source text
+    # Step 4
     st.markdown("<div class='step neutral'><div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
     with csa:
         st.session_state.src_edit = st.text_area(
-            "Source (editable)",
-            value=st.session_state.src_edit,
-            height=180,
-            placeholder="Add 1–2 short paragraphs (≈12+ sentences). Avoid bullet points."
-        )
-        # Inline sentence counter + bullet warning
+            "Source (editable)", value=st.session_state.src_edit, height=180,
+            placeholder="Add 1–2 short paragraphs (≈12+ sentences). Avoid bullet points.")
         txt = st.session_state.src_edit or ""
         sc = len(_sentences(txt))
         ready = sc >= 12
@@ -667,20 +704,22 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 5 — MCQ Setup
+    # Step 5
     st.markdown("<div class='step green'><div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
+    st.session_state.mcq_mode = st.selectbox("MCQ distribution", ["Mixed","All Low","All Medium","All High"], index=["Mixed","All Low","All Medium","All High"].index(st.session_state.mcq_mode))
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 6 — Activities
+    # Step 6
     st.markdown("<div class='step gold'><div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
     with colA:
         st.session_state.act_n = st.radio("Activities", [1,2,3], index=st.session_state.act_n-1, horizontal=True)
+        st.session_state.act_style = st.selectbox("Activity style", ["Standard","Lab","Group Task","Reflection"], index=["Standard","Lab","Group Task","Reflection"].index(st.session_state.act_style))
     with colB:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -709,7 +748,7 @@ with tab3:
                 try:
                     st.session_state.mcq_df = generate_mcqs_exact(
                         st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
-                        st.session_state.week, st.session_state.lesson
+                        st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
                     )
                     st.success("MCQs generated.")
                 except Exception as e:
@@ -721,13 +760,12 @@ with tab3:
                     focus = bloom_focus_for_week(st.session_state.week)
                     st.session_state.act_df = generate_activities(
                         int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                        st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
+                        st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit, st.session_state.act_style
                     )
                     st.success("Activities generated.")
                 except Exception as e:
                     st.error(f"Couldn’t generate activities: {e}")
 
-    # Answer key toggle
     show_answers = st.checkbox("Show answer key in preview", value=False)
 
     if "mcq_df" in st.session_state:
@@ -770,23 +808,14 @@ with tab4:
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Download your question set in multiple formats.</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
-        if st.download_button("Download MCQs (CSV)",
-                              st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
-                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv",
-                              "text/csv"):
+        if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"), f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-        if st.download_button("Download MCQs (Moodle GIFT)",
-                              gift_txt.encode("utf-8"),
-                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift",
-                              "text/plain"):
+        if st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"), f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift", "text/plain"):
             st.toast("✅ MCQs GIFT download started")
         if Document:
             mcq_docx = export_mcqs_docx(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-            if st.download_button("Download MCQs (Word)",
-                                  mcq_docx,
-                                  f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.docx",
-                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+            if st.download_button("Download MCQs (Word)", mcq_docx, f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ MCQs Word download started")
         else:
             st.caption("Install python-docx for Word export.")
@@ -799,17 +828,11 @@ with tab4:
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Export practical activities aligned to Bloom’s focus.</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
-        if st.download_button("Download Activities (CSV)",
-                              st.session_state.act_df.to_csv(index=False).encode("utf-8"),
-                              f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv",
-                              "text/csv"):
+        if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"), f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
         if Document:
             act_docx = export_acts_docx(st.session_state.act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-            if st.download_button("Download Activities (Word)",
-                                  act_docx,
-                                  f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx",
-                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+            if st.download_button("Download Activities (Word)", act_docx, f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Activities Word download started")
         else:
             st.caption("Install python-docx for Word export.")
@@ -817,8 +840,23 @@ with tab4:
         st.markdown("<div class='note-amber'>Generate Activities in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # Combined Lesson export (Word)
+    st.markdown("<div class='export-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='export-title'>Combined Lesson (Word)</div>", unsafe_allow_html=True)
+    st.markdown("<div class='export-note'>MCQs + Activities in a single Word file (ready to print).</div>", unsafe_allow_html=True)
+    if Document:
+        mcq_df = st.session_state.get('mcq_df') if 'mcq_df' in st.session_state else None
+        act_df = st.session_state.get('act_df') if 'act_df' in st.session_state else None
+        if (mcq_df is not None and len(mcq_df)>0) or (act_df is not None and len(act_df)>0):
+            combined_docx = export_combined_docx(mcq_df, act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
+            if st.download_button("Download Combined Lesson (Word)", combined_docx, f"lesson_combined_l{st.session_state.lesson}_w{st.session_state.week}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+                st.toast("✅ Combined Lesson Word download started")
+        else:
+            st.caption("Generate MCQs and/or Activities in ③ Generate to enable this.")
+    else:
+        st.caption("Install python-docx for Combined Word export.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     st.progress(progress_fraction())
     next_step_bar("All set:", "Share the files or print as needed.")
     st.markdown("</div>", unsafe_allow_html=True)
-
- 
