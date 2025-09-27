@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (full rebuild, ADI-styled, anchored generation)
+# app.py — ADI Learning Tracker (polished, color-coded, with readiness + exports)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -20,6 +20,11 @@ CSS = r'''
   --muted:#667085;
   --border:#e7ecea;
   --shadow:0 10px 30px rgba(36,90,52,0.10);
+  --field-bg:#ffffff;
+  --field-bd:#e2e9e5;
+  --field-bd-hover:#cfe1d7;
+  --field-shadow:0 6px 16px rgba(36,90,52,0.06), inset 0 1px 0 rgba(255,255,255,0.5);
+  --field-shadow-focus:0 10px 24px rgba(36,90,52,0.18);
 }
 *{font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;}
 html, body { background:var(--stone); }
@@ -28,7 +33,6 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
 /* Header */
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
-hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.25), rgba(36,90,52,0.06)); margin:.8rem 0 1rem; }
 
 /* Cards + Headings */
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
@@ -40,7 +44,7 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .stTabs [data-baseweb="tab-highlight"]{ height:3px; background:linear-gradient(90deg,var(--adi),var(--gold)) !important; }
 .stTabs [aria-selected="true"] { color: var(--adi) !important; }
 
-/* Primary buttons */
+/* Buttons */
 .stButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi));
   color:#fff; border:1px solid #1f4e31; font-weight:800; border-radius:12px;
@@ -49,13 +53,53 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .stButton>button:hover{ filter:brightness(1.06); }
 .stButton>button:focus{ outline:3px solid rgba(36,90,52,0.28); }
 
-/* Inputs */
-.stNumberInput > div > div, .stTextInput > div > div, .stTextArea > div > div{
-  border-radius:12px !important; border-color:#e4e9e6 !important;
-}
-.stTextArea textarea::placeholder{ color:#9aa6a0; }
+/* Inputs — lively, ADI-styled */
+label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !important; margin-bottom:.35rem !important; }
 
-/* ① Upload – POP drag/drop */
+.stTextInput > div > div,
+.stTextArea  > div > div{
+  background: var(--field-bg) !important;
+  border:1.8px solid var(--field-bd) !important;
+  border-radius:14px !important;
+  box-shadow: var(--field-shadow) !important;
+  transition: box-shadow .18s ease, border-color .18s ease, transform .05s ease;
+}
+.stSelectbox > div > div{
+  background: var(--field-bg) !important;
+  border:1.8px solid var(--field-bd) !important;
+  border-radius:14px !important;
+  box-shadow: var(--field-shadow) !important;
+  transition: box-shadow .18s ease, border-color .18s ease, transform .05s ease;
+}
+.stTextInput > div > div:hover,
+.stTextArea  > div > div:hover,
+.stSelectbox > div > div:hover{
+  border-color: var(--field-bd-hover) !important;
+  transform: translateY(-1px);
+}
+.stTextInput > div > div:focus-within,
+.stTextArea  > div > div:focus-within,
+.stSelectbox > div > div:focus-within{
+  border-color:#245a34 !important;
+  box-shadow: var(--field-shadow-focus) !important;
+  outline:3px solid rgba(36,90,52,0.28);
+}
+.stTextInput input, .stTextArea textarea{
+  padding:.8rem .9rem !important;
+  font-weight:600 !important;
+  color:#0f172a !important;
+}
+.stTextArea textarea::placeholder,
+.stTextInput input::placeholder{ color:#9aa6a0 !important; }
+/* Disabled look for Bloom focus */
+.stTextInput > div > div:has(input[disabled]){
+  background:#f7faf9 !important;
+  border-color:#e6efe9 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+}
+.stTextInput input[disabled]{ color:#667d72 !important; font-weight:700 !important; }
+
+/* Upload – POP drag/drop */
 [data-testid="stFileUploaderDropzone"]{
   border:2.5px dashed #b9cfc4 !important;
   border-radius:18px !important;
@@ -68,7 +112,7 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
   outline:3px solid rgba(36,90,52,0.25);
 }
 
-/* ② Setup – accent panels */
+/* Setup – accent panels */
 .panel{
   border:2px solid var(--border); border-radius:16px; padding:14px; margin:.6rem 0 1rem;
   background:#fff; box-shadow:0 8px 22px rgba(36,90,52,0.06);
@@ -77,7 +121,7 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .accent-act{   border-color:#eadebd; box-shadow:0 10px 24px rgba(200,168,90,0.18), inset 0 0 0 2px rgba(200,168,90,0.18); }
 .accent-bloom{ border-color:#cfd6d4; box-shadow:0 10px 24px rgba(0,0,0,0.06), inset 0 0 0 2px rgba(36,90,52,0.10); }
 
-/* Bloom chips (pop + highlight by week) */
+/* Bloom chips */
 .bloom-row{ display:flex; flex-wrap:wrap; gap:.5rem .6rem; margin:.35rem 0 1rem; }
 .chip{
   display:inline-flex; align-items:center; justify-content:center; padding:6px 14px;
@@ -90,21 +134,31 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .chip.high  { background:#333;    color:#fff; border-color:#222; }
 .chip.hl { outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
 
-/* MCQ preview */
+/* Previews */
 .badge{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; color:#fff; font-weight:800; font-size:12px; margin-right:10px; }
 .badge.g{ background:#245a34; } .badge.a{ background:#C8A85A; color:#111; } .badge.r{ background:#333; color:#fff; }
 .qcard{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .qitem{ display:flex; gap:10px; align-items:flex-start; padding:6px 0; }
 
-/* Notes (replace blue info) */
+/* Notes + color-coded reminders */
 .note{ padding:12px 14px; border-radius:12px; border:1px solid #eadebd; background:linear-gradient(180deg,#fffdf5,#fffaf0); color:#3b351c; }
+.note-green{
+  padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0;
+  background:linear-gradient(180deg,#f9fefb,#f3fbf6);
+  color:#133c23; font-weight:600;
+}
+.note-amber{
+  padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7;
+  background:linear-gradient(180deg,#fffdf7,#fffaf0);
+  color:#4a3d14; font-weight:600;
+}
 
-/* ④ Export – grid + green buttons */
+/* Export grid + green download buttons */
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width: 760px){ .export-grid{ grid-template-columns: 1fr; } }
 .export-card{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow:var(--shadow); }
 .export-title{ font-weight:900; color:var(--ink); margin-bottom:.3rem; }
-.export-note{ color:var(--muted); font-size:13px; margin-bottom:.6rem; }
+.export-note{ color:#6b7280; font-size:13px; margin-bottom:.6rem; }
 
 .stDownloadButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
@@ -444,7 +498,6 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    # Lesson & Week
     c1, c2, c3 = st.columns([1,1,2])
     with c1:
         st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
@@ -459,7 +512,7 @@ with tab2:
     st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
                                              height=160, placeholder="Paste or edit full sentences here…")
 
-    # --- MCQ setup panel
+    # MCQ setup
     st.markdown("<div class='panel accent-mcq'>", unsafe_allow_html=True)
     st.write("### MCQ Setup")
     choices = [5,10,20,30]
@@ -467,7 +520,7 @@ with tab2:
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- Activity setup panel
+    # Activity setup
     st.markdown("<div class='panel accent-act'>", unsafe_allow_html=True)
     st.write("### Activity Setup")
     colA, colB = st.columns([1,2])
@@ -477,7 +530,7 @@ with tab2:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- Bloom panel
+    # Bloom policy
     st.markdown("<div class='panel accent-bloom'>", unsafe_allow_html=True)
     st.write("### Bloom’s Verbs (ADI Policy)")
     focus = bloom_focus_for_week(st.session_state.week)
@@ -491,16 +544,26 @@ with tab2:
     bloom_row("Low", LOW_VERBS); bloom_row("Medium", MED_VERBS); bloom_row("High", HIGH_VERBS)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # end card
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ③ Generate =====
 with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Generate Questions & Activities</div>", unsafe_allow_html=True)
 
-    tip_needed = (not st.session_state.src_edit) or len(_sentences(st.session_state.src_edit)) < 12
-    if tip_needed:
-        st.markdown("<div class='note'>Tip: use a section with ~12+ full sentences. Bullets should be expanded into sentences.</div>", unsafe_allow_html=True)
+    # Readiness counter
+    sent_count = len(_sentences(st.session_state.src_edit or ""))
+    need = 12
+    ready = sent_count >= need
+    if not st.session_state.src_edit.strip():
+        st.markdown("<div class='note'>Add some lesson text first. Paste a short section (one page or a few paragraphs).</div>", unsafe_allow_html=True)
+    elif not ready:
+        st.markdown(f"<div class='note'>We found <b>{sent_count}/{need}</b> full sentences. For better MCQs & activities, paste continuous text (avoid bullet points) until this reaches 12+.</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='note-green'>Ready to generate — <b>{sent_count}</b> sentences detected.</div>", unsafe_allow_html=True)
+
+    # Optional progress bar
+    st.progress(min(1.0, sent_count/need) if need else 1.0)
 
     colQ, colA = st.columns([1,1])
     with colQ:
@@ -525,7 +588,6 @@ with tab3:
             except Exception as e:
                 st.error(f"Couldn’t generate activities: {e}")
 
-    # Previews
     if "mcq_df" in st.session_state:
         st.write("**MCQs (preview)**")
         st.markdown("<div class='qcard'>", unsafe_allow_html=True)
@@ -574,7 +636,7 @@ with tab4:
         else:
             st.caption("Install python-docx for Word export.")
     else:
-        st.markdown("<div class='note'>Generate MCQs in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='note-green'>Generate MCQs in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Activities card
@@ -595,7 +657,7 @@ with tab4:
         else:
             st.caption("Install python-docx for Word export.")
     else:
-        st.markdown("<div class='note'>Generate Activities in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='note-amber'>Generate Activities in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)  # grid
