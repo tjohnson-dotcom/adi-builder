@@ -1034,6 +1034,25 @@ with tab3:
                     st.success(f"Activities generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
             except Exception as e:
                 st.error(f"Couldn’t generate: {e}")
+
+    # ---- Live Previews (always visible) ----
+    st.markdown("<div class='h3'>MCQs Preview</div>", unsafe_allow_html=True)
+    if 'mcq_df' in st.session_state and isinstance(st.session_state.mcq_df, pd.DataFrame) and len(st.session_state.mcq_df) > 0:
+        mcq_edited = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", key="mcq_editor", use_container_width=True)
+        if st.button("💾 Save MCQ edits"):
+            st.session_state.mcq_df = mcq_edited
+            st.toast("Saved MCQ edits")
+    else:
+        st.info("No MCQs to show yet — choose **MCQs** and click **Generate** above. If you generated but see nothing, add more sentences in Step 4 and try again.")
+
+    st.markdown("<div class='h3' style='margin-top:1rem'>Activities Preview</div>", unsafe_allow_html=True)
+    if 'act_df' in st.session_state and isinstance(st.session_state.act_df, pd.DataFrame) and len(st.session_state.act_df) > 0:
+        act_edited = st.data_editor(st.session_state.act_df, num_rows="dynamic", key="act_editor", use_container_width=True)
+        if st.button("💾 Save Activity edits"):
+            st.session_state.act_df = act_edited
+            st.toast("Saved Activity edits")
+    else:
+        st.info("No Activities to show yet — choose **Activities** and click **Generate** above.")
 # ===== ④ Export =====
 with tab4:
     if "mcq_df" not in st.session_state and "act_df" not in st.session_state:
@@ -1052,11 +1071,11 @@ with tab4:
     if "mcq_df" in st.session_state:
         st.caption(f"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}")
         if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
-                              f"mcqs_w{st.session_state.week:02d}.csv", "text/csv"):
+                              f"mcqs_w{st.session_state.week:02d}_{st.session_state.source_type}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
         if st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"),
-                              f"mcqs_w{st.session_state.week:02d}.gift", "text/plain"):
+                              f"mcqs_w{st.session_state.week:02d}_{st.session_state.source_type}.gift", "text/plain"):
             st.toast("✅ MCQs GIFT download started")
         if Document:
             mcq_docx = export_mcqs_docx(
@@ -1064,7 +1083,7 @@ with tab4:
                 st.session_state.topic, highlight_stems=st.session_state.hl_stems_docx
             )
             if st.download_button("Download MCQs (Word)", mcq_docx,
-                                  f"mcqs_w{st.session_state.week:02d}.docx",
+                                  f"mcqs_w{st.session_state.week:02d}_{st.session_state.source_type}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ MCQs Word download started")
         else:
@@ -1079,12 +1098,12 @@ with tab4:
     if "act_df" in st.session_state:
         st.caption(f"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}")
         if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
-                              f"activities_w{st.session_state.week:02d}.csv", "text/csv"):
+                              f"activities_w{st.session_state.week:02d}_{st.session_state.source_type}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
         if Document:
             act_docx = export_acts_docx(st.session_state.act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             if st.download_button("Download Activities (Word)", act_docx,
-                                  f"activities_w{st.session_state.week:02d}.docx",
+                                  f"activities_w{st.session_state.week:02d}_{st.session_state.source_type}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Activities Word download started")
         else:
