@@ -433,3 +433,4 @@ if isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_s
 else:
     st.info("No Activities to export yet.")
 st.markdown('</div>', unsafe_allow_html=True)
+
