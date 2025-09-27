@@ -1,10 +1,10 @@
-# app.py — ADI Learning Tracker (stable, all fixes)
+# app.py — ADI Learning Tracker (stable, all fixes incl. MCQ de-dup across session)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
 
 import io, os, re, base64, random, unicodedata
 from io import BytesIO
-from typing import List
+from typing import List, Set
 from difflib import SequenceMatcher
 
 import pandas as pd
@@ -67,7 +67,7 @@ main .block-container { padding-top:.75rem; max-width:980px; }
 .stTabs [role="tab"][aria-selected="true"]::after{ content:""; position:absolute; left:10px; right:10px; bottom:-3px; height:4px; border-radius:999px;
   background:linear-gradient(90deg,#245a34,#C8A85A); }
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
-.h2{ font-size:19px; font-weight:800; color:var(--ink); margin:0 0 10px 0; }
+.h2{ font size:19px; font-weight:800; color:var(--ink); margin:0 0 10px 0; }
 .bloom-row{ display:flex; flex-wrap:wrap; gap:.5rem .6rem; margin:.35rem 0 .5rem; }
 .chip{ padding:6px 14px; border-radius:999px; font-size:13px; font-weight:800; border:1px solid rgba(0,0,0,.08); box-shadow:0 6px 16px rgba(0,0,0,.06); }
 .chip.low{background:#245a34;color:#fff;} .chip.med{background:#C8A85A;color:#111;} .chip.high{background:#333;color:#fff;}
@@ -139,7 +139,6 @@ STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general"
 BLOCK_LINE_PHRASES = ["exercise","diagram","figure","glossary","learning outcomes","error! bookmark not defined","lesson","week"]
 
 def _has_emoji(s: str) -> bool:
-    # covers ☀–⚿ and most emoji blocks
     return any(0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF for ch in s or "")
 
 def _normalize(s: str) -> str:
@@ -204,6 +203,14 @@ def _is_clean_sentence(s: str) -> bool:
 def _near(a:str,b:str,th:float=0.90)->bool:
     return SequenceMatcher(a=a.lower(), b=b.lower()).ratio() >= th
 
+# --- MCQ de-dup helpers (content-level) ---
+def _norm_q(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").lower()).strip()
+
+def _q_signature(options: List[str]) -> str:
+    # Order-independent signature of the option set
+    return "||".join(sorted(_norm_q(o) for o in options))
+
 # ---------- Option filter (fixed) ----------
 def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
@@ -221,7 +228,6 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
         if len(o) < 40 or len(o) > 220:
             ok = False
         letters = [c for c in o if c.isalpha()]
-        # uppercase ratio filter (avoid all-caps headings)
         if letters and (sum(1 for c in letters if c.isupper()) / len(letters)) > 0.55:
             ok = False
         if len(o.split()) < 6:
@@ -230,14 +236,13 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
             ok = False
 
         if j == 0 and ensure_first:
-            ok = True  # keep the first candidate as the "correct" baseline
+            ok = True
 
         if ok and not any(_near(o, p, 0.96) for p in out):
             out.append(o)
         if len(out) == 4:
             break
 
-    # backfill if we still need options
     k = 0
     while len(out) < 4 and k < len(ops):
         if ops[k] not in out and not _has_emoji(ops[k]) and not any(p in ops[k].lower() for p in BLOCK_LINE_PHRASES):
@@ -245,32 +250,21 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
         k += 1
     return out[:4]
 
-# Ultra-compatible fallback (requested)
+# Ultra-compatible fallback
 def _quality_gate_loose(options: List[str], ensure_first: bool = True) -> List[str]:
-    """
-    Emergency fallback: minimal screening, prioritises getting 4 options.
-    Keeps the first item (the 'correct' sentence), then adds reasonably
-    long, distinct sentences; finally backfills anything to reach 4.
-    """
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
     out: List[str] = []
     for j, o in enumerate(ops):
         if j == 0 and ensure_first:
-            out.append(o)
-            continue
-        if _has_emoji(o):
-            continue
-        if len(o) < 25:
-            continue
-        if any(SequenceMatcher(a=o.lower(), b=p.lower()).ratio() >= 0.98 for p in out):
-            continue
+            out.append(o); continue
+        if _has_emoji(o): continue
+        if len(o) < 25: continue
+        if any(SequenceMatcher(a=o.lower(), b=p.lower()).ratio() >= 0.98 for p in out): continue
         out.append(o)
-        if len(out) == 4:
-            break
+        if len(out) == 4: break
     k = 0
     while len(out) < 4 and k < len(ops):
-        if ops[k] not in out:
-            out.append(ops[k])
+        if ops[k] not in out: out.append(ops[k])
         k += 1
     return out[:4]
 
@@ -278,7 +272,7 @@ def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
 
-# NEW: near-duplicate filter for MCQs
+# NEW: near-duplicate filter for MCQs (correct sentence variety)
 def _too_similar(a: str, b: str, thr: float = 0.88) -> bool:
     return SequenceMatcher(a=(a or "").lower(), b=(b or "").lower()).ratio() >= thr
 
@@ -380,6 +374,8 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
     rows = []; rnd = random.Random(2025); made = 0; tiers = ["Low","Medium","High"]
     used_corrects: List[str] = []
+    used_pool: Set[str] = set()   # prevent option reuse within set
+    local_sigs: Set[str] = set()  # prevent repeated question content in this run
 
     def tier_for_q(i):
         if mode == "All Low": return "Low"
@@ -395,7 +391,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if not _has_context_neighbors(sents, idx): continue
         correct = sents[idx].strip()
 
-        # De-dup
         if any(_too_similar(correct, u) for u in used_corrects):
             continue
 
@@ -410,8 +405,15 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
 
+        # De-dup at question-level (options as a set) and no option reuse
+        if any(o in used_pool for o in options):
+            continue
+        sig = _q_signature(options)
+        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
+            continue
+
         tier = tier_for_q(made)
-        stem = STEMS[tier][made % len(STEMS[tier])]  # rotate stems
+        stem = STEMS[tier][made % len(STEMS[tier])]
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
@@ -425,6 +427,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
         used_corrects.append(correct)
+        used_pool.update(options)
+        local_sigs.add(sig)
+        st.session_state.seen_q_sigs.add(sig)
         made += 1
         if made == total_q: break
 
@@ -448,6 +453,13 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 options = _quality_gate_loose([correct] + dist, ensure_first=True)
             if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
+
+            if any(o in used_pool for o in options):
+                continue
+            sig = _q_signature(options)
+            if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
+                continue
+
             tier = tier_for_q(made)
             stem = STEMS[tier][made % len(STEMS[tier])]
             stem = _strip_noise(stem)
@@ -462,6 +474,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 "Order": {"Low":1,"Medium":2,"High":3}[tier],
             })
             used_corrects.append(correct)
+            used_pool.update(options)
+            local_sigs.add(sig)
+            st.session_state.seen_q_sigs.add(sig)
             used.add(correct); made += 1
 
     if made == 0:
@@ -514,18 +529,28 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
     rnd = random.Random(2025)
     rows = []; i = 0
     used_corrects: List[str] = []
+    used_pool: Set[str] = set()
+    local_sigs: Set[str] = set()
     stride = max(1, len(pool) // max(4, total_q))
     while len(rows) < total_q and i < len(pool):
         correct = pool[i]
         if any(_too_similar(correct, u) for u in used_corrects):
-            i += 1; continue
+            i += stride; continue
         distractors = _pick_distractors(pool, correct, 3)
         options = _quality_gate([correct] + distractors, ensure_first=True)
         if len(options) < 4:
             options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4:
-            i += 1; continue
+            i += stride; continue
+
+        # De-dup checks BEFORE shuffle/answer calc
+        if any(o in used_pool for o in options):
+            i += stride; continue
+        sig = _q_signature(options)
+        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
+            i += stride; continue
+
         tier = tier_for_q(len(rows))
         stem = STEMS[tier][len(rows) % len(STEMS[tier])]
         stem = _strip_noise(stem)
@@ -540,6 +565,9 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
         used_corrects.append(correct)
+        used_pool.update(options)
+        local_sigs.add(sig)
+        st.session_state.seen_q_sigs.add(sig)
         i += stride
 
     j = 0
@@ -553,6 +581,13 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
+
+        if any(o in used_pool for o in options):
+            continue
+        sig = _q_signature(options)
+        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
+            continue
+
         tier = tier_for_q(len(rows))
         stem = STEMS[tier][len(rows) % len(STEMS[tier])]
         stem = _strip_noise(stem)
@@ -567,6 +602,9 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
         used_corrects.append(correct)
+        used_pool.update(options)
+        local_sigs.add(sig)
+        st.session_state.seen_q_sigs.add(sig)
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
@@ -578,7 +616,6 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
     verbs = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}.get(tier, MED_VERBS)
     _ = _strip_noise(_clean_lines(source or ""))
 
-    # Time split
     t1 = max(5, int(duration*0.17)); t3 = max(8, int(duration*0.17)); t2 = max(10, duration - (t1+t3))
     subj = "You" if student else "Students"
 
@@ -615,13 +652,13 @@ def generate_activities_safe(*args, **kwargs) -> pd.DataFrame:
 # ---------- Export helpers ----------
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
-    if level==0: r.bold=True; r.font.size=Pt(20)   # larger title
-    elif level==1: r.bold=True; r.font.size=Pt(16) # section headers
+    if level==0: r.bold=True; r.font.size=Pt(20)
+    elif level==1: r.bold=True; r.font.size=Pt(16)
     else: r.font.size=Pt(13)
 
 def _set_doc_defaults(doc):
     try:
-        doc.styles["Normal"].font.size = Pt(13)       # larger body
+        doc.styles["Normal"].font.size = Pt(13)
         doc.styles["Normal"].paragraph_format.line_spacing = 1.25
     except Exception:
         pass
@@ -630,10 +667,10 @@ def _add_mcq_stem(doc, qnum: int, text: str, highlight: bool = True):
     p = doc.add_paragraph()
     r = p.add_run(f"Q{qnum}. {text}")
     r.bold = True
-    r.font.size = Pt(14)  # larger stems
+    r.font.size = Pt(14)
     if highlight and RGBColor is not None:
         try:
-            r.font.color.rgb = RGBColor(0x24, 0x5A, 0x34)  # ADI green
+            r.font.color.rgb = RGBColor(0x24, 0x5A, 0x34)
         except Exception:
             pass
     p.paragraph_format.space_before = Pt(6)
@@ -766,11 +803,11 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 st.session_state.setdefault("safe_mode", True)
-# Highlight toggles & student handout
 st.session_state.setdefault("hl_stems_docx", True)
 st.session_state.setdefault("hl_stems_preview", True)
 st.session_state.setdefault("hl_act_titles_preview", True)
 st.session_state.setdefault("student_handout", False)
+st.session_state.setdefault("seen_q_sigs", set())  # remembers MCQs this session
 
 # ---------- Header ----------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
@@ -831,7 +868,6 @@ with tab2:
     with c3:
         focus = bloom_focus_for_week(st.session_state.week)
         st.markdown(f"**Bloom focus (auto): Week {st.session_state.week}: {focus}**")
-    # Focus chip (boxed pill)
     _focus = focus
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
     st.markdown(f"<div class='bloom-row'><span class='chip {_cls} hl'>🎯 Focus {_focus}</span></div>", unsafe_allow_html=True)
@@ -882,6 +918,11 @@ with tab2:
     st.session_state.mcq_mode = st.selectbox("MCQ distribution", ["Mixed","All Low","All Medium","All High"], index=["Mixed","All Low","All Medium","All High"].index(st.session_state.mcq_mode))
     st.session_state.safe_mode = st.checkbox("Safe Mode (always works) — ignore anchors; use only clean sentences", value=st.session_state.safe_mode)
 
+    # Optional: clear duplicate memory
+    if st.button("Reset MCQ duplicate memory"):
+        st.session_state.seen_q_sigs = set()
+        st.toast("🧽 Cleared MCQ duplicate memory")
+
     # Step 6 — Activities
     st.markdown("<hr>", unsafe_allow_html=True)
     st.markdown("<b>Step 6 — Activity Setup</b>", unsafe_allow_html=True)
@@ -891,7 +932,6 @@ with tab2:
         st.session_state.act_style = st.selectbox("Activity style", ["Standard","Lab","Group Task","Reflection"], index=["Standard","Lab","Group Task","Reflection"].index(st.session_state.act_style))
     with colB:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
-    # Student handout wording
     st.session_state.student_handout = st.checkbox("Student handout wording (use 'You/We' in activities)", value=st.session_state.student_handout)
 
     st.progress(progress_fraction())
@@ -941,7 +981,6 @@ with tab3:
                 except Exception as e:
                     st.error(f"Couldn’t generate activities: {e}")
 
-    # Preview toggles
     show_answers = st.checkbox("Show answer key in preview", value=False)
     st.session_state.hl_stems_preview = st.checkbox(
         "🔆 Highlight MCQ question stems (preview)", value=st.session_state.get("hl_stems_preview", True)
@@ -970,10 +1009,7 @@ with tab3:
             tier = r.get("Policy focus","Medium")
             cls = "act-low" if tier=="Low" else ("act-med" if tier=="Medium" else "act-high")
             title = r.get('Title','Activity')
-            if st.session_state.get("hl_act_titles_preview", True):
-                title_html = f"<span class='act-title'>{i+1}. {title}</span>"
-            else:
-                title_html = f"<b>{i+1}. {title}</b>"
+            title_html = f"<span class='act-title'>{i+1}. {title}</span>" if st.session_state.get("hl_act_titles_preview", True) else f"<b>{i+1}. {title}</b>"
             st.markdown(
                 f"<div class='act-card {cls}'>{title_html}<br>"
                 f"<span><b>Objective:</b> {r['Objective']}</span><br>"
@@ -994,7 +1030,6 @@ with tab4:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Export</div>", unsafe_allow_html=True)
 
-    # DOCX highlight toggle
     st.session_state.hl_stems_docx = st.checkbox(
         "🔆 Highlight question stems in DOCX",
         value=st.session_state.get("hl_stems_docx", True)
