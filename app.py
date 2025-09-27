@@ -424,141 +424,80 @@ STEMS = {
     ],
 }
 def _stem_for_tier(tier: str, idx: int) -> str:
+    """Choose a stem with diversity across week/lesson/source and throttle 'Which/What'."""
     try:
         src = st.session_state.get("src_edit") or st.session_state.get("src_text") or ""
     except Exception:
         src = ""
-    kws = _keywords(src, top_n=24) if src else []
+    week = int(st.session_state.get("week", 1) or 1)
+    lesson = int(st.session_state.get("lesson", 1) or 1)
+    source_type = (st.session_state.get("source_type") or "PPT")
+
+    kws = _keywords(src, top_n=36) if src else []
     if not kws:
-        kws = ["the topic", "the concept", "the process"]
-    kw = kws[idx % len(kws)]
-    kw1 = kws[(idx+3) % len(kws)]
-    kw2 = kws[(idx+7) % len(kws)]
-    kw3 = kws[(idx+11) % len(kws)]
+        kws = ["the topic", "the concept", "the process", "the system", "the standard"]
+    base_idx = idx + week * 3 + lesson * 7
+    kw  = kws[ base_idx % len(kws) ]
+    kw1 = kws[(base_idx + 5) % len(kws)]
+    kw2 = kws[(base_idx + 11) % len(kws)]
+    kw3 = kws[(base_idx + 17) % len(kws)]
 
     bank = STEMS.get(tier, STEMS["Medium"])[:]
-    rnd = random.Random(1000 + idx)
+    bias = {
+        "PPT": ["Compare {kw1} and {kw2} in terms of {kw3}.", "Select the option that correctly applies {kw}."],
+        "E-book": ["Why is {kw} important for the scenario described?", "How does {kw} improve the outcome in this context?"],
+        "Lesson plan": ["Which step is most appropriate when addressing {kw}?", "Design the most defensible approach using {kw}."],
+    }.get(source_type, [])
+    bank = (bias + bank) if bias else bank
+
+    rnd = random.Random(1000 + base_idx)
     rnd.shuffle(bank)
 
-    def good(s, i=idx):
-        h = s.split(" ",1)[0].lower()
-        if h in {"which","what"} and (i % 3) != 0:
+    def ok(s: str, i: int) -> bool:
+        h = s.split(" ", 1)[0].lower()
+        if h in {"which", "what"} and (i % 3) != 0:
             return False
         return True
-    chosen = next((s for s in bank if good(s)), bank[0])
-
+    chosen = next((s for s in bank if ok(s, base_idx)), bank[0])
     return chosen.format(kw=kw, kw1=kw1, kw2=kw2, kw3=kw3)
 
 # ---------- MCQs (Exact mode) ----------
-def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
-    if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
-    sents = [s for s in _sentences(_clean_lines(source or "")) if _is_sentence_like(s)]
-    sents = [s for s in sents if not any(p in s.lower() for p in BLOCK_LINE_PHRASES)]
-    if len(sents) < 10:
-        raise ValueError("Not enough usable sentences after trimming headings/TOC (need ~10+).")
-    keys = [k for k in _keywords(" ".join(sents), top_n=max(24, total_q*4)) if k not in BAD_ANCHORS]
+def generate_mcqs_exact(topic: str, src_text: str, total: int, week: int, lesson: int, mode: str) -> pd.DataFrame:
+    """Exact mode with week/lesson-based variety."""
+    text = _strip_noise(src_text or "")
+    if not text:
+        return pd.DataFrame(columns=MCQ_COLS)
+    sents = [s for s in re.split(r'(?<=[.!?])\s+', text) if len(s.split()) >= 4]
+    rnd = random.Random(int(week) * 100 + int(lesson))
+    rnd.shuffle(sents)
 
-    rows = []; rnd = random.Random(2025); made = 0; tiers = ["Low","Medium","High"]
-    used_corrects: List[str] = []
-    used_pool: Set[str] = set()
-    local_sigs: Set[str] = set()
-
-    def tier_for_q(i):
-        if mode == "All Low": return "Low"
-        if mode == "All Medium": return "Medium"
-        if mode == "All High": return "High"
-        return tiers[i % 3]
-
-    # Pass A — strict anchors
-    for k in keys:
-        if made == total_q: break
-        try:
-            idx = next(i for i, s in enumerate(sents) if k in s.lower())
-        except StopIteration:
-            continue
-        if not _has_context_neighbors(sents, idx): continue
-        correct = sents[idx].strip()
-        if any(_too_similar(correct, u) for u in used_corrects):
-            continue
-        neigh = [x for x in _window(sents, idx, 3) if x != correct and _is_sentence_like(x)]
-        extra = [x for x in sents if x not in neigh and _is_sentence_like(x)]
-        rnd.shuffle(extra)
-        cand = neigh + extra[:8]
-
-        options = _quality_gate([correct] + cand, ensure_first=True)
-        if len(options) < 4:
-            options = _quality_gate([correct] + cand, ensure_first=True, min_len=30)
-        if len(options) < 4:
-            options = _quality_gate_loose([correct] + cand, ensure_first=True)
-        if correct not in options: options = ([correct] + options)[:4]
+    rows = []
+    local_sigs = set()
+    tiers = ["Low","Medium","High"]
+    for sent in sents:
+        if len(rows) >= int(total): break
+        distractors, correct = _distractors_for_sentence(sent, mode or "exact")
+        if not correct: continue
+        options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if len(options) < 4: continue
-        if any(o in used_pool for o in options): continue
         sig = _q_signature(options)
-        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()): continue
+        if sig in local_sigs: continue
 
-        tier = tier_for_q(made)
-        stem = _stem_for_tier(tier, made)
-        stem = _strip_noise(stem)
+        tier = tiers[len(rows) % len(tiers)]
+        stem = _stem_for_tier(tier, len(rows))
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
         ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
+
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
             "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-            "Answer": ans, "Explanation": _strip_noise(f"Anchored on a sentence mentioning '{k}'."),
-            "Order": {"Low":1,"Medium":2,"High":3}[tier],
+            "Answer": ans,
+            "Explanation": _explain_choice(correct, options, topic)
         })
-        used_corrects.append(correct)
-        used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
-        made += 1
-
-    # Pass B — smart backfill
-    if made < total_q:
-        pool = [s for s in sents if 30 <= len(s) <= 220]
-        used=set(); i=0
-        while made < total_q and i < len(pool):
-            correct = pool[i]; i += 1
-            if correct in used: continue
-            if any(_too_similar(correct, u) for u in used_corrects): continue
-            dist=[]
-            for cand in pool:
-                if cand == correct: continue
-                if SequenceMatcher(a=correct.lower(), b=cand.lower()).ratio() > 0.82: continue
-                if abs(len(cand) - len(correct)) > 140: continue
-                dist.append(cand)
-                if len(dist) == 6: break
-            options = _quality_gate([correct] + dist, ensure_first=True, min_len=35)
-            if len(options) < 4:
-                options = _quality_gate([correct] + dist, ensure_first=True, min_len=30)
-            if len(options) < 4:
-                options = _quality_gate_loose([correct] + dist, ensure_first=True)
-            if correct not in options: options = ([correct] + options)[:4]
-            if len(options) < 4: continue
-            if any(o in used_pool for o in options): continue
-            sig = _q_signature(options)
-            if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()): continue
-
-            tier = tier_for_q(made)
-            stem = _stem_for_tier(tier, made)
-            stem = _strip_noise(stem)
-            options = [_strip_noise(o) for o in options]
-            random.shuffle(options)
-            ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
-            rows.append({
-                "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
-                "Question": stem,
-                "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-                "Answer": ans, "Explanation": "Fallback mode: contrasts between plausible sentences.",
-                "Order": {"Low":1,"Medium":2,"High":3}[tier],
-            })
-            used_corrects.append(correct)
-            used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
-            used.add(correct); made += 1
-
-    if made == 0:
-        raise ValueError("Still couldn’t form MCQs from this section. Paste a narrative paragraph (not bullets).")
-    return pd.DataFrame(rows).reset_index(drop=True)
+        local_sigs.add(sig)
+    return pd.DataFrame(rows, columns=MCQ_COLS)
 
 # ---------- Safe helpers ----------
 def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]:
@@ -578,129 +517,60 @@ def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]
     return out[:want]
 
 # ---------- MCQs (Safe mode) with Pass C fill ----------
-def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
-    if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
-    raw_sents = _sentences(_clean_lines(source or ""))
-    sents = [s for s in raw_sents if _is_clean_sentence(s)]
-    if len(sents) < 4:
-        raise ValueError("Need at least 4 clean sentences. Paste a short narrative paragraph (no bullets).")
+def generate_mcqs_safe(topic: str, src_text: str, total: int, week: int, lesson: int, mode: str) -> pd.DataFrame:
+    """Safe generator with week/lesson-based variety and global anchor de-dup."""
+    text = _strip_noise(src_text or "")
+    if not text:
+        return pd.DataFrame(columns=MCQ_COLS)
+    sents = [s for s in re.split(r'(?<=[.!?])\s+', text) if len(s.split()) >= 4]
+    if len(sents) < 6:
+        return pd.DataFrame(columns=MCQ_COLS)
 
-    rich = [s for s in sents if ("," in s or ";" in s)]
-    plain = [s for s in sents if s not in rich]
-    pool = rich + plain
-    if len(pool) > 240:
-        random.Random(2025).shuffle(pool)
-        pool = pool[:240]
-
-    tiers = ["Low","Medium","High"]
-    def tier_for_q(i):
-        if mode == "All Low": return "Low"
-        if mode == "All Medium": return "Medium"
-        if mode == "All High": return "High"
-        return tiers[i % 3]
-
-    rnd = random.Random(2025)
+    used_pool = _seen_pool(text)
     rows = []
-    used_corrects: List[str] = []
-    used_pool: Set[str] = set()
-    local_sigs: Set[str] = set()
+    local_sigs = set()
+    tiers = ["Low","Medium","High"]
+    rnd = random.Random(int(week) * 100 + int(lesson))
+    rnd.shuffle(sents)
 
-    # Pass A
-    for correct in pool:
-        if len(rows) == total_q: break
-        if any(_too_similar(correct, u) for u in used_corrects): continue
-        distractors = _pick_distractors(pool, correct, 3)
-        options = _quality_gate([correct] + distractors, ensure_first=True, min_len=35)
-        if len(options) < 4:
-            options = _quality_gate([correct] + distractors, ensure_first=True, min_len=30)
-        if len(options) < 4:
-            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
+    kws_global = _keywords(text, top_n=36)
+
+    for sent in sents:
+        if len(rows) >= int(total): break
+        distractors, correct = _distractors_for_sentence(sent, mode or "safe")
+        if not correct: continue
+        options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
         if any(o in used_pool for o in options): continue
-        sig = _q_signature(options)
-        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()): continue
 
-        tier = tier_for_q(len(rows))
+        sig = _q_signature(options)
+        if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()): 
+            continue
+
+        tier = tiers[len(rows) % len(tiers)]
+        anchor = (kws_global[len(rows) % len(kws_global)] if kws_global else correct.split()[0].lower())
+        if anchor in st.session_state.get("seen_q_sigs_global", set()):
+            continue
+
         stem = _stem_for_tier(tier, len(rows))
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
         ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
+        st.session_state.seen_q_sigs_global.add(anchor)
+
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
             "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-            "Answer": ans, "Explanation": "Safe Mode: contrasts between plausible sentences.",
-            "Order": {"Low":1,"Medium":2,"High":3}[tier],
+            "Answer": ans,
+            "Explanation": _explain_choice(correct, options, topic)
         })
-        used_corrects.append(correct); used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
+        local_sigs.add(sig)
 
-    # Pass B
-    if len(rows) < total_q:
-        for correct in pool:
-            if len(rows) == total_q: break
-            if any(_too_similar(correct, u) for u in used_corrects): continue
-            distractors = _pick_distractors(pool, correct, 3)
-            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
-            if correct not in options: options = ([correct] + options)[:4]
-            if len(options) < 4: continue
-            if any(o in used_pool for o in options): continue
-            sig = _q_signature(options)
-            if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()): continue
-
-            tier = tier_for_q(len(rows))
-            stem = _stem_for_tier(tier, len(rows))
-            stem = _strip_noise(stem)
-            options = [_strip_noise(o) for o in options]
-            random.shuffle(options)
-            ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
-            rows.append({
-                "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
-                "Question": stem,
-                "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-                "Answer": ans, "Explanation": "Safe Mode (backfill).",
-                "Order": {"Low":1,"Medium":2,"High":3}[tier],
-            })
-            used_corrects.append(correct); used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
-
-    # PATCH: Pass C — very-loose fill to reach requested count
-    if len(rows) < total_q:
-        rndC = random.Random(777)
-        for correct in pool:
-            if len(rows) == total_q: break
-            if any(_too_similar(correct, u) for u in used_corrects): continue
-            candidates = [c for c in pool if c != correct]
-            rndC.shuffle(candidates)
-            distractors = []
-            for c in candidates:
-                if len(distractors) == 3: break
-                if SequenceMatcher(a=correct.lower(), b=c.lower()).ratio() > 0.93:
-                    continue
-                distractors.append(c)
-            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
-            if correct not in options: options = ([correct] + options)[:4]
-            if len(options) < 4: continue
-            sig = _q_signature(options)
-            if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
-                continue
-
-            tier = tier_for_q(len(rows))
-            stem = _stem_for_tier(tier, len(rows))
-            stem = _strip_noise(stem)
-            options = [_strip_noise(o) for o in options]
-            rndC.shuffle(options)
-            ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
-            rows.append({
-                "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
-                "Question": stem,
-                "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-                "Answer": ans, "Explanation": "Very-loose fill: uses well-formed sentences from the same source.",
-                "Order": {"Low":1,"Medium":2,"High":3}[tier],
-            })
-            used_corrects.append(correct); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
-
-    return pd.DataFrame(rows).reset_index(drop=True)
+    df = pd.DataFrame(rows, columns=MCQ_COLS)
+    return df
 
 # ---------- Activities ----------
 def generate_activities(count: int, duration: int, tier: str, topic: str,
@@ -853,23 +723,44 @@ def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="", highl
         doc.add_paragraph(f"Q{i+1}: {r['Answer']}")
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
 
+
 def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
+    """Export activities to DOCX. Tolerant to varying column names and missing 'Policy focus'."""
     if Document is None: return b""
-    doc=Document(); _set_doc_defaults(doc)
+    doc = Document(); _set_doc_defaults(doc)
     if Inches:
-        sec=doc.sections[0]; sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
+        sec = doc.sections[0]; sec.left_margin = Inches(0.8); sec.right_margin = Inches(0.8)
     _docx_heading(doc, "Skills Activities" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
-    for i,r in df.iterrows():
-        _docx_heading(doc, r.get("Title", f"Activity {i+1}"), 1)
-        doc.add_paragraph(f"Policy focus: {r['Policy focus']}")
-        doc.add_paragraph(f"Objective: {r['Objective']}")
-        doc.add_paragraph(f"Steps: {r['Steps']}")
-        doc.add_paragraph(f"Materials: {r['Materials']}")
-        doc.add_paragraph(f"Assessment: {r['Assessment']}")
-        doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
+    def g(row, *names, default=""):
+        for n in names:
+            if n in row: return row.get(n, default)
+        return default
+    try:
+        wk_focus = bloom_focus_for_week(int(week))
+    except Exception:
+        wk_focus = ""
+    for i, r in df.reset_index(drop=True).iterrows():
+        title = g(r, "Title","title", default=f"Activity {i+1}")
+        doc.add_heading(str(title), level=1)
+        pf = g(r, "Policy focus","policy_focus", default="").strip() or wk_focus
+        if pf: doc.add_paragraph(f"Policy focus: {pf}")
+        obj = g(r, "Objective","objective"); 
+        if obj: doc.add_paragraph(f"Objective: {obj}")
+        steps = g(r, "Steps","steps")
+        if steps:
+            doc.add_paragraph("Steps:")
+            for line in str(steps).splitlines():
+                if line.strip(): doc.add_paragraph(line.strip())
+        mats = g(r, "Materials","materials")
+        if mats: doc.add_paragraph(f"Materials: {mats}")
+        assess = g(r, "Assessment","assessment")
+        if assess: doc.add_paragraph(f"Assessment: {assess}")
+        dur = g(r, "Duration (mins)","duration")
+        if dur: doc.add_paragraph(f"Duration: {dur} mins")
         doc.add_paragraph()
-    bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+    bio = BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+
 
 def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | None,
                          lesson:int, week:int, topic:str="", highlight_stems: bool = True)->bytes:
@@ -1110,6 +1001,10 @@ with tab2:
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
 
+    st.divider()
+    if st.button("Reset MCQ uniqueness memory"):
+        st.session_state.seen_q_sigs_global.clear()
+        st.toast("Cleared MCQ de-dup memory")
 # ===== ③ Generate =====
 with tab3:
     sc = len(_sentences(st.session_state.get("src_edit","")))
@@ -1371,3 +1266,135 @@ with tab4:
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------- Sidebar Editor & Validations (non-invasive) ----------
+try:
+    st.sidebar.header("Edit panel")
+    kind = st.sidebar.radio("Edit", ["MCQs","Activities"], horizontal=True)
+    def _val_mcqs(df: pd.DataFrame):
+        issues = []
+        if df is None or df.empty: return ["No MCQs."]
+        need = ["Question","Option A","Option B","Option C","Option D","Answer"]
+        miss = [c for c in need if c not in df.columns]
+        if miss: return [f"Missing columns: {', '.join(miss)}"]
+        for i, r in df.iterrows():
+            if not str(r.get("Question","")).strip(): issues.append(f"Row {i+1}: empty Question")
+            if str(r.get("Answer","")).upper() not in {"A","B","C","D"}: issues.append(f"Row {i+1}: Answer not A-D")
+        return issues[:20]
+    def _val_acts(df: pd.DataFrame):
+        issues = []
+        if df is None or df.empty: return ["No Activities."]
+        for i, r in df.iterrows():
+            if not str(r.get("title", r.get("Title",""))).strip(): issues.append(f"Row {i+1}: empty Title")
+            try:
+                d = int(r.get("duration", r.get("Duration (mins)", 0)))
+                if d <= 0: issues.append(f"Row {i+1}: Duration must be > 0")
+            except Exception:
+                issues.append(f"Row {i+1}: Duration not a number")
+        return issues[:20]
+    if kind == "MCQs" and isinstance(st.session_state.get("mcq_df"), pd.DataFrame) and len(st.session_state.mcq_df)>0:
+        df = st.session_state.mcq_df
+        row = st.sidebar.number_input("Row", 0, len(df)-1, 0, step=1)
+        qtxt = st.sidebar.text_area("Question", str(df.loc[row,"Question"]), height=150)
+        oa = st.sidebar.text_area("Option A", str(df.loc[row,"Option A"]), height=80)
+        ob = st.sidebar.text_area("Option B", str(df.loc[row,"Option B"]), height=80)
+        oc = st.sidebar.text_area("Option C", str(df.loc[row,"Option C"]), height=80)
+        od = st.sidebar.text_area("Option D", str(df.loc[row,"Option D"]), height=80)
+        ans = st.sidebar.selectbox("Answer", ["A","B","C","D"], index=["A","B","C","D"].index(str(df.loc[row,"Answer"])) if str(df.loc[row,"Answer"]) in ["A","B","C","D"] else 0)
+        expl = st.sidebar.text_area("Explanation", str(df.loc[row,"Explanation"]), height=100)
+        if st.sidebar.button("Apply MCQ changes"):
+            df.loc[row, ["Question","Option A","Option B","Option C","Option D","Answer","Explanation"]] = [qtxt,oa,ob,oc,od,ans,expl]
+            st.session_state.mcq_df = df; st.toast("Applied MCQ changes")
+        errs = _val_mcqs(df)
+        (st.sidebar.success if not errs else st.sidebar.warning)(f"{'All good' if not errs else f'Checks: {len(errs)} issue(s)'}")
+
+    # Reorder / Duplicate controls
+    c_up, c_dn, c_dup = st.sidebar.columns(3)
+    if c_up.button("⬆ Move up", key="mcq_up") and row > 0:
+        # swap row with row-1
+        df.iloc[[row-1, row]] = df.iloc[[row, row-1]].values
+        st.session_state.mcq_df = df
+        st.toast("Moved up")
+    if c_dn.button("⬇ Move down", key="mcq_down") and row < len(df)-1:
+        df.iloc[[row, row+1]] = df.iloc[[row+1, row]].values
+        st.session_state.mcq_df = df
+        st.toast("Moved down")
+    if c_dup.button("🧬 Duplicate", key="mcq_dup"):
+        top = df.iloc[:row+1]
+        mid = df.iloc[row:row+1]
+        bot = df.iloc[row+1:]
+        st.session_state.mcq_df = pd.concat([top, mid, bot], ignore_index=True)
+        st.toast("Duplicated question")
+    st.sidebar.divider()
+    delc1, delc2 = st.sidebar.columns([2,1])
+    if delc1.button("🗑 Delete this question", key="mcq_del_init"):
+        st.session_state["pending_mcq_delete"] = int(row)
+        st.toast("Click CONFIRM to delete")
+    if st.session_state.get("pending_mcq_delete") == int(row):
+        c1, c2 = st.sidebar.columns(2)
+        with c1:
+            if st.button("✅ Confirm delete", key="mcq_del_confirm"):
+                df = st.session_state.mcq_df
+                st.session_state.mcq_df = df.drop(index=row).reset_index(drop=True)
+                st.session_state.pop("pending_mcq_delete", None)
+                st.toast("Deleted question")
+        with c2:
+            if st.button("Cancel", key="mcq_del_cancel"):
+                st.session_state.pop("pending_mcq_delete", None)
+
+    elif kind == "Activities" and isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_state.act_df)>0:
+        df = st.session_state.act_df
+        row = st.sidebar.number_input("Row", 0, len(df)-1, 0, step=1, key="act_row_sb")
+        title = st.sidebar.text_input("Title", str(df.loc[row,"title"] if "title" in df.columns else df.loc[row,"Title"]))
+        objective = st.sidebar.text_area("Objective", str(df.loc[row,"objective"] if "objective" in df.columns else df.loc[row,"Objective"]), height=110)
+        steps = st.sidebar.text_area("Steps", str(df.loc[row,"steps"] if "steps" in df.columns else df.loc[row,"Steps"]), height=150)
+        materials = st.sidebar.text_area("Materials", str(df.loc[row,"materials"] if "materials" in df.columns else df.loc[row,"Materials"]), height=80)
+        assessment = st.sidebar.text_area("Assessment", str(df.loc[row,"assessment"] if "assessment" in df.columns else df.loc[row,"Assessment"]), height=100)
+        duration_val = df.loc[row,"duration"] if "duration" in df.columns else df.loc[row,"Duration (mins)"]
+        try: duration = int(duration_val)
+        except Exception: duration = 20
+        duration = st.sidebar.number_input("Duration (mins)", duration, step=5)
+        if st.sidebar.button("Apply Activity changes"):
+            if "title" in df.columns:
+                df.loc[row, ["title","objective","steps","materials","assessment","duration"]] = [title,objective,steps,materials,assessment,int(duration)]
+            else:
+                df.loc[row, ["Title","Objective","Steps","Materials","Assessment","Duration (mins)"]] = [title,objective,steps,materials,assessment,int(duration)]
+            st.session_state.act_df = df; st.toast("Applied Activity changes")
+        errs = _val_acts(df)
+        (st.sidebar.success if not errs else st.sidebar.warning)(f"{'All good' if not errs else f'Checks: {len(errs)} issue(s)'}")
+
+    # Reorder / Duplicate controls (Activities)
+    a_up, a_dn, a_dup = st.sidebar.columns(3)
+    if a_up.button("⬆ Move up", key="act_up") and row > 0:
+        df.iloc[[row-1, row]] = df.iloc[[row, row-1]].values
+        st.session_state.act_df = df
+        st.toast("Moved up")
+    if a_dn.button("⬇ Move down", key="act_down") and row < len(df)-1:
+        df.iloc[[row, row+1]] = df.iloc[[row+1, row]].values
+        st.session_state.act_df = df
+        st.toast("Moved down")
+    if a_dup.button("🧬 Duplicate", key="act_dup"):
+        top = df.iloc[:row+1]
+        mid = df.iloc[row:row+1]
+        bot = df.iloc[row+1:]
+        st.session_state.act_df = pd.concat([top, mid, bot], ignore_index=True)
+        st.toast("Duplicated activity")
+    st.sidebar.divider()
+    adelc1, adelc2 = st.sidebar.columns([2,1])
+    if adelc1.button("🗑 Delete this activity", key="act_del_init"):
+        st.session_state["pending_act_delete"] = int(row)
+        st.toast("Click CONFIRM to delete")
+    if st.session_state.get("pending_act_delete") == int(row):
+        c1, c2 = st.sidebar.columns(2)
+        with c1:
+            if st.button("✅ Confirm delete", key="act_del_confirm"):
+                df = st.session_state.act_df
+                st.session_state.act_df = df.drop(index=row).reset_index(drop=True)
+                st.session_state.pop("pending_act_delete", None)
+                st.toast("Deleted activity")
+        with c2:
+            if st.button("Cancel", key="act_del_cancel"):
+                st.session_state.pop("pending_act_delete", None)
+
+except Exception as _e:
+    pass
