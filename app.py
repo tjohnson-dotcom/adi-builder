@@ -1,6 +1,6 @@
 
 import io, re, random, hashlib
-from typing import List, Tuple
+from typing import List
 import pandas as pd
 import streamlit as st
 
@@ -8,17 +8,21 @@ import streamlit as st
 # Page & Theme
 # =====================
 st.set_page_config(page_title="ADI Learning Tracker", layout="wide", initial_sidebar_state="expanded")
+
 st.markdown("""
 <style>
 :root{
-  --brand:#2c6e49; --brand-2:#3e8b63; --ink:#0d1a14; --muted:#63756b;
+  --brand:#2c6e49; --brand-2:#3e8b63; --ink:#0b1a13; --muted:#5e7167;
   --bg:#f7faf8; --card:#ffffff; --ring:#e6efe9;
 }
 html, body, .stApp { background: var(--bg); }
-.block-container{ padding-top: 1.8rem; padding-bottom: 3rem; }
-.hero{ padding:.6rem 0 1.0rem; border-bottom:1px solid var(--ring); position:sticky; top:0; background:var(--bg); z-index:5; }
-.hero h1{ margin:0; font-size:2.2rem; font-weight:900; color:var(--ink); letter-spacing:-.2px; }
-.hero p{ margin:.1rem 0 0; color:var(--muted); }
+.block-container{ padding-top: 2.6rem; padding-bottom: 3rem; }
+.header{
+  position: sticky; top: 0; z-index: 10; background: var(--bg);
+  padding: .8rem 0 1.0rem; border-bottom:1px solid var(--ring);
+}
+.header .ttl{ font-size: 2.2rem; font-weight: 900; color: var(--ink); margin: 0; letter-spacing:-.2px; }
+.header .sub{ margin:.1rem 0 0; color: var(--muted); }
 .card{ background:var(--card); border:1px solid var(--ring); border-radius:18px;
        padding:1.25rem 1.25rem 1rem; box-shadow:0 12px 30px rgba(23,51,38,.06); margin-bottom:1.1rem; }
 .kit{ display:flex; gap:.6rem; flex-wrap:wrap; margin:.35rem 0 .9rem; }
@@ -31,18 +35,16 @@ div.stButton > button:hover{ filter:brightness(1.03); }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="hero"><h1>ADI Learning Tracker</h1><p>Transform lessons into measurable learning</p></div>', unsafe_allow_html=True)
-
 # =====================
-# Safe session defaults (no callables)
+# Safe session defaults
 # =====================
 _defaults = {
     "seen_q_sigs_global": set(),
-    "mcq_df": pd.DataFrame(),
-    "act_df": pd.DataFrame(),
+    "mcq_df": pd.DataFrame(), "act_df": pd.DataFrame(),
     "lesson": 1, "week": 1, "source_type": "E-book", "focus": "Focus Medium",
     "teacher_seed": "", "src_text": "",
     "bloom_mode": "Auto (by Focus)", "bloom_target": "Understand",
+    "logo_url": "", "logo_bytes": None,
 }
 for k,v in _defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -62,7 +64,7 @@ def _strip_noise(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 def _keywords(text: str, top_n: int = 24):
-    t = re.sub(r"[^A-Za-z0-9\- ]+", " ", (text or "").lower())
+    t = re.sub(r"[^A-Za-z0-9\\- ]+", " ", (text or "").lower())
     words = [w for w in t.split() if len(w) >= 3]
     if not words: return []
     from collections import Counter
@@ -76,6 +78,7 @@ def _keywords(text: str, top_n: int = 24):
 def _seed_salt() -> int:
     txt = (st.session_state.get("teacher_seed") or "").strip()
     if not txt: return 0
+    import hashlib
     h = hashlib.md5(txt.encode("utf-8")).hexdigest()[:8]
     return int(h, 16)
 
@@ -146,7 +149,7 @@ def _read_upload(file) -> str:
             try:
                 import docx
                 doc = docx.Document(io.BytesIO(data))
-                return "\n".join([p.text for p in doc.paragraphs])
+                return "\\n".join([p.text for p in doc.paragraphs])
             except Exception:
                 return ""
         if name.endswith(".pptx"):
@@ -156,7 +159,7 @@ def _read_upload(file) -> str:
                 for slide in prs.slides:
                     for shp in slide.shapes:
                         if hasattr(shp, "text"): txt.append(shp.text)
-                return "\n".join(txt)
+                return "\\n".join(txt)
             except Exception:
                 return ""
         if name.endswith(".pdf"):
@@ -172,7 +175,7 @@ def generate_mcqs(src: str, lesson: int, week: int, focus: str, source_type: str
     if not src or len(_strip_noise(src)) < 40:
         return pd.DataFrame(columns=MCQ_COLS)
     rnd = random.Random(int(week) * 100 + int(lesson) + (_seed_salt() % 100000))
-    sents = re.split(r'(?<=[.!?])\s+', _strip_noise(src))
+    sents = re.split(r'(?<=[.!?])\\s+', _strip_noise(src))
     sents = [s for s in sents if 25 <= len(s) <= 240] or [src]
     rows = []
     sig_seen = st.session_state.setdefault("seen_q_sigs_global", set())
@@ -226,9 +229,6 @@ def generate_activities(lesson:int, week:int, focus:str) -> pd.DataFrame:
         })
     return pd.DataFrame(rows, columns=ACT_COLS)
 
-# =====================
-# Exporters
-# =====================
 def export_mcqs_gift(df: pd.DataFrame) -> bytes:
     lines = []
     for _, r in df.iterrows():
@@ -238,8 +238,8 @@ def export_mcqs_gift(df: pd.DataFrame) -> bytes:
         correct = {"A":0,"B":1,"C":2,"D":3}.get(ans, 0)
         gift = f"::{_strip_noise(stem)[:50]}:: {stem} {{"
         for i, o in enumerate(opts): gift += (" =" if i==correct else " ~") + o
-        gift += " }\n"; lines.append(gift)
-    return ("\n".join(lines)).encode("utf-8")
+        gift += " }\\n"; lines.append(gift)
+    return ("\\n".join(lines)).encode("utf-8")
 
 def export_acts_docx(df: pd.DataFrame) -> bytes:
     try:
@@ -256,6 +256,18 @@ def export_acts_docx(df: pd.DataFrame) -> bytes:
         bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
     except Exception:
         return df.to_csv(index=False).encode("utf-8")
+
+# =====================
+# Header with logo
+# =====================
+c_logo, c_text = st.columns([1,6])
+with c_logo:
+    if st.session_state.get("logo_bytes"):
+        st.image(st.session_state.logo_bytes, caption=None, width=110)
+    elif st.session_state.get("logo_url"):
+        st.image(st.session_state.logo_url, caption=None, width=110)
+with c_text:
+    st.markdown('<div class="header"><div class="ttl">ADI Learning Tracker</div><div class="sub">Transform lessons into measurable learning</div></div>', unsafe_allow_html=True)
 
 # =====================
 # UI
@@ -279,11 +291,25 @@ with c4: st.session_state.focus = st.radio("Focus", ["Focus Low","Focus Medium",
 with c5: st.session_state.teacher_seed = st.text_input("Teacher ID (variation seed)", value=st.session_state.get("teacher_seed",""), placeholder="e.g., t.johnson@adi or class code")
 st.caption(f"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}")
 
+# Branding controls
+with st.expander("Branding (logo)", expanded=False):
+    logo_cols = st.columns([2,2,2])
+    with logo_cols[0]:
+        st.session_state.logo_url = st.text_input("Logo URL (PNG/SVG)", value=st.session_state.get("logo_url",""), placeholder="https://.../logo.png")
+    with logo_cols[1]:
+        logo_file = st.file_uploader("Upload logo file", type=["png","jpg","jpeg","svg"])
+        if logo_file is not None:
+            st.session_state.logo_bytes = logo_file.read()
+    with logo_cols[2]:
+        if st.button("Clear logo"):
+            st.session_state.logo_url = ""; st.session_state.logo_bytes = None
+
+# Bloom controls
 st.markdown("**Bloom’s taxonomy**")
 b1,b2 = st.columns([2,2])
 with b1: st.session_state.bloom_mode = st.radio("Mode", ["Auto (by Focus)","Target level"], horizontal=True, key="bmode")
 with b2: st.session_state.bloom_target = st.selectbox("Target level", BLOOMS, index=BLOOMS.index(st.session_state.get("bloom_target","Understand")), disabled=st.session_state.bloom_mode.startswith("Auto"))
-st.button("Reset MCQ uniqueness memory", on_click=lambda: st.session_state.setdefault("seen_q_sigs_global", set()).clear(), help="Clears the global duplicate blocklist for this session.")
+st.button("Reset MCQ uniqueness memory", on_click=lambda: st.session_state.setdefault("seen_q_sigs_global", set()).clear())
 st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Generate ---
@@ -295,20 +321,22 @@ cA, cB = st.columns(2)
 with cA:
     if st.button("📝 Generate MCQs"):
         try:
-            st.session_state.mcq_df = generate_mcqs(st.session_state.get("src_text",""),
-                                                    int(st.session_state.get("lesson",1)),
-                                                    int(st.session_state.get("week",1)),
-                                                    st.session_state.get("focus","Focus Medium"),
-                                                    st.session_state.get("source_type","E-book"))
+            st.session_state.mcq_df = generate_mcqs(
+                st.session_state.get("src_text",""),
+                int(st.session_state.get("lesson",1)),
+                int(st.session_state.get("week",1)),
+                st.session_state.get("focus","Focus Medium"),
+                st.session_state.get("source_type","E-book"))
             if len(st.session_state.mcq_df)==0: st.warning("No MCQs generated — add more text in ① Upload.")
         except Exception as e:
             st.error(f"Couldn't generate MCQs: {e}")
 with cB:
     if st.button("🧩 Generate Activities"):
         try:
-            st.session_state.act_df = generate_activities(int(st.session_state.get("lesson",1)),
-                                                          int(st.session_state.get("week",1)),
-                                                          st.session_state.get("focus","Focus Medium"))
+            st.session_state.act_df = generate_activities(
+                int(st.session_state.get("lesson",1)),
+                int(st.session_state.get("week",1)),
+                st.session_state.get("focus","Focus Medium"))
         except Exception as e:
             st.error(f"Couldn't generate Activities: {e}")
 
@@ -377,21 +405,21 @@ st.markdown('</div>', unsafe_allow_html=True)
 # --- Export ---
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.subheader("④ Export")
-c1, c2, c3 = st.columns(3)
+c1, c2 = st.columns(2)
 if isinstance(st.session_state.get("mcq_df"), pd.DataFrame) and len(st.session_state.mcq_df) > 0:
     with c1:
         st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
                            file_name="mcqs.csv", mime="text/csv", use_container_width=True)
-    with c2:
         st.download_button("Download MCQs (GIFT)", export_mcqs_gift(st.session_state.mcq_df),
                            file_name="mcqs_gift.txt", mime="text/plain", use_container_width=True)
 else:
     st.info("No MCQs to export yet.")
 if isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_state.act_df) > 0:
-    data = export_acts_docx(st.session_state.act_df)
-    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if data[:2] != b"Ti" else "text/csv"
-    st.download_button("Download Activities (DOCX/CSV)", data, file_name="activities.docx",
-                       mime=mime, use_container_width=True)
+    with c2:
+        data = export_acts_docx(st.session_state.act_df)
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if data[:2] != b"Ti" else "text/csv"
+        st.download_button("Download Activities (DOCX/CSV)", data, file_name="activities.docx",
+                           mime=mime, use_container_width=True)
 else:
     st.info("No Activities to export yet.")
 st.markdown('</div>', unsafe_allow_html=True)
