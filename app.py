@@ -1,3 +1,4 @@
+
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -620,6 +621,13 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
             "Duration (mins)": duration
         })
     return pd.DataFrame(rows)
+
+def _seen_pool(text: str) -> set:
+    """Return a set of banned/seen option strings to avoid low‑value choices.
+    Minimal fallback implementation: empty set. Extend later if needed.
+    """
+    return set()
+
 
 def generate_activities_safe(n:int, dur:int, focus:str, topic:str, lesson:int, week:int, src_text:str, style:str, student:bool=False)->pd.DataFrame:
     """
@@ -1431,4 +1439,3 @@ try:
 
 except Exception as _e:
     pass
-
