@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker Question Generator (minimal, reliable UI)
+# app.py — ADI Learning Tracker Question Generator (simple 4-step flow)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -7,8 +7,10 @@ import pandas as pd
 import streamlit as st
 
 # ---------- Optional parsers ----------
-try: import pdfplumber
-except Exception: pdfplumber = None
+try:
+    import pdfplumber
+except Exception:
+    pdfplumber = None
 try:
     from PyPDF2 import PdfReader
 except Exception:
@@ -33,22 +35,27 @@ except Exception:
 # ---------- Page config ----------
 st.set_page_config(page_title="Learning Tracker Question Generator", page_icon="🧭", layout="centered")
 
-# ---------- Minimal theme ----------
+# ---------- Minimal, branded CSS ----------
 CSS = """
 <style>
-:root{ --adi:#245a34; --ink:#0f172a; --muted:#6b7280; --bg:#f7faf8; --card:#ffffff; --border:#e6e9ec; }
+:root{ --adi:#245a34; --gold:#C8A85A; --ink:#0f172a; --muted:#6b7280; --bg:#f7faf8; --card:#ffffff; --border:#e6e9ec; }
 html, body { background:var(--bg); }
-main .block-container { padding-top: 0.6rem; max-width: 900px; }
-.card{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
-.h1{ font-size:22px; font-weight:800; color:var(--ink); margin:0; }
-.h2{ font-size:16px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+main .block-container { padding-top: .6rem; max-width: 920px; }
+.card{ background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px; box-shadow:0 4px 16px rgba(0,0,0,.03); }
+.h1{ font-size:26px; font-weight:800; color:var(--ink); margin:0; }
+.h2{ font-size:18px; font-weight:800; color:var(--ink); margin:4px 0 8px; }
 .small{ color:var(--muted); }
-.notice{ padding:10px 12px; border-radius:10px; border:1px dashed var(--border); background:#fff; }
+.notice{ padding:12px 14px; border-radius:12px; border:1px dashed var(--border); background:#fff; margin-bottom:10px; }
+.callout{ padding:14px; border-radius:12px; background:#eef6ff; border:1px solid #dbeafe; margin:10px 0; }
+.next-tip{ margin-top:12px; padding:10px 12px; border-radius:10px; background:#f4faf6; border:1px solid #d8e9df; color:#0b3d22; }
 .badge{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:999px;
   font-weight:800; font-size:12px; color:#fff; margin-right:10px; }
 .badge.g{ background:#245a34; } .badge.a{ background:#d97706; } .badge.r{ background:#b91c1c; }
 .qcard{ border:1px solid var(--border); border-radius:10px; padding:8px 10px; background:#fff; }
 .qitem{ display:flex; gap:8px; align-items:flex-start; padding:6px 0; }
+/* Tabs accent */
+.stTabs [data-baseweb="tab-highlight"] { background: var(--adi) !important; }
+.stTabs [role="tablist"] [role="tab"] { font-weight:700; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -66,7 +73,8 @@ def _load_logo_bytes()->bytes:
     try:
         if os.path.exists("Logo.png"):
             with open("Logo.png","rb") as f: return f.read()
-    except Exception: pass
+    except Exception:
+        pass
     return base64.b64decode(_FALLBACK_LOGO_B64)
 
 # ---------- Bloom policy ----------
@@ -92,7 +100,7 @@ _STOP = {"the","a","an","and","or","of","to","in","on","for","with","by","as","i
 
 def _clean_lines(text:str)->str:
     lines=[ln.strip() for ln in (text or "").replace("\r","\n").split("\n") if ln.strip()]
-    lines=[ln for ln in lines if not re.fullmatch(r"(page\s*\d+|\d+)", ln, flags=re.I)]
+    lines=[ln for ln in lines if not re.fullmatch(r"(page\\s*\\d+|\\d+)", ln, flags=re.I)]
     out,seen=[],set()
     for ln in lines:
         k=ln[:96].lower()
@@ -101,8 +109,8 @@ def _clean_lines(text:str)->str:
     return "\n".join(out)[:8000]
 
 def _sentences(text:str)->List[str]:
-    chunks=re.split(r"[.\u2022\u2023\u25CF•]|(?:\n\s*\-\s*)|(?:\n\s*\*\s*)", text or "")
-    rough=[re.sub(r"\s+"," ",c).strip() for c in chunks if c and c.strip()]
+    chunks=re.split(r"[.\\u2022\\u2023\\u25CF•]|(?:\\n\\s*\\-\\s*)|(?:\\n\\s*\\*\\s*)", text or "")
+    rough=[re.sub(r"\\s+"," ",c).strip() for c in chunks if c and c.strip()]
     return [s for s in rough if 30<=len(s)<=180][:400]
 
 def _keywords(text:str, top_n:int=24)->List[str]:
@@ -131,7 +139,7 @@ def _uniq_keep(seq:List[str], key=lambda s: s.lower()):
     return out
 
 def _quality_gate(options:List[str])->List[str]:
-    ops=[re.sub(r"\s+"," ",o.strip()) for o in options if o and o.strip()]
+    ops=[re.sub(r"\\s+"," ",o.strip()) for o in options if o and o.strip()]
     out=[]
     for o in ops:
         if len(o)<25 or len(o)>180: continue
@@ -197,7 +205,7 @@ def generate_mcqs_exact(topic:str, source:str, total_q:int, week:int, lesson:int
         neigh=_window(sents, idx, 3)
         cand=[s for s in neigh if s!=correct]
         if len(cand)<6:
-            extra=[s for s in sents if re.search(r"\b(avoid|verify|select|compare|justify|ensure|limit|risk|threshold|condition)\b", s, re.I)]
+            extra=[s for s in sents if re.search(r"\\b(avoid|verify|select|compare|justify|ensure|limit|risk|threshold|condition)\\b", s, re.I)]
             rnd.shuffle(extra); cand+=extra[:8]
         options=_quality_gate([correct]+cand)
         if len(options)<4: continue
@@ -229,7 +237,7 @@ def generate_activities(count:int, duration:int, tier:str, topic:str, lesson:int
     verbs=ADI_VERBS.get(tier, MED_VERBS)[:6]
     sents=_sentences(source or "")
     if len(sents)<12: raise ValueError("Not enough source text to build activities (need ~12+ sentences).")
-    hints=[s for s in sents if re.search(r"\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\b", s, re.I)]
+    hints=[s for s in sents if re.search(r"\\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\\b", s, re.I)]
     hints=_uniq_keep(hints)[:60]
     if not hints: raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
     rnd=random.Random(99); rows=[]
@@ -306,7 +314,7 @@ def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
         lines.append(f"::{_gift_escape(qname)}:: {stem} {{\n" + "\n".join(parts) + f"\n}} {comment}\n")
     return "\n".join(lines).strip()+"\n"
 
-# ---------- State ----------
+# ---------- App state ----------
 st.session_state.setdefault("lesson", 1)
 st.session_state.setdefault("week", 1)
 st.session_state.setdefault("topic", "")
@@ -328,16 +336,17 @@ with col_title:
     st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
 st.divider()
 
-# ---------- Tabs ----------
-tab_upload, tab_setup, tab_generate, tab_edit, tab_export = st.tabs(
-    ["📤 Upload", "🛠️ Setup", "✨ Generate", "✏️ Edit", "📄 Export"]
+# ---------- Tabs (numbered stepper) ----------
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["① Upload & Setup", "② Generate", "③ Edit", "④ Export"]
 )
 
-# ===== Upload =====
-with tab_upload:
+# ===== ① Upload & Setup =====
+with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='h2'>Upload</div>", unsafe_allow_html=True)
+    st.markdown("<div class='h2'>Upload your lesson</div>", unsafe_allow_html=True)
     st.markdown("<div class='notice'>Drag a <b>.pptx</b>, <b>.pdf</b>, or <b>.docx</b> file here, or click to browse.</div>", unsafe_allow_html=True)
+
     up = st.file_uploader("Lesson file", type=["pptx","pdf","docx"])
     if up:
         st.session_state.src_text = extract_text_from_upload(up)
@@ -345,35 +354,50 @@ with tab_upload:
         if st.session_state.src_text.startswith("[Could not parse"):
             st.error(st.session_state.src_text)
         else:
-            st.success("Source parsed. Open the Generate tab.")
-    st.caption("Optional: upload ADI/School logo (PNG/JPG)")
-    logo = st.file_uploader("Logo", type=["png","jpg","jpeg"])
-    if logo is not None:
-        st.session_state.logo_bytes = logo.read()
-        st.success("Logo updated.")
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.success("File parsed. Scroll down to complete setup.")
 
-# ===== Setup =====
-with tab_setup:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
-    c1,c2,c3 = st.columns([1,1,3])
-    with c1: st.session_state.lesson = st.number_input("Lesson", 1, 50, st.session_state.lesson, 1)
-    with c2: st.session_state.week   = st.number_input("Week",   1, 14, st.session_state.week,   1)
-    with c3: st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}", disabled=True)
+    colA, colB = st.columns([1,1])
+    with colA:
+        st.caption("Optional: ADI/School logo")
+        logo = st.file_uploader("Logo", type=["png","jpg","jpeg"])
+        if logo is not None:
+            st.session_state.logo_bytes = logo.read()
+            st.success("Logo updated.")
+    with colB:
+        if st.button("Reset all"):
+            for k in ["mcq_df","act_df","src_text","src_edit","topic"]:
+                st.session_state.pop(k, None)
+            st.session_state.lesson = 1; st.session_state.week = 1
+            st.success("Reset complete.")
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("<div class='h2'>Setup details</div>", unsafe_allow_html=True)
+
+    c1,c2,c3 = st.columns([1,1,2])
+    with c1:
+        st.session_state.lesson = st.number_input("Lesson", 1, 50, st.session_state.lesson, 1)
+    with c2:
+        st.session_state.week   = st.number_input("Week",   1, 14, st.session_state.week,   1)
+    with c3:
+        st.text_input("Bloom focus (auto)",
+                      value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}",
+                      disabled=True)
+
     st.session_state.topic = st.text_input("Learning Objective / Topic (optional)", value=st.session_state.topic)
-    st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit, height=160, placeholder="Paste or edit full sentences here…")
-    if st.button("Reset all"):
-        for k in ["mcq_df","act_df","src_text","src_edit","topic"]:
-            st.session_state.pop(k, None)
-        st.session_state.lesson = 1; st.session_state.week = 1
-        st.success("Reset complete.")
+    st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
+                                             height=160, placeholder="Paste or edit full sentences here…")
+
+    st.markdown(
+        "<div class='next-tip'>Next: go to <b>② Generate</b> to create questions & activities.</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== Generate =====
-with tab_generate:
+# ===== ② Generate =====
+with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Create Questions & Activities</div>", unsafe_allow_html=True)
+
     g1,g2,g3 = st.columns([1,1,1])
     with g1: st.session_state.q_total = st.number_input("Total questions", 3, 60, st.session_state.q_total, 1)
     with g2: st.session_state.act_n   = st.number_input("Activities (count)", 1, 10, st.session_state.act_n, 1)
@@ -382,9 +406,9 @@ with tab_generate:
     if not st.session_state.src_edit or len(_sentences(st.session_state.src_edit)) < 12:
         st.info("Tip: use a section with ~12+ full sentences. Bullets should be expanded into sentences.")
 
-    cL, cR = st.columns([1,1])
-    with cL:
-        if st.button("Create Questions"):
+    colQ, colA = st.columns([1,1])
+    with colQ:
+        if st.button("✨ Create Questions", use_container_width=True):
             try:
                 st.session_state.mcq_df = generate_mcqs_exact(
                     st.session_state.topic, st.session_state.src_edit, int(st.session_state.q_total),
@@ -393,8 +417,8 @@ with tab_generate:
                 st.success("MCQs generated.")
             except Exception as e:
                 st.error(f"Couldn’t generate MCQs: {e}")
-    with cR:
-        if st.button("Create Activities"):
+    with colA:
+        if st.button("🧩 Create Activities", use_container_width=True):
             try:
                 focus = bloom_focus_for_week(st.session_state.week)
                 st.session_state.act_df = generate_activities(
@@ -405,7 +429,7 @@ with tab_generate:
             except Exception as e:
                 st.error(f"Couldn’t generate activities: {e}")
 
-    # Minimal preview
+    # Minimal previews
     if "mcq_df" in st.session_state:
         st.write("**MCQs (preview)**")
         st.markdown("<div class='qcard'>", unsafe_allow_html=True)
@@ -424,33 +448,34 @@ with tab_generate:
                 st.write(f"**Duration:** {r['Duration (mins)']} mins")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== Edit =====
-with tab_edit:
+# ===== ③ Edit =====
+with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Edit</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
         st.session_state.mcq_df = st.data_editor(st.session_state.mcq_df, use_container_width=True, key="edit_mcq")
     else:
-        st.info("No MCQs yet — generate them in the Generate tab.")
+        st.info("No MCQs yet — create them in ② Generate.")
     st.write("")
     if "act_df" in st.session_state:
         st.session_state.act_df = st.data_editor(st.session_state.act_df, use_container_width=True, key="edit_act")
     else:
-        st.info("No Activities yet — generate them in the Generate tab.")
+        st.info("No Activities yet — create them in ② Generate.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== Export =====
-with tab_export:
+# ===== ④ Export =====
+with tab4:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Export</div>", unsafe_allow_html=True)
+
+    # MCQs
     if "mcq_df" in st.session_state:
         mcq_csv_name = f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv"
         st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
                            mcq_csv_name, "text/csv")
-        # GIFT (Moodle)
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-        st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"), f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift", "text/plain")
-        # DOCX
+        st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"),
+                           f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift", "text/plain")
         if Document:
             mcq_docx = export_mcqs_docx(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             st.download_button("Download MCQs (Word)", mcq_docx,
@@ -459,8 +484,11 @@ with tab_export:
         else:
             st.caption("Install python-docx for Word export.")
     else:
-        st.info("Generate MCQs to enable downloads.")
+        st.markdown("<div class='callout'>Generate MCQs in <b>② Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
+
     st.write("")
+
+    # Activities
     if "act_df" in st.session_state:
         act_csv_name = f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv"
         st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
@@ -471,5 +499,6 @@ with tab_export:
                                f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx",
                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
-        st.info("Generate Activities to enable downloads.")
+        st.markdown("<div class='callout'>Generate Activities in <b>② Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
+
     st.markdown("</div>", unsafe_allow_html=True)
