@@ -1,5 +1,3 @@
-
-
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -13,7 +11,6 @@ import pandas as pd
 import streamlit as st
 import hashlib
 def _seed_salt() -> int:
-    """Hash the teacher/class seed to a small integer offset."""
     try:
         seed_txt = (st.session_state.get("teacher_seed") or st.session_state.get("teacher_id") or "").strip()
     except Exception:
@@ -26,16 +23,6 @@ def _seed_salt() -> int:
 
 # ---------- Streamlit base ----------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered", initial_sidebar_state="expanded")
-
-# ---- Safe state initialization ----
-for key, factory in {
-    "seen_q_sigs": set,
-    "seen_q_sigs_global": set,
-    "undo_mcq": list,
-    "undo_act": list,
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = factory()
 
 
 
@@ -334,17 +321,7 @@ def _quality_gate(options: List[str], ensure_first: bool = True,
 def _quality_gate_loose(options: List[str], ensure_first: bool = True) -> List[str]:
     return _quality_gate(options, ensure_first=ensure_first, min_len=25, min_words=5, require_verb=False)
 
-
 def _distractors_for_sentence(sent: str, mode: str = "safe"):
-    """
-    Improved distractor generator:
-    - picks a multi-word correct anchor from the sentence if possible
-    - mines candidate phrases from the wider corpus (other sentences)
-    - filters by lexical overlap (Jaccard) to be plausible but not identical
-    - prefers similar length and varied first words
-    - falls back to keyword-based foils if the corpus is short
-    Returns (distractors, correct).
-    """
     try:
         corpus = (st.session_state.get("src_edit") or st.session_state.get("src_text") or "")
     except Exception:
@@ -352,117 +329,42 @@ def _distractors_for_sentence(sent: str, mode: str = "safe"):
     s = _strip_noise(sent or "")
     if not s:
         return [], ""
-
-    # --- helpers ---
-    STOP = {
-        "the","a","an","of","to","and","in","on","for","with","by","from","as","at","is","are","was","were",
-        "be","been","being","that","which","this","these","those","it","its","their","our","your","or","if",
-        "into","over","under","about","than","then","so","such","may","can","should","must","will","would"
-    }
-    def _tokset(text: str) -> set:
-        text = re.sub(r"[^A-Za-z0-9\- ]+", " ", (text or "").lower())
-        return {w for w in text.split() if w and w not in STOP}
-    def _jaccard(a: str, b: str) -> float:
-        A, B = _tokset(a), _tokset(b)
-        if not A or not B: return 0.0
-        return len(A & B) / len(A | B)
-
-    # Local anchors from this sentence
-    loc_kws = _keywords(s, top_n=10)
+    loc_kws = _keywords(s, top_n=8)
     correct = ""
     for kw in loc_kws:
-        if " " in kw and len(kw.split()) >= 2 and len(kw) >= 8:
+        if " " in kw and len(kw) >= 8:
             correct = kw
             break
     if not correct:
-        # fallback: mid-length window
-        words = [w for w in re.sub(r"[^A-Za-z0-9\- ]+", " ", s).split() if w]
-        n = min(6, max(3, len(words)//3 or 3))
-        if len(words) >= n:
-            mid = max(0, (len(words)//2) - n//2)
-            correct = " ".join(words[mid:mid+n])
-        else:
-            correct = s.strip()
+        correct = (loc_kws[0] if loc_kws else s.split(".")[0])[:160]
     correct = correct.strip().capitalize()
-
-    # --- mine candidate phrases from the corpus ---
-    sents = [t for t in re.split(r'(?<=[.!?])\s+', _strip_noise(corpus)) if t.strip()]
-    # Exclude the current sentence to reduce duplicates
-    cands = []
-    for ss in sents:
-        if ss.strip() == s.strip(): 
+    glob_kws = _keywords(corpus, top_n=48) if corpus else []
+    cset = set(correct.lower().split())
+    d = []
+    for kw in glob_kws:
+        if kw == correct.lower(): 
             continue
-        toks = [w for w in re.sub(r"[^A-Za-z0-9\- ]+", " ", ss).split() if w]
-        # sliding windows of 3..8 words
-        for k in range(3, 9):
-            for i in range(0, max(0, len(toks) - k + 1), max(1, k//2)):
-                ph = " ".join(toks[i:i+k]).strip()
-                if 8 <= len(ph) <= 120:
-                    cands.append(ph.capitalize())
-        if len(cands) > 600:
+        if set(kw.split()).intersection(cset):
+            continue
+        if kw.strip() and kw.lower() not in {"none", "all", "above", "below"}:
+            d.append(kw.capitalize())
+        if len(d) >= 6: 
             break
-
-    # Scoring: want moderate similarity, similar length, and varied starts
-    target_len = len(correct.split())
-    def score(ph: str) -> float:
-        j = _jaccard(correct, ph)
-        # prefer moderate similarity 0.15..0.45
-        sim_ok = 1.0 - abs(j - 0.3)
-        # length proximity
-        lp = 1.0 - abs(len(ph.split()) - target_len) / max(1.0, target_len)
-        return 0.6*sim_ok + 0.4*lp
-
-    # Filter: remove too-similar or almost identical
-    filtered = []
-    cset = _tokset(correct)
-    for ph in cands:
-        if ph.lower() == correct.lower():
-            continue
-        j = _jaccard(correct, ph)
-        if j < 0.12 or j > 0.55:
-            continue
-        if _tokset(ph).issubset(cset):
-            continue
-        filtered.append(ph)
-
-    filtered = sorted(set(filtered), key=score, reverse=True)
-
-    # Enforce varied first words
-    used_first = set()
-    distractors = []
-    for ph in filtered:
-        first = ph.split()[0].lower()
-        if first in used_first:
-            continue
-        used_first.add(first)
-        distractors.append(ph)
-        if len(distractors) >= 6:
-            break
-
-    # Fallback to keyword-based foils if not enough
-    if len(distractors) < 3:
-        glob_kws = _keywords(corpus, top_n=48) if corpus else []
-        for kw in glob_kws:
-            if kw.strip() and kw.lower() not in {"none","all","above","below"} and kw.lower() not in correct.lower():
-                cand = kw.capitalize()
-                if cand not in distractors and _jaccard(correct, cand) < 0.4:
-                    distractors.append(cand)
-                if len(distractors) >= 6:
-                    break
-
-    # If still short, synthesize near-miss forms
-    while len(distractors) < 3:
-        parts = correct.split()
-        if len(parts) > 2:
-            near = " ".join(parts[:-1] + [parts[-1] + "s"]).capitalize()
+    while len(d) < 3:
+        extra = correct.split()
+        if len(extra) > 1:
+            extra = extra[::-1]
+        cand = " ".join(extra).capitalize()
+        if cand not in d and cand != correct:
+            d.append(cand)
         else:
-            near = (correct + " process").capitalize()
-        if near != correct and near not in distractors:
-            distractors.append(near)
-        else:
-            distractors.append((correct + " guideline").capitalize())
+            d.append((correct + " policy").capitalize())
+        if len(d) >= 3: break
+    return d[:3], correct
 
-    return distractors[:3], correct
+
+def _explain_choice(correct: str, options: list[str], topic: str = "") -> str:
+    return "Correct because it matches the source facts."
 
 
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
@@ -703,7 +605,7 @@ def generate_mcqs_safe(topic: str, src_text: str, total: int, week: int, lesson:
             continue
 
         tier = tiers[len(rows) % len(tiers)]
-        anchor = (kws_global[(len(rows) + (_seed_salt() % max(1, len(kws_global)))) % len(kws_global)] if kws_global else correct.split()[0].lower())
+        anchor = (kws_global[len(rows) % len(kws_global)] if kws_global else correct.split()[0].lower())
         if anchor in st.session_state.get("seen_q_sigs_global", set()):
             continue
 
@@ -1468,44 +1370,6 @@ try:
             st.session_state.mcq_df = df; st.toast("Applied MCQ changes")
         errs = _val_mcqs(df)
         (st.sidebar.success if not errs else st.sidebar.warning)(f"{'All good' if not errs else f'Checks: {len(errs)} issue(s)'}")
-
-    # Reorder / Duplicate controls
-    c_up, c_dn, c_dup = st.sidebar.columns(3)
-    if c_up.button("⬆ Move up", key="mcq_up") and row > 0:
-        # swap row with row-1
-        df.iloc[[row-1, row]] = df.iloc[[row, row-1]].values
-        st.session_state.mcq_df = df
-        st.toast("Moved up")
-    if c_dn.button("⬇ Move down", key="mcq_down") and row < len(df)-1:
-        df.iloc[[row, row+1]] = df.iloc[[row+1, row]].values
-        st.session_state.mcq_df = df
-        st.toast("Moved down")
-    if c_dup.button("🧬 Duplicate", key="mcq_dup"):
-        top = df.iloc[:row+1]
-        mid = df.iloc[row:row+1]
-        bot = df.iloc[row+1:]
-        st.session_state.mcq_df = pd.concat([top, mid, bot], ignore_index=True)
-        st.toast("Duplicated question")
-    st.sidebar.divider()
-    delc1, delc2 = st.sidebar.columns([2,1])
-    if delc1.button("🗑 Delete this question", key="mcq_del_init"):
-        st.session_state["pending_mcq_delete"] = int(row)
-        st.toast("Click CONFIRM to delete")
-    if st.session_state.get("pending_mcq_delete") == int(row):
-        c1, c2 = st.sidebar.columns(2)
-        with c1:
-            if st.button("✅ Confirm delete", key="mcq_del_confirm"):
-                df = st.session_state.mcq_df
-                _row_backup = df.iloc[int(row)].to_dict()
-                st.session_state.undo_mcq.append({"row": int(row), "data": _row_backup})
-                df = st.session_state.mcq_df
-                st.session_state.mcq_df = df.drop(index=row).reset_index(drop=True)
-                st.session_state.pop("pending_mcq_delete", None)
-                st.toast("Deleted question")
-        with c2:
-            if st.button("Cancel", key="mcq_del_cancel"):
-                st.session_state.pop("pending_mcq_delete", None)
-
     elif kind == "Activities" and isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_state.act_df)>0:
         df = st.session_state.act_df
         row = st.sidebar.number_input("Row", 0, len(df)-1, 0, step=1, key="act_row_sb")
@@ -1526,58 +1390,8 @@ try:
             st.session_state.act_df = df; st.toast("Applied Activity changes")
         errs = _val_acts(df)
         (st.sidebar.success if not errs else st.sidebar.warning)(f"{'All good' if not errs else f'Checks: {len(errs)} issue(s)'}")
-
-    # Reorder / Duplicate controls (Activities)
-    a_up, a_dn, a_dup = st.sidebar.columns(3)
-    if a_up.button("⬆ Move up", key="act_up") and row > 0:
-        df.iloc[[row-1, row]] = df.iloc[[row, row-1]].values
-        st.session_state.act_df = df
-        st.toast("Moved up")
-    if a_dn.button("⬇ Move down", key="act_down") and row < len(df)-1:
-        df.iloc[[row, row+1]] = df.iloc[[row+1, row]].values
-        st.session_state.act_df = df
-        st.toast("Moved down")
-    if a_dup.button("🧬 Duplicate", key="act_dup"):
-        top = df.iloc[:row+1]
-        mid = df.iloc[row:row+1]
-        bot = df.iloc[row+1:]
-        st.session_state.act_df = pd.concat([top, mid, bot], ignore_index=True)
-        st.toast("Duplicated activity")
-    st.sidebar.divider()
-    # Undo last MCQ delete
-    if st.sidebar.button("↩ Undo last MCQ delete"):
-        if st.session_state.undo_mcq:
-            last = st.session_state.undo_mcq.pop()
-            df = st.session_state.mcq_df
-            row = int(last.get("row", len(df)))
-            data = last.get("data", {})
-            try:
-                restored = pd.DataFrame([data])
-                st.session_state.mcq_df = pd.concat([df.iloc[:row], restored, df.iloc[row:]], ignore_index=True)
-                st.toast("Restored last deleted question")
-            except Exception:
-                st.warning("Could not undo delete (shape mismatch).")
-        else:
-            st.info("Nothing to undo.")
-
-    adelc1, adelc2 = st.sidebar.columns([2,1])
-    if adelc1.button("🗑 Delete this activity", key="act_del_init"):
-        st.session_state["pending_act_delete"] = int(row)
-        st.toast("Click CONFIRM to delete")
-    if st.session_state.get("pending_act_delete") == int(row):
-        c1, c2 = st.sidebar.columns(2)
-        with c1:
-            if st.button("✅ Confirm delete", key="act_del_confirm"):
-                df = st.session_state.act_df
-                _row_backup = df.iloc[int(row)].to_dict()
-                st.session_state.undo_act.append({"row": int(row), "data": _row_backup})
-                df = st.session_state.act_df
-                st.session_state.act_df = df.drop(index=row).reset_index(drop=True)
-                st.session_state.pop("pending_act_delete", None)
-                st.toast("Deleted activity")
-        with c2:
-            if st.button("Cancel", key="act_del_cancel"):
-                st.session_state.pop("pending_act_delete", None)
-
 except Exception as _e:
     pass
+    st.text_input("Teacher ID (variation seed)", key="teacher_seed",
+                  help="Enter teacher email/name or class code for unique-but-stable variants.")
+
