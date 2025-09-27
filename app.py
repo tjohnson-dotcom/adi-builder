@@ -366,10 +366,37 @@ st.session_state.setdefault("act_style", "Standard")
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
-    sents = _sentences(source or "")
-    if len(sents) < 12: raise ValueError("Not enough source text (need ~12+ good sentences).")
-    keys = _keywords(source or topic or "", top_n=max(24, total_q*4))
-    if not keys: raise ValueError("Couldn’t mine keywords; upload a richer section.")
+    # Filter out TOC/headings and keep only sentence-like text
+    raw = source or ""
+    lines = _clean_lines(raw)
+    sents_raw = _sentences(lines)
+
+    def _good(s: str) -> bool:
+        if len(s.split()) < 6:
+            return False
+        if sum(c.isdigit() for c in s) >= 6:
+            return False
+        low = s.lower()
+        bad_phrases = [
+            "table of contents","chapter ","lesson ","module ",
+            "key concepts","case studies","engineering data sheet","learner journal"
+        ]
+        if any(bp in low for bp in bad_phrases):
+            return False
+        letters = [c for c in s if c.isalpha()]
+        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55:
+            return False
+        return True
+
+    sents = [s for s in sents_raw if _good(s)]
+    if len(sents) < 12:
+        raise ValueError("Not enough usable sentences after trimming headings/TOC (need ~12+).")
+
+    # Mine keywords from cleaned sentences only
+    keys = _keywords(" ".join(sents), top_n=max(24, total_q*4))
+    if not keys:
+        raise ValueError("Couldn’t mine keywords; upload a richer section.")
+
     rows=[]; rnd=random.Random(2025); made=0; tiers=["Low","Medium","High"]
 
     def tier_for_q(i):
@@ -380,17 +407,18 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
     for k in keys:
         try:
-            idx = next(i for i,s in enumerate(sents) if k.lower() in s.lower())
+            idx = next(i for i, s in enumerate(sents) if k.lower() in s.lower())
         except StopIteration:
             continue
         correct = sents[idx].strip()
         neigh = _window(sents, idx, 3)
         cand = [s for s in neigh if s != correct]
         if len(cand) < 6:
-            extra = [s for s in sents if re.search(r"\b(avoid|verify|select|compare|justify|ensure|limit|risk|threshold|condition)\b", s, re.I)]
+            extra = [s for s in sents if any(t in s.lower() for t in ["avoid","verify","select","compare","justify","ensure","limit","risk","threshold","condition"])]
             rnd.shuffle(extra); cand += extra[:8]
         options = _quality_gate([correct] + cand)
-        if len(options) < 4: continue
+        if len(options) < 4:
+            continue
         tier = tier_for_q(made)
         if tier == "Low":
             q = f"Which statement about **{k}** best fits *{ctx}*?"
@@ -408,8 +436,10 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
         made += 1
-        if made == total_q: break
-    if made == 0: raise ValueError("Could not extract enough anchored items — try a different section.")
+        if made == total_q:
+            break
+    if made == 0:
+        raise ValueError("Could not extract enough anchored items — try a different section.")
     return pd.DataFrame(rows).reset_index(drop=True)
 
 # ---------------- Activities
@@ -418,11 +448,39 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
     verbs = {"Low":LOW_VERBS,"Medium":MED_VERBS,"High":HIGH_VERBS}.get(tier, MED_VERBS)[:6]
-    sents = _sentences(source or "")
-    if len(sents) < 12: raise ValueError("Not enough source text to build activities (need ~12+ sentences).")
-    hints = [s for s in sents if re.search(r"\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\b", s, re.I)]
+
+    # Filter out TOC/headings and keep only sentence-like text
+    raw = source or ""
+    sents_raw = _sentences(_clean_lines(raw))
+
+    def _good(s: str) -> bool:
+        if len(s.split()) < 6:
+            return False
+        if sum(c.isdigit() for c in s) >= 6:
+            return False
+        low = s.lower()
+        bad_phrases = [
+            "table of contents","chapter ","lesson ","module ",
+            "key concepts","case studies","engineering data sheet","learner journal"
+        ]
+        if any(bp in low for bp in bad_phrases):
+            return False
+        letters = [c for c in s if c.isalpha()]
+        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55:
+            return False
+        return True
+
+    sents = [s for s in sents_raw if _good(s)]
+    if len(sents) < 12:
+        raise ValueError("Not enough source text to build activities (need ~12+ sentences of usable prose).")
+
+    # Find hint-like sentences (sequence words and action words)
+    hint_tokens = ["first","then","next","measure","calculate","record","verify","inspect","threshold","risk","control","select","compare","interpret","justify","design"]
+    hints = [s for s in sents if any(tok in s.lower() for tok in hint_tokens)]
     hints = _uniq_keep(hints)[:60]
-    if not hints: raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
+    if not hints:
+        raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
+
     rnd = random.Random(99)
     rows=[]
     for i in range(1, count + 1):
@@ -860,3 +918,4 @@ with tab4:
     st.progress(progress_fraction())
     next_step_bar("All set:", "Share the files or print as needed.")
     st.markdown("</div>", unsafe_allow_html=True)
+
