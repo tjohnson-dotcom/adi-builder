@@ -1,5 +1,4 @@
 
-      
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -25,7 +24,7 @@ def _seed_salt() -> int:
 
 
 # ---------- Streamlit base ----------
-st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
+st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered", initial_sidebar_state="expanded")
 
 # ---- Safe state initialization ----
 for key, factory in {
