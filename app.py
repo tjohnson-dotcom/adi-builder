@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (final build: no lesson/week in text, larger print, green downloads)
+# app.py — ADI Learning Tracker (final build with preview & DOCX highlight toggles)
 # English-only • PDF/PPTX/DOCX input • Robust extraction • MCQs & Activities
 # Exports: CSV / GIFT / Word / Combined Word
 
@@ -43,10 +43,10 @@ except Exception:
 # Word export (writer)
 try:
     from docx import Document
-    from docx.shared import Pt, Inches
+    from docx.shared import Pt, Inches, RGBColor
 except Exception:
     Document = None
-    Pt = Inches = None
+    Pt = Inches = RGBColor = None
 
 # ---------- CSS ----------
 CSS = r'''
@@ -73,14 +73,14 @@ main .block-container { padding-top:.75rem; max-width:980px; }
 .chip.low{background:#245a34;color:#fff;} .chip.med{background:#C8A85A;color:#111;} .chip.high{background:#333;color:#fff;}
 .chip.dimmed{opacity:.55;} .chip.hl{ outline:3px solid rgba(36,90,52,0.35); }
 .preview-card{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
-.mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:8px 0; }
+.mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:10px 0; }
 .mcq-low{border-left-color:#245a34;} .mcq-med{border-left-color:#C8A85A;} .mcq-high{border-left-color:#333;}
 .act-card{ border-left:6px solid #e7e7e7; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,0.06); }
 .act-low{border-left-color:#245a34;} .act-med{border-left-color:#C8A85A;} .act-high{border-left-color:#333;}
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width:760px){ .export-grid{ grid-template-columns:1fr; } }
 
-/* Make Generate and Download buttons ADI green */
+/* Buttons: Generate + Download (ADI green) */
 .stButton > button,
 .stDownloadButton > button {
   background: linear-gradient(90deg, #245a34, #387a4b);
@@ -98,6 +98,11 @@ main .block-container { padding-top:.75rem; max-width:980px; }
 .stDownloadButton > button:disabled {
   background: #e6eae8 !important; color: #6b7280 !important; border-color: #d8e0dc !important; box-shadow: none !important;
 }
+
+/* Preview highlighting */
+.mcq-stem { display:inline-block; background:#f1f6f3; padding:6px 8px; border-radius:10px; font-weight:800; margin-bottom:6px; }
+.act-title { display:inline-block; background:#f1f6f3; padding:6px 8px; border-radius:10px; font-weight:800; }
+.mcq-meta { font-size:.9rem; color:#475569; margin-top:2px; }
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
@@ -133,7 +138,7 @@ BAD_ANCHORS = {"rationale","engineering","data","sheet","concepts","theories","c
 STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
 STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general","saudi","arabia","vision","project’s","project-based","activity","exercise","diagram","figure"}
 BLOCK_LINE_PHRASES = ["exercise","diagram","figure","glossary","learning outcomes","error! bookmark not defined","lesson","week"]
-EMOJI_RE = r"[\u2600-\u27BF\U0001F300-\U0001FAFF]"
+EMOJI_RE = r"[\u2600-\u27BF\U0001F300-\u1FAFF]"
 
 def _normalize(s: str) -> str:
     s = unicodedata.normalize("NFKC", s or "")
@@ -296,9 +301,9 @@ def _has_context_neighbors(sents: List[str], idx: int) -> bool:
 # ---------- Noise cleaner ----------
 def _strip_noise(s: str) -> str:
     if not s: return s
-    s = re.sub(r"\s*\((?:PS|LO|CO)\d+(?:,\s*(?:PS|LO|CO)\d+)*\)\s*", " ", s)         # (PS3, PS8)
-    s = re.sub(r"\s*\([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*,\s*\d{4}\)\s*", " ", s)  # (Smith, 2023)
-    s = re.sub(r"\s+[o•\-]\s+", " ", s)                                             # stray bullets
+    s = re.sub(r"\s*\((?:PS|LO|CO)\d+(?:,\s*(?:PS|LO|CO)\d+)*\)\s*", " ", s)
+    s = re.sub(r"\s*\([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*,\s*\d{4}\)\s*", " ", s)
+    s = re.sub(r"\s+[o•\-]\s+", " ", s)
     s = re.sub(r"defence\s*systems", "defence systems", s, flags=re.I)
     s = re.sub(r"defence\s*personnel", "defence personnel", s, flags=re.I)
     return re.sub(r"\s{2,}", " ", s).strip()
@@ -310,7 +315,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     sents = [s for s in sents if not any(p in s.lower() for p in BLOCK_LINE_PHRASES)]
     if len(sents) < 12:
         raise ValueError("Not enough usable sentences after trimming headings/TOC (need ~12+).")
-
     keys = [k for k in _keywords(" ".join(sents), top_n=max(24, total_q*4)) if k not in BAD_ANCHORS]
 
     rows = []; rnd = random.Random(2025); made = 0; tiers = ["Low","Medium","High"]
@@ -325,8 +329,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             idx = next(i for i, s in enumerate(sents) if k in s.lower())
         except StopIteration:
             continue
-        if not _has_context_neighbors(sents, idx):
-            continue
+        if not _has_context_neighbors(sents, idx): continue
         correct = sents[idx].strip()
         neigh = [x for x in _window(sents, idx, 3) if x != correct and _is_sentence_like(x)]
         extra = [x for x in sents if x not in neigh and _is_sentence_like(x)]
@@ -338,7 +341,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if len(options) < 4: continue
 
         tier = tier_for_q(made)
-        # No lesson/week in stems:
         if tier == "Low":
             stem = f"Which statement about **{k}** is most accurate?"
         elif tier == "Medium":
@@ -348,9 +350,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
-
         rnd.shuffle(options)
         ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
+
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
@@ -361,7 +363,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         made += 1
         if made == total_q: break
 
-    # Fallback fill
     if made < total_q:
         pool = [s for s in sents if 50 <= len(s) <= 200]
         pool = [s for s in pool if ("," in s or ";" in s)] + [s for s in pool if ("," not in s and ";" not in s)]
@@ -546,7 +547,29 @@ def _set_doc_defaults(doc):
     except Exception:
         pass
 
-def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
+def _add_mcq_stem(doc, qnum: int, text: str, highlight: bool = True):
+    p = doc.add_paragraph()
+    r = p.add_run(f"Q{qnum}. {text}")
+    r.bold = True
+    r.font.size = Pt(13)
+    if highlight and RGBColor is not None:
+        try:
+            r.font.color.rgb = RGBColor(0x24, 0x5A, 0x34)  # ADI green
+        except Exception:
+            pass
+    p.paragraph_format.space_before = Pt(6)
+    p.paragraph_format.space_after = Pt(2)
+
+def _add_mcq_option(doc, label: str, text: str):
+    p = doc.add_paragraph()
+    if Inches is not None:
+        p.paragraph_format.left_indent = Inches(0.25)
+        p.paragraph_format.first_line_indent = Inches(0)
+    p.paragraph_format.space_after = Pt(1)
+    p.add_run(f"{label}. ").bold = True
+    p.add_run(text)
+
+def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="", highlight_stems: bool = True)->bytes:
     if Document is None: return b""
     doc=Document(); _set_doc_defaults(doc)
     if Inches: 
@@ -554,9 +577,11 @@ def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
     _docx_heading(doc, "Knowledge MCQs" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
     for i, r in df.reset_index(drop=True).iterrows():
-        doc.add_paragraph(f"{i+1}. ({r['Tier']}) {r['Question']}")
-        doc.add_paragraph(f"A. {r['Option A']}"); doc.add_paragraph(f"B. {r['Option B']}")
-        doc.add_paragraph(f"C. {r['Option C']}"); doc.add_paragraph(f"D. {r['Option D']}")
+        _add_mcq_stem(doc, i+1, r['Question'], highlight=highlight_stems)
+        _add_mcq_option(doc, "A", r['Option A'])
+        _add_mcq_option(doc, "B", r['Option B'])
+        _add_mcq_option(doc, "C", r['Option C'])
+        _add_mcq_option(doc, "D", r['Option D'])
         doc.add_paragraph()
     _docx_heading(doc, "Answer Key", 1)
     for i, r in df.reset_index(drop=True).iterrows():
@@ -581,7 +606,8 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
         doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
 
-def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | None, lesson:int, week:int, topic:str="")->bytes:
+def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | None,
+                         lesson:int, week:int, topic:str="", highlight_stems: bool = True)->bytes:
     if Document is None: return b""
     doc=Document(); _set_doc_defaults(doc)
     if Inches:
@@ -592,9 +618,11 @@ def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | Non
     if mcq_df is not None and len(mcq_df)>0:
         _docx_heading(doc, "Part A — Knowledge MCQs", 1)
         for i, r in mcq_df.reset_index(drop=True).iterrows():
-            doc.add_paragraph(f"{i+1}. ({r['Tier']}) {r['Question']}")
-            doc.add_paragraph(f"A. {r['Option A']}"); doc.add_paragraph(f"B. {r['Option B']}")
-            doc.add_paragraph(f"C. {r['Option C']}"); doc.add_paragraph(f"D. {r['Option D']}")
+            _add_mcq_stem(doc, i+1, r['Question'], highlight=highlight_stems)
+            _add_mcq_option(doc, "A", r['Option A'])
+            _add_mcq_option(doc, "B", r['Option B'])
+            _add_mcq_option(doc, "C", r['Option C'])
+            _add_mcq_option(doc, "D", r['Option D'])
             doc.add_paragraph()
         _docx_heading(doc, "Answer Key", 1)
         for i, r in mcq_df.reset_index(drop=True).iterrows():
@@ -620,7 +648,7 @@ def _gift_escape(s:str)->str: return (s or "").translate(_GIFT_ESCAPE)
 def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
     lines=[]
     for i,r in df.reset_index(drop=True).iterrows():
-        qname=f"Q{i+1} ({r.get('Tier','')})"  # short name
+        qname=f"Q{i+1} ({r.get('Tier','')})"
         stem=_gift_escape(str(r.get("Question",""))).strip()
         opts=[str(r.get("Option A","")),str(r.get("Option B","")),str(r.get("Option C","")),str(r.get("Option D",""))]
         idx={"A":0,"B":1,"C":2,"D":3}.get(str(r.get("Answer","A")).strip().upper(),0)
@@ -659,6 +687,10 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 st.session_state.setdefault("safe_mode", True)
+# New toggles
+st.session_state.setdefault("hl_stems_docx", True)          # DOCX stems highlight
+st.session_state.setdefault("hl_stems_preview", True)       # preview stems highlight
+st.session_state.setdefault("hl_act_titles_preview", True)  # preview activity titles highlight
 
 # ---------- Header ----------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
@@ -825,7 +857,14 @@ with tab3:
                 except Exception as e:
                     st.error(f"Couldn’t generate activities: {e}")
 
+    # Preview toggles
     show_answers = st.checkbox("Show answer key in preview", value=False)
+    st.session_state.hl_stems_preview = st.checkbox(
+        "🔆 Highlight MCQ question stems (preview)", value=st.session_state.get("hl_stems_preview", True)
+    )
+    st.session_state.hl_act_titles_preview = st.checkbox(
+        "🔆 Highlight activity titles (preview)", value=st.session_state.get("hl_act_titles_preview", True)
+    )
 
     if "mcq_df" in st.session_state:
         st.write("**MCQs (preview)**")
@@ -833,7 +872,12 @@ with tab3:
         for i,row in st.session_state.mcq_df.reset_index(drop=True).iterrows():
             cls = "mcq-low" if row["Tier"]=="Low" else ("mcq-med" if row["Tier"]=="Medium" else "mcq-high")
             ans = f" <i>(Answer: {row['Answer']})</i>" if show_answers else ""
-            st.markdown(f"<div class='mcq-item {cls}'><b>{i+1}. {row['Tier']}</b> {row['Question']}{ans}</div>", unsafe_allow_html=True)
+            if st.session_state.get("hl_stems_preview", True):
+                stem_html = f"<div class='mcq-stem'>Q{i+1}. {row['Question']}</div>"
+            else:
+                stem_html = f"<b>Q{i+1}. {row['Question']}</b>"
+            meta_html = f"<div class='mcq-meta'><b>{row['Tier']}</b>{ans}</div>"
+            st.markdown(f"<div class='mcq-item {cls}'>{stem_html}{meta_html}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     if "act_df" in st.session_state:
@@ -841,8 +885,13 @@ with tab3:
         for i,r in st.session_state.act_df.reset_index(drop=True).iterrows():
             tier = r.get("Policy focus","Medium")
             cls = "act-low" if tier=="Low" else ("act-med" if tier=="Medium" else "act-high")
+            title = r.get('Title','Activity')
+            if st.session_state.get("hl_act_titles_preview", True):
+                title_html = f"<span class='act-title'>{i+1}. {title}</span>"
+            else:
+                title_html = f"<b>{i+1}. {title}</b>"
             st.markdown(
-                f"<div class='act-card {cls}'><b>{i+1}. {r.get('Title','Activity')}</b><br>"
+                f"<div class='act-card {cls}'>{title_html}<br>"
                 f"<span><b>Objective:</b> {r['Objective']}</span><br>"
                 f"<span><b>Steps:</b> {r['Steps']}</span><br>"
                 f"<span><b>Duration:</b> {r['Duration (mins)']} mins</span></div>",
@@ -860,6 +909,13 @@ with tab4:
 
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Export</div>", unsafe_allow_html=True)
+
+    # DOCX highlight toggle
+    st.session_state.hl_stems_docx = st.checkbox(
+        "🔆 Highlight question stems in DOCX",
+        value=st.session_state.get("hl_stems_docx", True)
+    )
+
     st.markdown("<div class='export-grid'>", unsafe_allow_html=True)
 
     # MCQs
@@ -867,16 +923,19 @@ with tab4:
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
         if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
-                              f"mcqs_w{st.session_state.week}.csv", "text/csv"):
+                              f"mcqs_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
         if st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"),
-                              f"mcqs_w{st.session_state.week}.gift", "text/plain"):
+                              f"mcqs_w{st.session_state.week:02d}.gift", "text/plain"):
             st.toast("✅ MCQs GIFT download started")
         if Document:
-            mcq_docx = export_mcqs_docx(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
+            mcq_docx = export_mcqs_docx(
+                st.session_state.mcq_df, st.session_state.lesson, st.session_state.week,
+                st.session_state.topic, highlight_stems=st.session_state.hl_stems_docx
+            )
             if st.download_button("Download MCQs (Word)", mcq_docx,
-                                  f"mcqs_w{st.session_state.week}.docx",
+                                  f"mcqs_w{st.session_state.week:02d}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ MCQs Word download started")
         else:
@@ -890,12 +949,12 @@ with tab4:
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
         if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
-                              f"activities_w{st.session_state.week}.csv", "text/csv"):
+                              f"activities_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
         if Document:
             act_docx = export_acts_docx(st.session_state.act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             if st.download_button("Download Activities (Word)", act_docx,
-                                  f"activities_w{st.session_state.week}.docx",
+                                  f"activities_w{st.session_state.week:02d}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Activities Word download started")
         else:
@@ -911,9 +970,12 @@ with tab4:
         mcq_df = st.session_state.get('mcq_df') if 'mcq_df' in st.session_state else None
         act_df = st.session_state.get('act_df') if 'act_df' in st.session_state else None
         if (mcq_df is not None and len(mcq_df)>0) or (act_df is not None and len(act_df)>0):
-            combined_docx = export_combined_docx(mcq_df, act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
+            combined_docx = export_combined_docx(
+                mcq_df, act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic,
+                highlight_stems=st.session_state.hl_stems_docx
+            )
             if st.download_button("Download Combined Lesson (Word)", combined_docx,
-                                  f"combined_w{st.session_state.week}.docx",
+                                  f"combined_w{st.session_state.week:02d}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Combined Lesson Word download started")
         else:
@@ -924,4 +986,3 @@ with tab4:
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
-
