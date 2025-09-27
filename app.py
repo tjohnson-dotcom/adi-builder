@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (stable build)
+# app.py — ADI Learning Tracker (stable, all fixes)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
 
@@ -139,7 +139,7 @@ STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general"
 BLOCK_LINE_PHRASES = ["exercise","diagram","figure","glossary","learning outcomes","error! bookmark not defined","lesson","week"]
 
 def _has_emoji(s: str) -> bool:
-    # covers ☀–⚿ and the main emoji block
+    # covers ☀–⚿ and most emoji blocks
     return any(0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF for ch in s or "")
 
 def _normalize(s: str) -> str:
@@ -215,7 +215,8 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
         ok = True
         if len(o) < 40 or len(o) > 220: ok = False
         letters = [c for c in o if c.isalpha()]
-        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: ok = False
+        if letters and sum(c.isupper() for c in letters)/len(c for c in letters): pass  # keep linter happy
+        if letters and sum(c.isupper() for c in o if c.isalpha())/len([c for c in o if c.isalpha()]) > 0.55: ok = False
         if len(o.split()) < 6: ok = False
         if not re.search(VERB_RE, o, re.I): ok = False
         if j == 0 and ensure_first: ok = True
@@ -232,6 +233,10 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
+
+# NEW: near-duplicate filter for MCQs
+def _too_similar(a: str, b: str, thr: float = 0.88) -> bool:
+    return SequenceMatcher(a=(a or "").lower(), b=(b or "").lower()).ratio() >= thr
 
 # ---------- Upload parsing ----------
 def extract_text_from_upload(file)->str:
@@ -310,6 +315,16 @@ def _strip_noise(s: str) -> str:
     s = re.sub(r"defence\s*personnel", "defence personnel", s, flags=re.I)
     return re.sub(r"\s{2,}", " ", s).strip()
 
+# ---------- MCQ stem templates ----------
+STEMS = {
+    "Low":    ["Which statement is most accurate?",
+               "Which sentence best reflects the idea?"],
+    "Medium": ["Which statement is most appropriate?",
+               "Which claim best applies?"],
+    "High":   ["Which option provides the strongest justification?",
+               "Which choice offers the best rationale?"],
+}
+
 # ---------- MCQs (Exact mode) ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
@@ -320,6 +335,8 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     keys = [k for k in _keywords(" ".join(sents), top_n=max(24, total_q*4)) if k not in BAD_ANCHORS]
 
     rows = []; rnd = random.Random(2025); made = 0; tiers = ["Low","Medium","High"]
+    used_corrects: List[str] = []
+
     def tier_for_q(i):
         if mode == "All Low": return "Low"
         if mode == "All Medium": return "Medium"
@@ -333,6 +350,11 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             continue
         if not _has_context_neighbors(sents, idx): continue
         correct = sents[idx].strip()
+
+        # De-dup
+        if any(_too_similar(correct, u) for u in used_corrects):
+            continue
+
         neigh = [x for x in _window(sents, idx, 3) if x != correct and _is_sentence_like(x)]
         extra = [x for x in sents if x not in neigh and _is_sentence_like(x)]
         rnd.shuffle(extra)
@@ -343,13 +365,8 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if len(options) < 4: continue
 
         tier = tier_for_q(made)
-        if tier == "Low":
-            stem = f"Which statement about **{k}** is most accurate?"
-        elif tier == "Medium":
-            stem = f"When applying **{k}**, which statement is most appropriate?"
-        else:
-            stem = f"Which option provides the strongest justification related to **{k}**?"
-
+        tmpl_list = STEMS[tier]
+        stem = tmpl_list[made % len(tmpl_list)]  # rotate stems
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
@@ -362,6 +379,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             "Answer": ans, "Explanation": _strip_noise(f"Anchored on a sentence mentioning '{k}'."),
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
+        used_corrects.append(correct)
         made += 1
         if made == total_q: break
 
@@ -372,6 +390,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         while made < total_q and i < len(pool):
             correct = pool[i]; i += 1
             if correct in used: continue
+            if any(_too_similar(correct, u) for u in used_corrects): continue
             dist=[]
             for cand in pool:
                 if cand == correct: continue
@@ -382,12 +401,12 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             options = _quality_gate([correct] + dist, ensure_first=True)
             if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
-            stem = "Which statement is most accurate?"
+            tier = tier_for_q(made)
+            stem = STEMS[tier][made % len(STEMS[tier])]
             stem = _strip_noise(stem)
             options = [_strip_noise(o) for o in options]
             rnd.shuffle(options)
             ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
-            tier = tier_for_q(made)
             rows.append({
                 "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
                 "Question": stem,
@@ -395,6 +414,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 "Answer": ans, "Explanation": "Fallback mode: contrasts between plausible sentences.",
                 "Order": {"Low":1,"Medium":2,"High":3}[tier],
             })
+            used_corrects.append(correct)
             used.add(correct); made += 1
 
     if made == 0:
@@ -446,20 +466,19 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
 
     rnd = random.Random(2025)
     rows = []; i = 0
+    used_corrects: List[str] = []
     stride = max(1, len(pool) // max(4, total_q))
     while len(rows) < total_q and i < len(pool):
         correct = pool[i]
+        if any(_too_similar(correct, u) for u in used_corrects):
+            i += 1; continue
         distractors = _pick_distractors(pool, correct, 3)
         options = _quality_gate([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4:
             i += 1; continue
         tier = tier_for_q(len(rows))
-        stem = (
-            "Which statement is most accurate?" if tier=="Low" else
-            "Which statement is most appropriate?" if tier=="Medium" else
-            "Which option provides the strongest justification?"
-        )
+        stem = STEMS[tier][len(rows) % len(STEMS[tier])]
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
@@ -471,18 +490,22 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             "Answer": ans, "Explanation": "Safe Mode: contrasts between plausible sentences.",
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
+        used_corrects.append(correct)
         i += stride
 
     j = 0
     while len(rows) < total_q and j < len(pool):
         correct = pool[j]; j += 1
+        if any(_too_similar(correct, u) for u in used_corrects):
+            continue
         distractors = _pick_distractors(pool, correct, 3)
         options = _quality_gate([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
-        stem = _strip_noise("Which statement is most accurate?")
-        options = [_strip_noise(o) for o in options]
         tier = tier_for_q(len(rows))
+        stem = STEMS[tier][len(rows) % len(STEMS[tier])]
+        stem = _strip_noise(stem)
+        options = [_strip_noise(o) for o in options]
         random.shuffle(options)
         ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
         rows.append({
@@ -492,6 +515,7 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             "Answer": ans, "Explanation": "Safe Mode (backfill).",
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
+        used_corrects.append(correct)
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
@@ -512,8 +536,10 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
         v = verbs[(i-1) % len(verbs)]
         steps = [
             f"Starter ({t1}m). {subj} {v} prior knowledge using a short checklist for time, cost, quality, and security.",
-            ("Main ({t2}m). {subj} write a clear scope (what is in / out), sketch a level-2 WBS, "
-             "list risks with an owner and a response, and map stakeholders with a simple RACI.").format(t2=t2),
+            (
+                f"Main ({t2}m). {subj} write a clear scope (what is in / out), sketch a level-2 WBS, "
+                f"list risks with an owner and a response, and map stakeholders with a simple RACI."
+            ),
             f"Plenary ({t3}m). Teams swap work, share one strength and one question, then justify one change."
         ]
         if style == "Lab": steps[1] += " Follow lab safety rules and verify each step."
