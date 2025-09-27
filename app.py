@@ -1,6 +1,14 @@
-# app.py — ADI Learning Tracker (full app)
+# app.py — ADI Learning Tracker (full app, English only)
+# Features:
+# - Upload: PDF / PPTX / DOCX
+# - Strong cleaning (removes TOC/headers/page nos; fixes hyphen line breaks)
+# - MCQs: sentence-only anchors + banned junk terms + guaranteed fallback
+# - FIX: “... is not in list” handled by ensuring the correct option stays in the set
+# - Activities: step extractor + safe fallback so it never fails
+# - Exports: CSV / GIFT / DOCX (MCQs, Activities, Combined)
+# - Polished Streamlit UI
 
-import io, os, re, base64, random
+import io, os, re, base64, random, unicodedata
 from io import BytesIO
 from typing import List
 from difflib import SequenceMatcher
@@ -8,10 +16,10 @@ from difflib import SequenceMatcher
 import pandas as pd
 import streamlit as st
 
-# =============== Streamlit setup ===============
+# ---------------- Streamlit setup ----------------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
 
-# =============== Optional parsers ===============
+# ---------------- Optional parsers ----------------
 try:
     import pdfplumber
 except Exception:
@@ -29,7 +37,7 @@ try:
 except Exception:
     Presentation = None
 
-# =============== Word export (python-docx) ===============
+# Word export (python-docx)
 try:
     from docx import Document
     from docx.shared import Pt, Inches
@@ -37,53 +45,40 @@ except Exception:
     Document = None
     Pt = Inches = None
 
-# =============== CSS (polish) ===============
+# ---------------- CSS ----------------
 CSS = r'''
 <style>
 :root{
-  --adi:#245a34;  /* ADI green */
-  --gold:#C8A85A; /* ADI gold  */
-  --stone:#f6f8f7;
-  --ink:#0f172a;
-  --muted:#667085;
-  --border:#e7ecea;
-  --shadow:0 10px 30px rgba(36,90,52,0.10);
+  --adi:#245a34; --gold:#C8A85A; --stone:#f6f8f7; --ink:#0f172a; --muted:#667085; --border:#e7ecea; --shadow:0 10px 30px rgba(36,90,52,0.10);
 }
 *{font-family: ui-sans-serif,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif;}
 html, body { background:var(--stone); }
 main .block-container { padding-top:.75rem; max-width: 980px; }
 
-/* Header */
 .header-wrap{display:flex; align-items:center; gap:16px; margin-bottom:6px;}
 .logo-wrap{display:flex; align-items:center; justify-content:center; width:240px;}
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
 
-/* Tabs */
-.stTabs [role="tablist"]{ gap:.5rem; border-bottom:0; padding:0 .25rem .35rem .25rem; position:relative; }
+.stTabs [role="tablist"]{ gap:.5rem; border-bottom:0; padding:0 .25rem .35rem .25rem; }
 .stTabs [role="tab"]{
   position:relative; padding:.65rem 1.2rem; border-radius:14px 14px 0 0;
   font-weight:800; font-size:1.05rem; background:#ffffff;
   border:1px solid #e7ecea; border-bottom:none;
   box-shadow:0 6px 14px rgba(36,90,52,0.06);
-  transition:transform .08s ease, box-shadow .18s ease, color .18s ease;
 }
 .stTabs [role="tab"]:hover{ transform:translateY(-1px); box-shadow:0 10px 22px rgba(36,90,52,0.12); }
 .stTabs [role="tab"] p{ margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem; }
-.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#C8A85A; } /* Generate tab = gold */
 .stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
 .stTabs [role="tab"][aria-selected="true"]{ border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,0.16); transform: translateY(-1px); }
 .stTabs [role="tab"][aria-selected="true"]::after{
   content:""; position:absolute; left:10px; right:10px; bottom:-3px; height:4px; border-radius:999px;
   background:linear-gradient(90deg,#245a34,#C8A85A); box-shadow:0 2px 6px rgba(36,90,52,0.18);
 }
-.stTabs [role="tablist"]::after,.stTabs [role="tablist"]::before{ content:none !important; display:none !important; }
 
-/* Cards + Headings */
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
 .h2{ font-size:19px; font-weight:800; color:var(--ink); margin:0 0 10px 0; }
 
-/* Inputs */
 label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !important; margin-bottom:.35rem !important; }
 .stTextInput > div > div, .stTextArea  > div > div, .stSelectbox > div > div{
   background:#fff !important; border:1.8px solid #e2e9e5 !important; border-radius:14px !important;
@@ -96,7 +91,6 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
   border-color:#245a34 !important; outline:3px solid rgba(36,90,52,0.28);
 }
 
-/* File dropzone */
 [data-testid="stFileUploaderDropzone"]{
   border:2.5px dashed #b9cfc4 !important; border-radius:18px !important; background:#fff !important;
   box-shadow:0 10px 26px rgba(36,90,52,0.08); transition:all .2s ease;
@@ -105,13 +99,6 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
   border-color:#8fb8a3 !important; background:#fcfefd !important; outline:3px solid rgba(36,90,52,0.25);
   box-shadow: 0 14px 32px rgba(36,90,52,0.16);
 }
-
-/* Steps & chips */
-.step-title{ font-weight:900; color:#0f172a; margin:.4rem 0 .3rem; letter-spacing:.2px; }
-.step{ border:2px solid var(--border); border-radius:16px; padding:14px; background:#fff; box-shadow:0 8px 22px rgba(36,90,52,0.06); }
-.step.green{  border-color:#cfe1d7; }
-.step.gold{   border-color:#eadebd; }
-.separator{ height:12px; border-radius:999px; background:linear-gradient(90deg, rgba(36,90,52,0.12), rgba(200,168,90,0.12)); box-shadow: inset 0 1px 0 #fff; margin:16px 0; }
 
 .bloom-row{ display:flex; flex-wrap:wrap; gap:.5rem .6rem; margin:.35rem 0 .5rem; }
 .chip{ display:inline-flex; align-items:center; justify-content:center; padding:6px 14px; border-radius:999px; font-size:13px; font-weight:800;
@@ -122,7 +109,6 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .chip.dimmed{ opacity:0.55; }
 .chip.hl{ outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
 
-/* Previews */
 .preview-card{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:8px 0; }
 .mcq-low{   border-left-color:#245a34; }
@@ -133,46 +119,36 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .act-med{   border-left-color:#C8A85A; }
 .act-high{  border-left-color:#333; }
 
-/* Export */
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width: 760px){ .export-grid{ grid-template-columns: 1fr; } }
 .export-card{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow:var(--shadow); }
 .export-title{ font-weight:900; margin-bottom:.3rem; }
 .export-note{ color:#6b7280; font-size:13px; margin-bottom:.6rem; }
 
-.stButton>button{
-  background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
-  color:#fff !important; border:1px solid #1f4e31 !important;
-  font-weight:900 !important; border-radius:12px !important;
-  padding:.65rem 1rem !important; box-shadow:0 10px 26px rgba(36,90,52,0.30) !important;
-}
-.stDownloadButton>button{
-  background: linear-gradient(180deg, #2b6c40, var(--adi)) !important; color:#fff !important; border:1px solid #1f4e31 !important;
+.stButton>button, .stDownloadButton>button{
+  background: linear-gradient(180deg, #2b6c40, #245a34) !important; color:#fff !important; border:1px solid #1f4e31 !important;
   font-weight:800 !important; border-radius:12px !important; padding:.55rem .9rem !important; box-shadow:0 8px 20px rgba(36,90,52,0.25) !important;
 }
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
 
-# =============== Logo helper (fallback inline) ===============
-_FALLBACK_LOGO_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAAAAACqG3XIAAACMElEQVR4nM2WsW7TQBiFf6a0H5yq"
-    "zF0y2y5hG0c6zF4k1u5u9m3JHqz4dM7M9kP3C0k1bC0bC2A1vM9Y7mY0JgVv8uJbVYy0C4d6i3gC"
-    "9b4n2QxgE7iTnk9z9k9w4rH4g6YyKc3H5rW3q2m8Qw3wUuJKGkqQ8jJr1h3v9J0o9l6zQn9qV2mN"
-    "2l8c1mXi5Srgm2cG3wYQz7a1nS0CkqgkQz0o4Kx5l9yJc8KEMt8h2tqfWm0y8x2T8Jw0+o8S8b8"
-    "Jw3emcQ0n9Oq7dZrXw9kqgk5yA9iO1l0wB7mQxI3o3eV+o3oM2v8YUpbG6c6WcY8B6bZ9FfQLQ+"
-    "s5n8n4Zb3T3w9y7K0gN4d8c4sR4mxD9j8c+J6o9+3yCw1o0b7YpAAAAAElFTkSuQmCC"
-)
+# ---------------- Logo helper ----------------
+_FALLBACK_LOGO_B64 = ("iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAAAAACqG3XIAAACMElEQVR4nM2WsW7TQBiFf6a0H5yq"
+"zF0y2y5hG0c6zF4k1u5u9m3JHqz4dM7M9kP3C0k1bC0bC2A1vM9Y7mY0JgVv8uJbVYy0C4d6i3gC"
+"9b4n2QxgE7iTnk9z9k9w4rH4g6YyKc3H5rW3q2m8Qw3wUuJKGkqQ8jJr1h3v9J0o9l6zQn9qV2mN"
+"2l8c1mXi5Srgm2cG3wYQz7a1nS0CkqgkQz0o4Kx5l9yJc8KEMt8h2tqfWm0y8x2T8Jw0+o8S8b8"
+"Jw3emcQ0n9Oq7dZrXw9kqgk5yA9iO1l0wB7mQxI3o3eV+o3oM2v8YUpbG6c6WcY8B6bZ9FfQLQ+"
+"s5n8n4Zb3T3w9y7K0gN4d8c4sR4mxD9j8c+J6o9+3yCw1o0b7YpAAAAAElFTkSuQmCC")
 def _load_logo_bytes() -> bytes:
     try:
         if os.path.exists("Logo.png"):
-            with open("Logo.png", "rb") as f:
-                return f.read()
+            with open("Logo.png", "rb") as f: return f.read()
     except Exception:
         pass
     return base64.b64decode(_FALLBACK_LOGO_B64)
 
-# =============== Bloom policy & verbs ===============
+# ---------------- Bloom verbs ----------------
 LOW_VERBS  = ["define","identify","list","describe","recall","label"]
 MED_VERBS  = ["apply","demonstrate","solve","illustrate","analyze","interpret","compare"]
 HIGH_VERBS = ["evaluate","synthesize","design","justify","formulate","critique"]
@@ -182,9 +158,15 @@ def bloom_focus_for_week(week:int)->str:
     if 5<=week<=9: return "Medium"
     return "High"
 
-# =============== Cleaning helpers ===============
+# ---------------- Text cleanup helpers ----------------
+def _normalize(s: str) -> str:
+    s = unicodedata.normalize("NFKC", s or "")
+    s = re.sub(r'(\w)-\s+(\w)', r'\1\2', s)   # fix hyphen line-break joins
+    s = s.replace('–','-').replace('—','-')
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
 def _clean_lines(text: str) -> str:
-    # Remove duplicates, page numbers, and TOC/heading-like lines
     def looks_like_toc_line(s: str) -> bool:
         if not s: return True
         s = s.strip()
@@ -197,33 +179,29 @@ def _clean_lines(text: str) -> str:
         if re.search(r"\s\d{1,4}(?:\s+\d{1,3})?$", s): return True
         if re.match(r"^\s*\d+(?:\.\d+)*\s+", s): return True
         return False
-
     lines = [ln.strip() for ln in (text or "").replace("\r","\n").split("\n")]
     lines = [ln for ln in lines if ln and not re.fullmatch(r"(page\s*\d+|\d+)", ln, flags=re.I)]
-
     out, seen = [], set()
     for ln in lines:
         if looks_like_toc_line(ln): continue
         k = ln[:96].lower()
         if k in seen: continue
-        seen.add(k)
-        out.append(ln)
+        seen.add(k); out.append(ln)
     return "\n".join(out)[:8000]
 
+VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
+
 def _sentences(text: str) -> List[str]:
-    # Split on sentence punctuation and bullet-like separators
     chunks = re.split(r"(?<=[.!?])\s+|[•\u2022\u2023\u25CF]|(?:\n\s*\-\s*)|(?:\n\s*\*\s*)", text or "")
     rough = [re.sub(r"\s+", " ", c).strip() for c in chunks if c and c.strip()]
-
     def good(s: str) -> bool:
         if not (40 <= len(s) <= 220): return False
         if len(s.split()) < 6: return False
         if sum(ch.isdigit() for ch in s) >= max(6, int(0.25*len(s))): return False
-        if not re.search(r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b", s, re.I): return False
+        if not re.search(VERB_RE, s, re.I): return False
         letters = [c for c in s if c.isalpha()]
         if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
         return True
-
     return [s for s in rough if good(s)][:400]
 
 def _near(a:str,b:str,th:float=0.90)->bool:
@@ -237,24 +215,35 @@ def _uniq_keep(seq: List[str], key=lambda s: s.lower()):
             seen.add(k); out.append(s)
     return out
 
-def _quality_gate(options: List[str]) -> List[str]:
+def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
+    """Filter to 4 decent sentences; optionally ensure first item survives."""
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
     out = []
-    for o in ops:
-        if len(o) < 40 or len(o) > 220: continue
+    for j,o in enumerate(ops):
+        ok = True
+        if len(o) < 40 or len(o) > 220: ok = False
         letters = [c for c in o if c.isalpha()]
-        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: continue
-        if len(o.split()) < 6: continue
-        if not re.search(r"\b(is|are|was|were|be|has|have|can|should|may|include|uses?|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b", o, re.I): continue
-        if not any(_near(o,p,0.96) for p in out): out.append(o)
+        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: ok = False
+        if len(o.split()) < 6: ok = False
+        if not re.search(VERB_RE, o, re.I): ok = False
+        if j == 0 and ensure_first:
+            ok = True  # force-keep the correct option
+        if ok and not any(_near(o,p,0.96) for p in out):
+            out.append(o)
         if len(out)==4: break
+    # If still <4 and ensure_first, pad from the tail of ops
+    k=0
+    while len(out)<4 and k < len(ops):
+        if ops[k] not in out:
+            out.append(ops[k])
+        k+=1
     return out[:4]
 
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
 
-# =============== Upload parsing ===============
+# ---------------- Upload parsing ----------------
 def extract_text_from_upload(file)->str:
     if file is None: return ""
     name = (getattr(file, "name", "") or "").lower()
@@ -274,7 +263,7 @@ def extract_text_from_upload(file)->str:
                     text += (pg.extract_text() or "") + "\n"
                 return _clean_lines(text)
             else:
-                return "[Could not parse PDF: add pdfplumber or PyPDF2]"
+                return "[Could not parse PDF: install pdfplumber or PyPDF2]"
         if name.endswith(".docx") and DocxDocument:
             doc = DocxDocument(file)
             return _clean_lines("\n".join((p.text or "") for p in doc.paragraphs[:300]))
@@ -292,19 +281,19 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# =============== Keyword/anchor policy for MCQs ===============
+# ---------------- MCQ anchor policy ----------------
 BAD_ANCHORS = {
     "rationale","engineering","data","sheet","concepts","theories",
     "case","studies","real","world","overview","introduction","chapter",
     "module","lesson","appendix","journal","glossary","summary"
 }
-VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
+STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
 
 def _keywords(text: str, top_n:int=24) -> List[str]:
     toks = []
     for w in re.split(r"[^A-Za-z0-9]+", text or ""):
         w = w.lower()
-        if len(w) >= 4 and w not in BAD_ANCHORS and not w.isdigit():
+        if len(w) >= 4 and w not in BAD_ANCHORS and w not in STOP and not w.isdigit():
             toks.append(w)
     from collections import Counter
     common = Counter(toks).most_common(top_n*3)
@@ -328,7 +317,22 @@ def _has_context_neighbors(sents: List[str], idx: int) -> bool:
     neighbors = _window(sents, idx, 3)
     return sum(1 for x in neighbors if x and x != sents[idx] and _is_sentence_like(x)) >= 2
 
-# =============== Generators ===============
+# ---------------- Activities: step extraction ----------------
+STEP_LINE = re.compile(r"(?:^|\n)\s*(?:step\s*\d+\s*[:\-\.]|[0-9]{1,2}\.\s+|•\s+|\-\s+|—\s+)(.+)", re.I)
+def extract_steps(src: str, min_steps=3, max_steps=7):
+    rough = _normalize(src.replace("\r",""))
+    hits = [m.group(1).strip() for m in STEP_LINE.finditer(rough)]
+    if len(hits) < min_steps:
+        parts = [p.strip() for p in re.split(r"[;•]", rough) if len(p.strip().split()) > 4]
+        hits.extend(parts)
+    uniq, seen = [], set()
+    for h in hits:
+        k = h.lower()
+        if k not in seen:
+            seen.add(k); uniq.append(h)
+    return uniq[:max_steps]
+
+# ---------------- Generators ----------------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
@@ -354,22 +358,31 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             idx = next(i for i, s in enumerate(sents) if k in s.lower())
         except StopIteration:
             continue
-        if not _has_context_neighbors(sents, idx):
+        if not _has_context_neighbors(sents, idx):  # need neighbors for distractors
             continue
         correct = sents[idx].strip()
         neigh = [x for x in _window(sents, idx, 3) if x != correct and _is_sentence_like(x)]
         extra = [x for x in sents if x not in neigh and _is_sentence_like(x)]
         rnd.shuffle(extra)
         cand = neigh + extra[:8]
-        options = _quality_gate([correct] + cand)
-        if len(options) < 4: continue
+
+        options = _quality_gate([correct] + cand, ensure_first=True)
+        # Safety: if filter accidentally dropped 'correct', reinsert it and trim
+        if correct not in options:
+            options = ([correct] + options)[:4]
+
+        if len(options) < 4:
+            continue
+
         tier = tier_for_q(made)
         stem = ("Which statement about **{k}** best fits *{ctx}*?"
                 if tier=="Low" else
                 "When applying **{k}** in *{ctx}*, which statement is most appropriate?"
                 if tier=="Medium" else
                 "Which option provides the strongest justification related to **{k}** in *{ctx}*?").format(k=k, ctx=ctx)
+
         rnd.shuffle(options)
+        # Now safe: 'correct' is guaranteed in options
         ans = ["A","B","C","D"][options.index(correct)]
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
@@ -397,7 +410,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 if abs(len(cand) - len(correct)) > 120: continue
                 dist.append(cand)
                 if len(dist) == 6: break
-            options = _quality_gate([correct] + dist)
+            options = _quality_gate([correct] + dist, ensure_first=True)
+            if correct not in options:
+                options = ([correct] + options)[:4]
             if len(options) < 4: continue
             rnd.shuffle(options)
             ans = ["A","B","C","D"][options.index(correct)]
@@ -424,38 +439,42 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     if len(sents) < 12:
         raise ValueError("Not enough source text to build activities (need ~12+ sentences of usable prose).")
 
-    hint_tokens = ["first","then","next","measure","calculate","record","verify","inspect",
-                   "threshold","risk","control","select","compare","interpret","justify","design"]
-    hints = [s for s in sents if any(tok in s.lower() for tok in hint_tokens)]
-    hints = _uniq_keep(hints)[:60]
-    if not hints:
-        raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
-
+    steps = extract_steps(source)
     rnd = random.Random(99)
+
     rows=[]
     for i in range(1, count + 1):
         v = verbs[(i - 1) % len(verbs)]
         t1=max(5,int(duration*0.2)); t2=max(10,int(duration*0.55)); t3=max(5,duration-(t1+t2))
-        core = rnd.choice(hints)
-        core_idx = sents.index(core) if core in sents else 0
-        nearby = [h for h in _window(sents, core_idx, 2) if h != core]
-        step_line = "; ".join(_uniq_keep([core] + nearby))[:360]
+
+        if len(steps) < 3:
+            pool = [s for s in sents if 50 <= len(s) <= 220]
+            rnd.shuffle(pool)
+            a = pool[0] if pool else "review key ideas from the text"
+            b = pool[1] if len(pool)>1 else "apply the concept to a small case"
+            c = pool[2] if len(pool)>2 else "justify your decisions with evidence"
+            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): {a}; then {b}. Plenary ({t3}m): {c}."
+        else:
+            chosen = steps[:5]
+            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): " + "; ".join(chosen) + f". Plenary ({t3}m): Compare outputs; justify choices."
+
         style_note = ""
         if style == "Lab":          style_note = " Emphasize safety checks and hands-on measurement."
         elif style == "Group Task": style_note = " Organize into teams; assign roles for collaboration."
-        elif style == "Reflection": style_note = " End with a written reflection on insights gained."
+        elif style == "Reflection": style_note = " End with a short written reflection."
+
         rows.append({
             "Lesson": lesson, "Week": week, "Policy focus": tier,
             "Title": f"{ctx} — {tier} Activity {i}", "Tier": tier,
             "Objective": f"Students will {v} key ideas anchored to today’s source.",
-            "Steps": f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): Follow steps — {step_line}. Plenary ({t3}m): Compare outputs; justify choices.{style_note}",
+            "Steps": step_line + style_note,
             "Materials": "Lesson PDF/PPT, mini-whiteboards, markers; timer",
-            "Assessment": "Performance check aligned to the anchored steps; short justification.",
+            "Assessment": "Performance check aligned to the steps; brief justification.",
             "Duration (mins)": duration,
         })
     return pd.DataFrame(rows)
 
-# =============== DOCX / GIFT exporters ===============
+# ---------------- Exporters ----------------
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
     if level==0: r.bold=True; r.font.size=Pt(16)
@@ -543,7 +562,7 @@ def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
         lines.append(f"::{_gift_escape(qname)}:: {stem} {{\n" + "\n".join(parts) + f"\n}} {comment}\n")
     return "\n".join(lines).strip()+"\n"
 
-# =============== Sample text ===============
+# ---------------- Sample text ----------------
 SAMPLE_TEXT = (
     "Ohm’s Law states that the current through a conductor between two points is directly proportional "
     "to the voltage across the two points. The constant of proportionality is the resistance. "
@@ -559,7 +578,7 @@ SAMPLE_TEXT = (
     "A systematic approach records known quantities and applies V=IR to solve unknowns."
 )
 
-# =============== App state ===============
+# ---------------- App state ----------------
 st.session_state.setdefault("lesson", 1)
 st.session_state.setdefault("week", 1)
 st.session_state.setdefault("mcq_total", 10)
@@ -572,7 +591,7 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 
-# =============== Header ===============
+# ---------------- Header ----------------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
 cols = st.columns([1.2, 4])
 with cols[0]:
@@ -586,7 +605,7 @@ with cols[1]:
     st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
 st.divider()
 
-# =============== Tabs ===============
+# ---------------- Tabs ----------------
 tab1, tab2, tab3, tab4 = st.tabs(["① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"])
 
 def progress_fraction()->float:
@@ -623,25 +642,17 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    # Step 1 — lesson/week
-    st.markdown("<div class='step green'><div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 1 — Choose Lesson & Week</b></div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
     with c1: st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
     with c2: st.session_state.week   = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
     with c3: st.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}", disabled=True)
     _focus = bloom_focus_for_week(st.session_state.week)
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
-    st.markdown(
-        f"<div class='bloom-row'>"
-        f"<span class='chip {_cls} hl'>🎯 Focus {_focus}</span></div>",
-        unsafe_allow_html=True
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    st.markdown(f"<div class='bloom-row'><span class='chip {_cls} hl'>🎯 Focus {_focus}</span></div>", unsafe_allow_html=True)
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 2 — review Bloom verbs
-    st.markdown("<div class='step'><div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 2 — Review Bloom’s Focus</b></div>", unsafe_allow_html=True)
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==_focus else ""
@@ -653,19 +664,13 @@ with tab2:
         st.markdown(f"**{label} (Weeks {weeks})**", unsafe_allow_html=True)
         st.markdown(f"<div class='bloom-row'>{chips}</div>", unsafe_allow_html=True)
     bloom_row("Low", LOW_VERBS); bloom_row("Medium", MED_VERBS); bloom_row("High", HIGH_VERBS)
-    st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 3 — topic
-    st.markdown("<div class='step gold'><div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 3 — Learning Objective / Topic (optional)</b></div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
-    st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 4 — source text
-    st.markdown("<div class='step'><div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 4 — Paste/Edit Source Text</b></div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
     with csa:
         st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit, height=180, placeholder="Add 1–2 short paragraphs (≈12+ sentences). Avoid bullet points.")
@@ -677,34 +682,29 @@ with tab2:
         if bullet_hit:
             st.info("Heads up: bullets were detected. Convert bullet points into full sentences for best results.")
     with csb:
-        if st.button("Paste sample text"): st.session_state.src_edit = SAMPLE_TEXT; st.experimental_rerun()
+        if st.button("Paste sample text"): st.session_state.src_edit = SAMPLE_TEXT; st.rerun()
         if st.button("Reset all"):
             for k in list(st.session_state.keys()): del st.session_state[k]
-            st.experimental_rerun()
+            st.rerun()
         st.caption("Quick actions")
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 5 — MCQ setup
-    st.markdown("<div class='step green'><div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 5 — MCQ Setup</b></div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
     st.session_state.mcq_mode = st.selectbox("MCQ distribution", ["Mixed","All Low","All Medium","All High"], index=["Mixed","All Low","All Medium","All High"].index(st.session_state.mcq_mode))
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 6 — Activity setup
-    st.markdown("<div class='step gold'><div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
+    st.markdown("<div class='step'><b>Step 6 — Activity Setup</b></div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
     with colA:
         st.session_state.act_n = st.radio("Activities", [1,2,3], index=st.session_state.act_n-1, horizontal=True)
         st.session_state.act_style = st.selectbox("Activity style", ["Standard","Lab","Group Task","Reflection"], index=["Standard","Lab","Group Task","Reflection"].index(st.session_state.act_style))
     with colB:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
@@ -847,4 +847,3 @@ with tab4:
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
-
