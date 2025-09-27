@@ -395,33 +395,58 @@ def _strip_noise(s: str) -> str:
 # ---------- MCQ stem templates (diversified) ----------
 STEMS = {
     "Low": [
-        "Which statement is most accurate?",
-        "Which sentence best reflects the idea?",
-        "What is the most correct statement?",
-        "Which of the following is true?",
-        "Select the statement that best matches the passage.",
-        "According to the text, what is correct?"
+        "Identify the correct feature of {kw}.",
+        "Select the term that best matches {kw}.",
+        "Which definition fits {kw}?",
+        "What is the primary purpose of {kw}?",
+        "Choose the statement that accurately describes {kw}.",
+        "Name the property that characterizes {kw}.",
+        "Complete the statement about {kw}."
     ],
     "Medium": [
-        "Which statement is most appropriate?",
-        "Which claim best applies?",
-        "What would be the best application in this context?",
-        "Select the option that fits the situation.",
-        "According to the text, what should be done?",
-        "Identify the option that best applies."
+        "How does {kw} improve the outcome in this context?",
+        "Why is {kw} important for the scenario described?",
+        "Which factor best influences {kw}?",
+        "Compare {kw1} and {kw2} in terms of {kw3}.",
+        "Select the option that correctly applies {kw}.",
+        "According to the text, what should be done regarding {kw}?",
+        "Which step is most appropriate when addressing {kw}?"
     ],
     "High": [
-        "Which option provides the strongest justification?",
-        "Which choice offers the best rationale?",
-        "What is the best justification?",
-        "Select the option with the strongest reasoning.",
-        "Which conclusion is best supported by the text?",
-        "Identify the most defensible explanation."
+        "Evaluate the best justification for using {kw} here.",
+        "Which conclusion is best supported about {kw}?",
+        "What is the strongest rationale concerning {kw}?",
+        "Predict the outcome if {kw} is changed.",
+        "Design the most defensible approach using {kw}.",
+        "Identify the most defensible explanation for {kw}.",
+        "Which option provides the strongest evidence about {kw}?"
     ],
 }
 def _stem_for_tier(tier: str, idx: int) -> str:
-    bank = STEMS.get(tier, STEMS["Medium"])
-    return bank[idx % len(bank)]
+    try:
+        src = st.session_state.get("src_edit") or st.session_state.get("src_text") or ""
+    except Exception:
+        src = ""
+    kws = _keywords(src, top_n=24) if src else []
+    if not kws:
+        kws = ["the topic", "the concept", "the process"]
+    kw = kws[idx % len(kws)]
+    kw1 = kws[(idx+3) % len(kws)]
+    kw2 = kws[(idx+7) % len(kws)]
+    kw3 = kws[(idx+11) % len(kws)]
+
+    bank = STEMS.get(tier, STEMS["Medium"])[:]
+    rnd = random.Random(1000 + idx)
+    rnd.shuffle(bank)
+
+    def good(s, i=idx):
+        h = s.split(" ",1)[0].lower()
+        if h in {"which","what"} and (i % 3) != 0:
+            return False
+        return True
+    chosen = next((s for s in bank if good(s)), bank[0])
+
+    return chosen.format(kw=kw, kw1=kw1, kw2=kw2, kw3=kw3)
 
 # ---------- MCQs (Exact mode) ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
