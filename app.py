@@ -1,4 +1,5 @@
 # app.py — ADI Learning Tracker (step-by-step setup, ADI colors, full generation + export)
+# + Pill selectors, Sample text button, Sticky readiness strip
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -115,6 +116,29 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .chip.high{  background:#333;    color:#fff; border-color:#222; }
 .chip.hl{ outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
 
+/* Pill radios — transform radios into chunky chips */
+[data-testid="stRadio"] div[role="radiogroup"]{
+  display:flex; gap:.5rem; flex-wrap:wrap;
+}
+[data-testid="stRadio"] label{
+  background:#ffffff; border:1.8px solid var(--border); border-radius:999px; padding:.45rem .9rem;
+  font-weight:800; color:#0f172a; box-shadow:0 6px 16px rgba(36,90,52,0.06);
+}
+[data-testid="stRadio"] label:hover{ border-color:#cfe1d7; }
+[data-testid="stRadio"] > div:has(input[type="radio"]:checked) label{
+  /* fallback; not used */
+}
+[data-testid="stRadio"] div[role="radio"][aria-checked="true"]{
+  background:#f3fbf6; border-radius:999px; box-shadow:0 10px 22px rgba(36,90,52,0.12);
+  border:2px solid #cfe1d7;
+}
+[data-testid="stRadio"] div[role="radio"][aria-checked="true"] > div{
+  font-weight:900;
+}
+
+/* Small helper note */
+.helper{ color:#667085; font-size:13px; }
+
 /* Previews */
 .badge{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; color:#fff; font-weight:800; font-size:12px; margin-right:10px; }
 .badge.g{ background:#245a34; } .badge.a{ background:#C8A85A; color:#111; } .badge.r{ background:#333; color:#fff; }
@@ -137,6 +161,13 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
   font-weight:800 !important; border-radius:12px !important; padding:.55rem .9rem !important; box-shadow:0 8px 20px rgba(36,90,52,0.25) !important;
 }
 .stDownloadButton>button:hover{ filter:brightness(1.06); }
+
+/* Sticky status strip (Generate tab) */
+.sticky-strip{
+  position: sticky; top: 8px; z-index: 5;
+  background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:8px 12px;
+  box-shadow:0 8px 18px rgba(36,90,52,.12);
+}
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
@@ -424,6 +455,22 @@ def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
         lines.append(f"::{_gift_escape(qname)}:: {stem} {{\n" + "\n".join(parts) + f"\n}} {comment}\n")
     return "\n".join(lines).strip()+"\n"
 
+# ---------- Sample text ----------
+SAMPLE_TEXT = (
+    "Ohm’s Law states that the current through a conductor between two points is directly proportional "
+    "to the voltage across the two points. The constant of proportionality is the resistance. "
+    "Thus, if the voltage increases while resistance remains constant, the current increases proportionally. "
+    "In practical circuits, components such as resistors limit current to protect devices. "
+    "Measuring voltage requires connecting a voltmeter in parallel with the component. "
+    "Measuring current requires placing an ammeter in series with the path. "
+    "Power dissipated by a resistor equals voltage times current and also equals current squared times resistance. "
+    "Designers choose resistor values to meet power and safety constraints. "
+    "Tolerances specify the acceptable deviation from the nominal resistance. "
+    "When components heat up, resistance may change, affecting current. "
+    "Series resistances add, while parallel resistances reduce the total. "
+    "A systematic approach records known quantities and applies V=IR to solve unknowns."
+)
+
 # ---------- App state ----------
 st.session_state.setdefault("lesson", 1)
 st.session_state.setdefault("week", 1)
@@ -463,7 +510,7 @@ with tab1:
             st.success("File uploaded and parsed.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== ② Setup (ONE PAGE, clear step breaks) =====
+# ===== ② Setup (ONE PAGE, step-by-step) =====
 with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
@@ -480,7 +527,6 @@ with tab2:
         st.text_input("Bloom focus (auto)",
                       value=f"Week {st.session_state.week}: {bloom_focus_for_week(st.session_state.week)}",
                       disabled=True)
-    # Summary toolbar
     _focus = bloom_focus_for_week(st.session_state.week)
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
     st.markdown(
@@ -493,7 +539,7 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 2 — Bloom’s verbs (policy)
+    # Step 2 — Bloom’s verbs
     st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
     def bloom_row(label, verbs):
@@ -516,16 +562,23 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 4 — Source text
+    # Step 4 — Source text (+ sample)
     st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
-    st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
-                                             height=180, placeholder="Paste or edit ~12+ full sentences here (avoid bullet points).")
+    csa, csb = st.columns([4,1])
+    with csa:
+        st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
+                                                 height=180, placeholder="Paste or edit ~12+ full sentences here (avoid bullet points).")
+    with csb:
+        if st.button("Paste sample text"):
+            st.session_state.src_edit = SAMPLE_TEXT
+            st.experimental_rerun()
+        st.markdown("<div class='helper'>Quick demo</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 5 — MCQ setup
+    # Step 5 — MCQ setup (pill radios)
     st.markdown("<div class='step green'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
@@ -535,7 +588,7 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 6 — Activity setup
+    # Step 6 — Activity setup (pill + slider)
     st.markdown("<div class='step gold'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
@@ -552,14 +605,17 @@ with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Generate Questions & Activities</div>", unsafe_allow_html=True)
 
-    # Readiness counter
+    # Sticky strip showing readiness
     sent_count = len(_sentences(st.session_state.src_edit or ""))
     need = 12
     ready = sent_count >= need
+    status_text = f"Ready • {sent_count} sentences detected" if ready else f"Add text • {sent_count}/{need} sentences"
+    st.markdown(f"<div class='sticky-strip'>{status_text}</div>", unsafe_allow_html=True)
+
     if not st.session_state.src_edit.strip():
         st.markdown("<div class='note'>Add some lesson text first. Paste a short section (one page or a few paragraphs).</div>", unsafe_allow_html=True)
     elif not ready:
-        st.markdown(f"<div class='note'>We found <b>{sent_count}/{need}</b> full sentences. For better MCQs & activities, paste continuous text (avoid bullet points) until this reaches 12+.</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='note'>We found <b>{sent_count}/{need}</b> full sentences. Paste continuous text (avoid bullets) until this reaches 12+.</div>", unsafe_allow_html=True)
     else:
         st.markdown(f"<div class='note-green'>Ready to generate — <b>{sent_count}</b> sentences detected.</div>", unsafe_allow_html=True)
     st.progress(min(1.0, sent_count/need) if need else 1.0)
@@ -661,4 +717,6 @@ with tab4:
 
     st.markdown("</div>", unsafe_allow_html=True)  # grid
     st.markdown("</div>", unsafe_allow_html=True)  # card
+
+  
 
