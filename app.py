@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (final, with PyMuPDF, Safe Mode, noise cleaner, upgraded Activities)
+# app.py — ADI Learning Tracker (final build: no lesson/week in text, larger print, green downloads)
 # English-only • PDF/PPTX/DOCX input • Robust extraction • MCQs & Activities
 # Exports: CSV / GIFT / Word / Combined Word
 
@@ -14,7 +14,6 @@ import streamlit as st
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
 
 # ---------- Parsers ----------
-# PDF extractors
 try:
     import fitz  # PyMuPDF (primary)
 except Exception:
@@ -80,6 +79,25 @@ main .block-container { padding-top:.75rem; max-width:980px; }
 .act-low{border-left-color:#245a34;} .act-med{border-left-color:#C8A85A;} .act-high{border-left-color:#333;}
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width:760px){ .export-grid{ grid-template-columns:1fr; } }
+
+/* Make Generate and Download buttons ADI green */
+.stButton > button,
+.stDownloadButton > button {
+  background: linear-gradient(90deg, #245a34, #387a4b);
+  color: #fff;
+  border: 1px solid #1f4d2c;
+  border-radius: 12px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(36,90,52,.18);
+}
+.stButton > button:hover,
+.stDownloadButton > button:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.stButton > button:active,
+.stDownloadButton > button:active { filter: brightness(.95); transform: translateY(0); }
+.stButton > button:disabled,
+.stDownloadButton > button:disabled {
+  background: #e6eae8 !important; color: #6b7280 !important; border-color: #d8e0dc !important; box-shadow: none !important;
+}
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
@@ -109,7 +127,7 @@ def bloom_focus_for_week(week:int)->str:
     if 5<=week<=9: return "Medium"
     return "High"
 
-# ---------- Filters ----------
+# ---------- Filters & helpers ----------
 VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
 BAD_ANCHORS = {"rationale","engineering","data","sheet","concepts","theories","case","studies","real","world","overview","introduction","chapter","module","lesson","appendix","journal","glossary","summary"}
 STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
@@ -117,7 +135,6 @@ STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general"
 BLOCK_LINE_PHRASES = ["exercise","diagram","figure","glossary","learning outcomes","error! bookmark not defined","lesson","week"]
 EMOJI_RE = r"[\u2600-\u27BF\U0001F300-\U0001FAFF]"
 
-# ---------- Text helpers ----------
 def _normalize(s: str) -> str:
     s = unicodedata.normalize("NFKC", s or "")
     s = re.sub(r'(\w)-\s+(\w)', r'\1\2', s)
@@ -160,7 +177,7 @@ def _sentences(text: str) -> List[str]:
         if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
         return True
     sents = [s for s in rough if good(s)]
-    return sents[:180]  # speed cap
+    return sents[:180]
 
 def _is_sentence_like(s: str) -> bool:
     if len(s.split()) < 8: return False
@@ -209,21 +226,19 @@ def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
 
-# ---------- Upload parsing (with PyMuPDF first) ----------
+# ---------- Upload parsing ----------
 def extract_text_from_upload(file)->str:
     if file is None: return ""
     name = (getattr(file, "name", "") or "").lower()
     try:
         if name.endswith(".pdf"):
             buf = file.read() if hasattr(file,"read") else file.getvalue()
-            # Primary: PyMuPDF
             if fitz:
                 doc = fitz.open(stream=buf, filetype="pdf")
-                text = "\n".join((page.get_text("text") or "") for page in doc[:40])  # speed cap
+                text = "\n".join((page.get_text("text") or "") for page in doc[:40])
                 if len(text.strip()) < 200:
                     return "[Parsed 0 text — likely a scanned PDF. Export as a text PDF or paste a section into Step 4.]"
                 return _clean_lines(text)
-            # Fallbacks
             if pdfplumber:
                 pages=[]
                 with pdfplumber.open(io.BytesIO(buf)) as pdf:
@@ -278,29 +293,11 @@ def _has_context_neighbors(sents: List[str], idx: int) -> bool:
     neighbors = _window(sents, idx, 3)
     return sum(1 for x in neighbors if x and x != sents[idx] and _is_sentence_like(x)) >= 2
 
-# ---------- Activities step extraction (kept for future, not required by upgraded activity gen) ----------
-STEP_LINE = re.compile(r"(?:^|\n)\s*(?:step\s*\d+\s*[:\-\.]|[0-9]{1,2}\.\s+|•\s+|\-\s+|—\s+)(.+)", re.I)
-def extract_steps(src: str, min_steps=3, max_steps=7):
-    rough = _normalize((src or "").replace("\r",""))
-    hits = [m.group(1).strip() for m in STEP_LINE.finditer(rough)]
-    if len(hits) < min_steps:
-        hits += [p.strip() for p in re.split(r"[;•]", rough) if len(p.strip().split()) > 4]
-    clean = []
-    seen = set()
-    for h in hits:
-        low = h.lower()
-        if any(p in low for p in BLOCK_LINE_PHRASES): continue
-        k = re.sub(r"\s+", " ", h).strip()
-        if k and k.lower() not in seen:
-            seen.add(k.lower()); clean.append(k)
-        if len(clean) == max_steps: break
-    return clean
-
-# ---------- Noise cleaner (applied to stems/options/steps) ----------
+# ---------- Noise cleaner ----------
 def _strip_noise(s: str) -> str:
     if not s: return s
     s = re.sub(r"\s*\((?:PS|LO|CO)\d+(?:,\s*(?:PS|LO|CO)\d+)*\)\s*", " ", s)         # (PS3, PS8)
-    s = re.sub(r"\s*\([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*,\s*\d{4}\)\s*", " ", s)  # (Defense News, 2023)
+    s = re.sub(r"\s*\([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*,\s*\d{4}\)\s*", " ", s)  # (Smith, 2023)
     s = re.sub(r"\s+[o•\-]\s+", " ", s)                                             # stray bullets
     s = re.sub(r"defence\s*systems", "defence systems", s, flags=re.I)
     s = re.sub(r"defence\s*personnel", "defence personnel", s, flags=re.I)
@@ -309,8 +306,6 @@ def _strip_noise(s: str) -> str:
 # ---------- MCQs (Exact mode) ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
-    ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
-
     sents = [s for s in _sentences(_clean_lines(source or "")) if _is_sentence_like(s)]
     sents = [s for s in sents if not any(p in s.lower() for p in BLOCK_LINE_PHRASES)]
     if len(sents) < 12:
@@ -343,13 +338,14 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if len(options) < 4: continue
 
         tier = tier_for_q(made)
-        stem = ("Which statement about **{k}** best fits *{ctx}*?"
-                if tier=="Low" else
-                "When applying **{k}** in *{ctx}*, which statement is most appropriate?"
-                if tier=="Medium" else
-                "Which option provides the strongest justification related to **{k}** in *{ctx}*?").format(k=k, ctx=ctx)
+        # No lesson/week in stems:
+        if tier == "Low":
+            stem = f"Which statement about **{k}** is most accurate?"
+        elif tier == "Medium":
+            stem = f"When applying **{k}**, which statement is most appropriate?"
+        else:
+            stem = f"Which option provides the strongest justification related to **{k}**?"
 
-        # Clean stem/options
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
 
@@ -365,7 +361,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         made += 1
         if made == total_q: break
 
-    # Fallback to guarantee fill
+    # Fallback fill
     if made < total_q:
         pool = [s for s in sents if 50 <= len(s) <= 200]
         pool = [s for s in pool if ("," in s or ";" in s)] + [s for s in pool if ("," not in s and ";" not in s)]
@@ -383,7 +379,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             options = _quality_gate([correct] + dist, ensure_first=True)
             if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
-            stem = f"Which statement best fits *{ctx}*?"
+            stem = "Which statement is most accurate?"
             stem = _strip_noise(stem)
             options = [_strip_noise(o) for o in options]
             rnd.shuffle(options)
@@ -402,7 +398,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         raise ValueError("Still couldn’t form MCQs from this section. Paste a narrative paragraph (not bullets).")
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- MCQs (Safe Mode) ----------
+# ---------- MCQs (Safe mode) ----------
 def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]:
     out = []
     for cand in pool:
@@ -421,8 +417,6 @@ def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]
 
 def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
-    ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
-
     raw_sents = _sentences(_clean_lines(source or ""))
     sents = [s for s in raw_sents if _is_clean_sentence(s)]
     if len(sents) < 6:
@@ -459,9 +453,9 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             i += 1; continue
         tier = tier_for_q(len(rows))
         stem = (
-            f"Which statement best fits *{ctx}*?" if tier=="Low" else
-            f"In *{ctx}*, which statement is most appropriate?" if tier=="Medium" else
-            f"Which option provides the strongest justification in *{ctx}*?"
+            "Which statement is most accurate?" if tier=="Low" else
+            "Which statement is most appropriate?" if tier=="Medium" else
+            "Which option provides the strongest justification?"
         )
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
@@ -483,7 +477,7 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
         options = _quality_gate([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
-        stem = _strip_noise(f"Which statement best fits *{ctx}*?")
+        stem = _strip_noise("Which statement is most accurate?")
         options = [_strip_noise(o) for o in options]
         tier = tier_for_q(len(rows))
         random.shuffle(options)
@@ -498,15 +492,12 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Upgraded Activities ----------
-def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
+# ---------- Activities (sentence style, no lesson/week in title) ----------
+def generate_activities(count: int, duration: int, tier: str, topic: str,
+                        lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
     topic = (topic or "Project scope, WBS, risk register, stakeholders").strip()
-    ctx = f"Lesson {lesson} • Week {week}"
     verbs = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}.get(tier, MED_VERBS)
-
-    # Clean source & strip course codes / citations
-    txt = _clean_lines(source or "")
-    txt = _strip_noise(txt)
+    txt = _strip_noise(_clean_lines(source or ""))
 
     # Time split
     t1 = max(5, int(duration*0.17)); t3 = max(8, int(duration*0.17)); t2 = max(10, duration - (t1+t3))
@@ -514,24 +505,26 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     rows = []
     for i in range(1, count+1):
         v = verbs[(i-1) % len(verbs)]
-        deliverable = "1-page mini plan (scope + WBS L2 + top-3 risks + stakeholder RACI)"
         steps = [
-            f"Starter ({t1}m): {v.capitalize()} prior knowledge with a quick success checklist (time, cost, quality, security).",
-            f"Main ({t2}m): 1) Draft scope (in/out); 2) Sketch WBS to level-2; 3) Build risk register (owner & response); 4) Map stakeholders (RACI).",
-            f"Plenary ({t3}m): Swap plans; one strength & one question; justify one change."
+            f"Starter ({t1}m). Students {v} prior knowledge using a success checklist for time, cost, quality, and security.",
+            ("Main ({t2}m). Students draft a scope statement showing what is in and what is out. "
+             "They sketch a level-2 WBS with three to six work packages. "
+             "They build a risk register with an owner and a response for each risk. "
+             "They map stakeholders and mark a simple RACI.").format(t2=t2),
+            f"Plenary ({t3}m). Teams exchange plans, offer one strength and one question, and justify one change."
         ]
-        if style == "Lab": steps[1] += " Emphasize safe handling and verification steps."
-        if style == "Group Task": steps[1] += " Assign roles: Lead, Scribe, Risk owner, Reviewer."
-        if style == "Reflection": steps[2] += " Submit a 2-minute written reflection."
+        if style == "Lab": steps[1] += " Students follow lab safety rules and verify each step."
+        elif style == "Group Task": steps[1] += " Teams assign roles: Lead, Scribe, Risk Owner, Reviewer."
+        elif style == "Reflection": steps[2] += " Each student writes a two-minute reflection."
 
         rows.append({
             "Lesson": lesson, "Week": week, "Policy focus": tier,
-            "Title": f"{ctx} — {tier} Activity {i}",
+            "Title": f"{tier} Activity {i}",
             "Tier": tier,
             "Objective": f"Students will {v} key ideas anchored to {topic}.",
-            "Steps": _strip_noise(" ".join(steps)),
-            "Materials": "Brief handout, A3 paper, markers; timer",
-            "Assessment": "Rubric (scope, WBS L2, risks with responses, RACI) each /3 → /12.",
+            "Steps": " ".join(steps),
+            "Materials": "Brief handout, A3 paper, markers; timer.",
+            "Assessment": "Rubric: scope clarity, WBS level-2, risks with owner/response, and RACI (each /3 → /12).",
             "Duration (mins)": duration
         })
     return pd.DataFrame(rows)
@@ -542,15 +535,23 @@ def generate_activities_safe(*args, **kwargs) -> pd.DataFrame:
 # ---------- Export helpers ----------
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
-    if level==0: r.bold=True; r.font.size=Pt(16)
-    elif level==1: r.bold=True; r.font.size=Pt(13)
-    else: r.font.size=Pt(11)
+    if level==0: r.bold=True; r.font.size=Pt(18)   # larger title
+    elif level==1: r.bold=True; r.font.size=Pt(15) # section headers
+    else: r.font.size=Pt(13)
+
+def _set_doc_defaults(doc):
+    try:
+        doc.styles["Normal"].font.size = Pt(12)  # readable when printed
+        doc.styles["Normal"].paragraph_format.line_spacing = 1.15
+    except Exception:
+        pass
 
 def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
     if Document is None: return b""
-    doc=Document(); sec=doc.sections[0]
-    if Inches: sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
-    _docx_heading(doc, f"Knowledge MCQs — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else ""), 0)
+    doc=Document(); _set_doc_defaults(doc)
+    if Inches: 
+        sec=doc.sections[0]; sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
+    _docx_heading(doc, "Knowledge MCQs" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
     for i, r in df.reset_index(drop=True).iterrows():
         doc.add_paragraph(f"{i+1}. ({r['Tier']}) {r['Question']}")
@@ -564,9 +565,10 @@ def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
 
 def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
     if Document is None: return b""
-    doc=Document(); sec=doc.sections[0]
-    if Inches: sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
-    _docx_heading(doc, f"Skills Activities — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else ""), 0)
+    doc=Document(); _set_doc_defaults(doc)
+    if Inches:
+        sec=doc.sections[0]; sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
+    _docx_heading(doc, "Skills Activities" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
     for i,r in df.iterrows():
         _docx_heading(doc, r.get("Title", f"Activity {i+1}"), 1)
@@ -581,9 +583,10 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
 
 def export_combined_docx(mcq_df: pd.DataFrame | None, act_df: pd.DataFrame | None, lesson:int, week:int, topic:str="")->bytes:
     if Document is None: return b""
-    doc=Document(); sec=doc.sections[0]
-    if Inches: sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
-    title = f"Combined Lesson — Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else "")
+    doc=Document(); _set_doc_defaults(doc)
+    if Inches:
+        sec=doc.sections[0]; sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
+    title = "Combined — MCQs & Activities" + (f" • {topic}" if topic else "")
     _docx_heading(doc, title, 0)
     doc.add_paragraph()
     if mcq_df is not None and len(mcq_df)>0:
@@ -615,9 +618,9 @@ _GIFT_ESCAPE = str.maketrans({"~": r"\~","=": r"\=","#": r"\#","{": r"\{","}": r
 def _gift_escape(s:str)->str: return (s or "").translate(_GIFT_ESCAPE)
 
 def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
-    lines=[]; title_prefix=f"Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else "")
+    lines=[]
     for i,r in df.reset_index(drop=True).iterrows():
-        qname=f"{title_prefix} — Q{i+1} ({r.get('Tier','')})"
+        qname=f"Q{i+1} ({r.get('Tier','')})"  # short name
         stem=_gift_escape(str(r.get("Question",""))).strip()
         opts=[str(r.get("Option A","")),str(r.get("Option B","")),str(r.get("Option C","")),str(r.get("Option D",""))]
         idx={"A":0,"B":1,"C":2,"D":3}.get(str(r.get("Answer","A")).strip().upper(),0)
@@ -677,7 +680,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["① 📂 Upload", "② ⚙️ Setup", "③ �
 def progress_fraction()->float:
     steps = 0; total = 4
     if (st.session_state.get("src_edit") or "").strip(): steps += 1
-    if len(_sentences(st.session_state.get("src_edit",""))) >= 6: steps += 1  # allow Safe Mode precheck
+    if len(_sentences(st.session_state.get("src_edit",""))) >= 6: steps += 1  # Safe Mode precheck
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     return steps/total
@@ -714,7 +717,7 @@ with tab2:
     with c1: st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
     with c2: st.session_state.week   = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
     with c3:
-        focus = bloom_focus_for_week(st.session_state.week)   # always fresh
+        focus = bloom_focus_for_week(st.session_state.week)
         st.markdown(f"**Bloom focus (auto): Week {st.session_state.week}: {focus}**")
     _focus = focus
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
@@ -782,7 +785,7 @@ with tab2:
 # ===== ③ Generate =====
 with tab3:
     sc = len(_sentences(st.session_state.get("src_edit","")))
-    min_req = 6 if st.session_state.get("safe_mode", True) else 12  # Safe Mode unlocks earlier
+    min_req = 6 if st.session_state.get("safe_mode", True) else 12
     if sc < min_req:
         st.info(f"Add at least {min_req} full sentences in **② Setup** to enable Generate.")
         st.progress(progress_fraction()); st.stop()
@@ -864,16 +867,16 @@ with tab4:
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
         if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
-                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv", "text/csv"):
+                              f"mcqs_w{st.session_state.week}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
         if st.download_button("Download MCQs (Moodle GIFT)", gift_txt.encode("utf-8"),
-                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift", "text/plain"):
+                              f"mcqs_w{st.session_state.week}.gift", "text/plain"):
             st.toast("✅ MCQs GIFT download started")
         if Document:
             mcq_docx = export_mcqs_docx(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             if st.download_button("Download MCQs (Word)", mcq_docx,
-                                  f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.docx",
+                                  f"mcqs_w{st.session_state.week}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ MCQs Word download started")
         else:
@@ -887,12 +890,12 @@ with tab4:
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
         if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
-                              f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv", "text/csv"):
+                              f"activities_w{st.session_state.week}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
         if Document:
             act_docx = export_acts_docx(st.session_state.act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             if st.download_button("Download Activities (Word)", act_docx,
-                                  f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx",
+                                  f"activities_w{st.session_state.week}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Activities Word download started")
         else:
@@ -910,7 +913,7 @@ with tab4:
         if (mcq_df is not None and len(mcq_df)>0) or (act_df is not None and len(act_df)>0):
             combined_docx = export_combined_docx(mcq_df, act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
             if st.download_button("Download Combined Lesson (Word)", combined_docx,
-                                  f"lesson_combined_l{st.session_state.lesson}_w{st.session_state.week}.docx",
+                                  f"combined_w{st.session_state.week}.docx",
                                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
                 st.toast("✅ Combined Lesson Word download started")
         else:
@@ -921,3 +924,4 @@ with tab4:
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
+
