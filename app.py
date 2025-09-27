@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (tabs with icons & ADI-colored numbers, full flow)
+# app.py — ADI Learning Tracker (logo larger + tier-colored previews + strong CTAs)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -29,13 +29,15 @@ html, body { background:var(--stone); }
 main .block-container { padding-top:.75rem; max-width: 980px; }
 
 /* Header */
+.header-wrap{display:flex; align-items:center; gap:16px; margin-bottom:6px;}
+.logo-wrap{display:flex; align-items:center; justify-content:center; width:160px;}
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
 
 /* Tabs — bold, icons, ADI-colored numbers, single underline */
 .stTabs [role="tablist"]{
   gap:.5rem;
-  border-bottom:0;                 /* remove default underline */
+  border-bottom:0;
   padding:0 .25rem .35rem .25rem;
   position:relative;
 }
@@ -55,37 +57,20 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
   transform:translateY(-1px);
   box-shadow:0 10px 22px rgba(36,90,52,.12);
 }
-/* Label content */
 .stTabs [role="tab"] p{
-  margin:0;
-  font-weight:800;
-  color:#223047;
-  display:flex;
-  align-items:center;
-  gap:.45rem;
+  margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem;
 }
-/* Color-coded numbers (first character of string) */
-.stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; } /* Upload = green */
-.stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; } /* Setup  = gold */
-.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; } /* Generate = red */
-.stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; } /* Export = green */
-
-/* Active tab */
+.stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; } /* Upload */
+.stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; } /* Setup  */
+.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; } /* Generate */
+.stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; } /* Export */
 .stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
-.stTabs [role="tab"][aria-selected="true"]{
-  border-color:#dfe7e3;
-  box-shadow:0 12px 26px rgba(36,90,52,.16);
-}
-/* Single gradient underline */
+.stTabs [role="tab"][aria-selected="true"]{ border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,.16); }
 .stTabs [role="tab"][aria-selected="true"]::after{
-  content:"";
-  position:absolute; left:10px; right:10px; bottom:-3px;
-  height:4px; border-radius:999px;
-  background:linear-gradient(90deg,#245a34,#C8A85A);
-  box-shadow:0 2px 6px rgba(36,90,52,.18);
+  content:""; position:absolute; left:10px; right:10px; bottom:-3px; height:4px; border-radius:999px;
+  background:linear-gradient(90deg,#245a34,#C8A85A); box-shadow:0 2px 6px rgba(36,90,52,.18);
 }
-.stTabs [role="tablist"]::after,
-.stTabs [role="tablist"]::before{ content:none !important; display:none !important; }
+.stTabs [role="tablist"]::after,.stTabs [role="tablist"]::before{ content:none !important; display:none !important; }
 
 /* Cards + Headings */
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
@@ -105,9 +90,6 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stTextInput input, .stTextArea textarea{ padding:.8rem .9rem !important; font-weight:600 !important; color:#0f172a !important; }
 .stTextArea textarea::placeholder, .stTextInput input::placeholder{ color:#9aa6a0 !important; }
-/* Disabled */
-.stTextInput > div > div:has(input[disabled]){ background:#f7faf9 !important; border-color:#e6efe9 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
-.stTextInput input[disabled]{ color:#667d72 !important; font-weight:700 !important; }
 
 /* File dropzone */
 [data-testid="stFileUploaderDropzone"]{
@@ -169,11 +151,25 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .note-green{ padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0; background:linear-gradient(180deg,#f9fefb,#f3fbf6); color:#133c23; font-weight:600; }
 .note-amber{ padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7; background:linear-gradient(180deg,#fffdf7,#fffaf0); color:#4a3d14; font-weight:600; }
 
-/* Previews */
-.badge{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; color:#fff; font-weight:800; font-size:12px; margin-right:10px; }
-.badge.g{ background:#245a34; } .badge.a{ background:#C8A85A; color:#111; } .badge.r{ background:#333; color:#fff; }
-.qcard{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
-.qitem{ display:flex; gap:10px; align-items:flex-start; padding:6px 0; }
+/* Strong CTA buttons (Generate) */
+.stButton>button{
+  background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
+  color:#fff !important; border:1px solid #1f4e31 !important;
+  font-weight:900 !important; border-radius:12px !important;
+  padding:.65rem 1rem !important; box-shadow:0 10px 26px rgba(36,90,52,0.30) !important;
+}
+.stButton>button:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+/* Previews — tier-coloured borders */
+.preview-card{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
+.mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:8px 0; }
+.mcq-low{   border-left-color:#245a34; }
+.mcq-med{   border-left-color:#C8A85A; }
+.mcq-high{  border-left-color:#333; }
+.act-card{ border-left:6px solid #e5e7eb; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,.06); }
+.act-low{   border-left-color:#245a34; }
+.act-med{   border-left-color:#C8A85A; }
+.act-high{  border-left-color:#333; }
 
 /* Export */
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
@@ -503,18 +499,24 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 
-# ---------- Header ----------
-col_logo, col_title = st.columns([1,4])
-with col_logo:
-    if st.session_state.logo_bytes:
-        b64 = base64.b64encode(st.session_state.logo_bytes).decode()
-        st.image(f"data:image/png;base64,{b64}", use_container_width=True)
-with col_title:
-    st.markdown("<div class='h1'>ADI Learning Tracker</div>", unsafe_allow_html=True)
-    st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
+# ---------- Header (enlarged logo) ----------
+st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
+with st.container():
+    cols = st.columns([1.2, 4])
+    with cols[0]:
+        if st.session_state.logo_bytes:
+            b64 = base64.b64encode(st.session_state.logo_bytes).decode()
+            # widen footprint via wrapper; st.image width keeps 140–160px visually crisp
+            st.markdown("<div class='logo-wrap'>", unsafe_allow_html=True)
+            st.image(f"data:image/png;base64,{b64}", width=140)
+            st.markdown("</div>", unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown("<div class='h1'>ADI Learning Tracker</div>", unsafe_allow_html=True)
+        st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 st.divider()
 
-# ---------- Tabs (icon + number labels) ----------
+# ---------- Tabs ----------
 tab1, tab2, tab3, tab4 = st.tabs([
     "① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"
 ])
@@ -661,20 +663,21 @@ with tab3:
 
     if "mcq_df" in st.session_state:
         st.write("**MCQs (preview)**")
-        st.markdown("<div class='qcard'>", unsafe_allow_html=True)
+        st.markdown("<div class='preview-card'>", unsafe_allow_html=True)
         for i,row in st.session_state.mcq_df.reset_index(drop=True).iterrows():
-            c = "g" if row["Tier"]=="Low" else "a" if row["Tier"]=="Medium" else "r"
-            st.markdown(f"<div class='qitem'><span class='badge {c}'>{i+1}</span><div><b>{row['Question']}</b></div></div>", unsafe_allow_html=True)
+            cls = "mcq-low" if row["Tier"]=="Low" else ("mcq-med" if row["Tier"]=="Medium" else "mcq-high")
+            st.markdown(f"<div class='mcq-item {cls}'><b>{i+1}.</b> {row['Question']}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     if "act_df" in st.session_state:
         st.write("**Activities (preview)**")
         for i,r in st.session_state.act_df.reset_index(drop=True).iterrows():
-            with st.expander(f"{i+1}. {r.get('Title','Activity')}"):
-                st.write(f"**Policy focus:** {r['Policy focus']}")
-                st.write(f"**Objective:** {r['Objective']}")
-                st.write(f"**Steps:** {r['Steps']}")
-                st.write(f"**Duration:** {r['Duration (mins)']} mins")
+            tier = r.get("Policy focus","Medium")
+            cls = "act-low" if tier=="Low" else ("act-med" if tier=="Medium" else "act-high")
+            st.markdown(f"<div class='act-card {cls}'><b>{i+1}. {r.get('Title','Activity')}</b><br>"
+                        f"<span><b>Objective:</b> {r['Objective']}</span><br>"
+                        f"<span><b>Steps:</b> {r['Steps']}</span><br>"
+                        f"<span><b>Duration:</b> {r['Duration (mins)']} mins</span></div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ④ Export =====
