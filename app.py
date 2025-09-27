@@ -1395,3 +1395,95 @@ except Exception as _e:
     st.text_input("Teacher ID (variation seed)", key="teacher_seed",
                   help="Enter teacher email/name or class code for unique-but-stable variants.")
 
+
+# ---------- Inline Editor Drawer (fallback if sidebar is hidden) ----------
+def _render_inline_editor():
+    import streamlit as st
+    import pandas as pd
+
+    st.divider()
+    st.subheader("✏️ Editor (Inline)")
+
+    mode = st.radio("Edit", ["MCQs","Activities"], horizontal=True, key="inline_edit_mode")
+
+    if mode == "MCQs" and isinstance(st.session_state.get("mcq_df"), pd.DataFrame) and len(st.session_state.mcq_df) > 0:
+        df = st.session_state.mcq_df
+        c1, c2 = st.columns([1,3])
+        with c1:
+            row = st.number_input("Row", 0, len(df)-1, 0, step=1, key="inline_mcq_row")
+            if st.button("🧬 Duplicate", key="inline_mcq_dup"):
+                top = df.iloc[:row+1]
+                mid = df.iloc[row:row+1]
+                bot = df.iloc[row+1:]
+                st.session_state.mcq_df = pd.concat([top, mid, bot], ignore_index=True)
+                st.toast("Duplicated question")
+            if st.button("🗑 Delete", key="inline_mcq_del"):
+                st.session_state.mcq_df = df.drop(index=row).reset_index(drop=True)
+                st.toast("Deleted question")
+        with c2:
+            qtxt = st.text_area("Question", str(df.loc[row,"Question"]), height=140)
+            colA, colB = st.columns(2)
+            with colA:
+                oa = st.text_area("Option A", str(df.loc[row,"Option A"]), height=80)
+                oc = st.text_area("Option C", str(df.loc[row,"Option C"]), height=80)
+            with colB:
+                ob = st.text_area("Option B", str(df.loc[row,"Option B"]), height=80)
+                od = st.text_area("Option D", str(df.loc[row,"Option D"]), height=80)
+            ans = st.selectbox("Answer", ["A","B","C","D"], index=["A","B","C","D"].index(str(df.loc[row,"Answer"])) if str(df.loc[row,"Answer"]) in ["A","B","C","D"] else 0)
+            expl = st.text_area("Explanation", str(df.loc[row,"Explanation"]), height=100)
+            if st.button("Apply changes", key="inline_mcq_apply"):
+                df.loc[row, ["Question","Option A","Option B","Option C","Option D","Answer","Explanation"]] = [qtxt, oa, ob, oc, od, ans, expl]
+                st.session_state.mcq_df = df
+                st.toast("Applied MCQ changes")
+
+    elif mode == "Activities" and isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_state.act_df) > 0:
+        df = st.session_state.act_df
+        c1, c2 = st.columns([1,3])
+        with c1:
+            row = st.number_input("Row", 0, len(df)-1, 0, step=1, key="inline_act_row")
+            if st.button("🧬 Duplicate", key="inline_act_dup"):
+                top = df.iloc[:row+1]
+                mid = df.iloc[row:row+1]
+                bot = df.iloc[row+1:]
+                st.session_state.act_df = pd.concat([top, mid, bot], ignore_index=True)
+                st.toast("Duplicated activity")
+            if st.button("🗑 Delete", key="inline_act_del"):
+                st.session_state.act_df = df.drop(index=row).reset_index(drop=True)
+                st.toast("Deleted activity")
+        with c2:
+            # Support snake_case and Title Case columns
+            title = df.loc[row,"title"] if "title" in df.columns else df.loc[row,"Title"]
+            objective = df.loc[row,"objective"] if "objective" in df.columns else df.loc[row,"Objective"]
+            steps = df.loc[row,"steps"] if "steps" in df.columns else df.loc[row,"Steps"]
+            materials = df.loc[row,"materials"] if "materials" in df.columns else df.loc[row,"Materials"]
+            assessment = df.loc[row,"assessment"] if "assessment" in df.columns else df.loc[row,"Assessment"]
+            duration_val = df.loc[row,"duration"] if "duration" in df.columns else df.loc[row,"Duration (mins)"]
+
+            title = st.text_input("Title", str(title))
+            objective = st.text_area("Objective", str(objective), height=90)
+            steps = st.text_area("Steps", str(steps), height=140)
+            materials = st.text_area("Materials", str(materials), height=80)
+            assessment = st.text_area("Assessment", str(assessment), height=100)
+            try:
+                duration = int(duration_val)
+            except Exception:
+                duration = 20
+            duration = st.number_input("Duration (mins)", duration, step=5)
+
+            if st.button("Apply changes", key="inline_act_apply"):
+                if "title" in df.columns:
+                    df.loc[row, ["title","objective","steps","materials","assessment","duration"]] = [title,objective,steps,materials,assessment,int(duration)]
+                else:
+                    df.loc[row, ["Title","Objective","Steps","Materials","Assessment","Duration (mins)"]] = [title,objective,steps,materials,assessment,int(duration)]
+                st.session_state.act_df = df
+                st.toast("Applied Activity changes")
+
+# Render the inline editor at the end of the Generate section
+# (If your app splits sections by headers, call _render_inline_editor() after MCQ/Activity previews.)
+
+
+# Always show inline editor fallback
+try:
+    _render_inline_editor()
+except Exception:
+    pass
