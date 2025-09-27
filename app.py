@@ -1,4 +1,3 @@
-
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -10,6 +9,18 @@ from difflib import SequenceMatcher
 
 import pandas as pd
 import streamlit as st
+import hashlib
+def _seed_salt() -> int:
+    """Hash the teacher/class seed to a small integer offset."""
+    try:
+        seed_txt = (st.session_state.get("teacher_seed") or st.session_state.get("teacher_id") or "").strip()
+    except Exception:
+        seed_txt = ""
+    if not seed_txt:
+        return 0
+    h = hashlib.md5(seed_txt.encode("utf-8")).hexdigest()[:8]
+    return int(h, 16)
+
 
 # ---------- Streamlit base ----------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
@@ -436,7 +447,7 @@ def _stem_for_tier(tier: str, idx: int) -> str:
     kws = _keywords(src, top_n=36) if src else []
     if not kws:
         kws = ["the topic", "the concept", "the process", "the system", "the standard"]
-    base_idx = idx + week * 3 + lesson * 7
+    base_idx = idx + week*3 + lesson*7 + (_seed_salt() % 31)
     kw  = kws[ base_idx % len(kws) ]
     kw1 = kws[(base_idx + 5) % len(kws)]
     kw2 = kws[(base_idx + 11) % len(kws)]
@@ -468,7 +479,7 @@ def generate_mcqs_exact(topic: str, src_text: str, total: int, week: int, lesson
     if not text:
         return pd.DataFrame(columns=MCQ_COLS)
     sents = [s for s in re.split(r'(?<=[.!?])\s+', text) if len(s.split()) >= 4]
-    rnd = random.Random(int(week) * 100 + int(lesson))
+    rnd = random.Random(int(week) * 100 + int(lesson) + (_seed_salt() % 100000))
     rnd.shuffle(sents)
 
     rows = []
@@ -530,7 +541,7 @@ def generate_mcqs_safe(topic: str, src_text: str, total: int, week: int, lesson:
     rows = []
     local_sigs = set()
     tiers = ["Low","Medium","High"]
-    rnd = random.Random(int(week) * 100 + int(lesson))
+    rnd = random.Random(int(week) * 100 + int(lesson) + (_seed_salt() % 100000))
     rnd.shuffle(sents)
 
     kws_global = _keywords(text, top_n=36)
@@ -549,7 +560,7 @@ def generate_mcqs_safe(topic: str, src_text: str, total: int, week: int, lesson:
             continue
 
         tier = tiers[len(rows) % len(tiers)]
-        anchor = (kws_global[len(rows) % len(kws_global)] if kws_global else correct.split()[0].lower())
+        anchor = (kws_global[(len(rows) + (_seed_salt() % max(1, len(kws_global)))) % len(kws_global)] if kws_global else correct.split()[0].lower())
         if anchor in st.session_state.get("seen_q_sigs_global", set()):
             continue
 
@@ -1335,6 +1346,9 @@ try:
         with c1:
             if st.button("✅ Confirm delete", key="mcq_del_confirm"):
                 df = st.session_state.mcq_df
+                _row_backup = df.iloc[int(row)].to_dict()
+                st.session_state.undo_mcq.append({"row": int(row), "data": _row_backup})
+                df = st.session_state.mcq_df
                 st.session_state.mcq_df = df.drop(index=row).reset_index(drop=True)
                 st.session_state.pop("pending_mcq_delete", None)
                 st.toast("Deleted question")
@@ -1380,6 +1394,22 @@ try:
         st.session_state.act_df = pd.concat([top, mid, bot], ignore_index=True)
         st.toast("Duplicated activity")
     st.sidebar.divider()
+    # Undo last MCQ delete
+    if st.sidebar.button("↩ Undo last MCQ delete"):
+        if st.session_state.undo_mcq:
+            last = st.session_state.undo_mcq.pop()
+            df = st.session_state.mcq_df
+            row = int(last.get("row", len(df)))
+            data = last.get("data", {})
+            try:
+                restored = pd.DataFrame([data])
+                st.session_state.mcq_df = pd.concat([df.iloc[:row], restored, df.iloc[row:]], ignore_index=True)
+                st.toast("Restored last deleted question")
+            except Exception:
+                st.warning("Could not undo delete (shape mismatch).")
+        else:
+            st.info("Nothing to undo.")
+
     adelc1, adelc2 = st.sidebar.columns([2,1])
     if adelc1.button("🗑 Delete this activity", key="act_del_init"):
         st.session_state["pending_act_delete"] = int(row)
@@ -1388,6 +1418,9 @@ try:
         c1, c2 = st.sidebar.columns(2)
         with c1:
             if st.button("✅ Confirm delete", key="act_del_confirm"):
+                df = st.session_state.act_df
+                _row_backup = df.iloc[int(row)].to_dict()
+                st.session_state.undo_act.append({"row": int(row), "data": _row_backup})
                 df = st.session_state.act_df
                 st.session_state.act_df = df.drop(index=row).reset_index(drop=True)
                 st.session_state.pop("pending_act_delete", None)
@@ -1398,3 +1431,4 @@ try:
 
 except Exception as _e:
     pass
+
