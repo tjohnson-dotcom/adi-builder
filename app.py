@@ -1,12 +1,8 @@
-# app.py — ADI Learning Tracker (full app, English only)
-# Features:
-# - Upload: PDF / PPTX / DOCX
-# - Strong cleaning (removes TOC/headers/page nos; fixes hyphen line breaks)
-# - MCQs: sentence-only anchors + banned junk terms + guaranteed fallback
-# - FIX: “... is not in list” handled by ensuring the correct option stays in the set
-# - Activities: step extractor + safe fallback so it never fails
-# - Exports: CSV / GIFT / DOCX (MCQs, Activities, Combined)
-# - Polished Streamlit UI
+# app.py — ADI Learning Tracker (final)
+# English-only • PDF/PPTX/DOCX input • Safe Mode (always works)
+# MCQs: sentence-only anchors + banned junk + guaranteed fallback
+# Activities: step extraction + safe fallback
+# Exports: CSV / GIFT / Word (MCQs, Activities, Combined)
 
 import io, os, re, base64, random, unicodedata
 from io import BytesIO
@@ -28,18 +24,20 @@ try:
     from PyPDF2 import PdfReader
 except Exception:
     PdfReader = None
+# Use a distinct alias for reading .docx so we can also use python-docx for writing
 try:
-    from docx import Document as DocxDocument
+    import docx  # reader
+    DocxReader = docx.Document
 except Exception:
-    DocxDocument = None
+    DocxReader = None
 try:
     from pptx import Presentation
 except Exception:
     Presentation = None
 
-# Word export (python-docx)
+# Word export (python-docx for writing)
 try:
-    from docx import Document
+    from docx import Document           # writer
     from docx.shared import Pt, Inches
 except Exception:
     Document = None
@@ -114,7 +112,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .mcq-low{   border-left-color:#245a34; }
 .mcq-med{   border-left-color:#C8A85A; }
 .mcq-high{  border-left-color:#333; }
-.act-card{ border-left:6px solid #e5e7eb; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,0.06); }
+.act-card{ border-left:6px solid #e7e7e7; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,0.06); }
 .act-low{   border-left-color:#245a34; }
 .act-med{   border-left-color:#C8A85A; }
 .act-high{  border-left-color:#333; }
@@ -158,6 +156,25 @@ def bloom_focus_for_week(week:int)->str:
     if 5<=week<=9: return "Medium"
     return "High"
 
+# ---------------- Global policy & filters ----------------
+VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
+
+BAD_ANCHORS = {
+    "rationale","engineering","data","sheet","concepts","theories",
+    "case","studies","real","world","overview","introduction","chapter",
+    "module","lesson","appendix","journal","glossary","summary"
+}
+STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
+STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general",
+              "saudi","arabia","vision","project’s","project-based","activity","exercise","diagram","figure"}
+
+# Lines/phrases we must never turn into options/steps
+BLOCK_LINE_PHRASES = [
+    "exercise", "diagram", "figure", "glossary", "learning outcomes",
+    "error! bookmark not defined", "lesson", "week"
+]
+EMOJI_RE = r"[\u2600-\u27BF\U0001F300-\U0001FAFF]"
+
 # ---------------- Text cleanup helpers ----------------
 def _normalize(s: str) -> str:
     s = unicodedata.normalize("NFKC", s or "")
@@ -167,6 +184,7 @@ def _normalize(s: str) -> str:
     return s
 
 def _clean_lines(text: str) -> str:
+    # Remove TOC-like lines / headers / page nos / numbered outlines
     def looks_like_toc_line(s: str) -> bool:
         if not s: return True
         s = s.strip()
@@ -187,11 +205,10 @@ def _clean_lines(text: str) -> str:
         k = ln[:96].lower()
         if k in seen: continue
         seen.add(k); out.append(ln)
-    return "\n".join(out)[:8000]
-
-VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
+    return "\n".join(out)[:16000]  # generous cap for big sections
 
 def _sentences(text: str) -> List[str]:
+    # Split on sentence punctuation and bullet separators
     chunks = re.split(r"(?<=[.!?])\s+|[•\u2022\u2023\u25CF]|(?:\n\s*\-\s*)|(?:\n\s*\*\s*)", text or "")
     rough = [re.sub(r"\s+", " ", c).strip() for c in chunks if c and c.strip()]
     def good(s: str) -> bool:
@@ -203,6 +220,21 @@ def _sentences(text: str) -> List[str]:
         if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
         return True
     return [s for s in rough if good(s)][:400]
+
+def _is_sentence_like(s: str) -> bool:
+    if len(s.split()) < 8: return False
+    if sum(c.isdigit() for c in s) >= 6: return False
+    if not re.search(VERB_RE, s, re.I): return False
+    letters = [c for c in s if c.isalpha()]
+    if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
+    return True
+
+def _is_clean_sentence(s: str) -> bool:
+    if not _is_sentence_like(s): return False
+    low = s.lower()
+    if any(p in low for p in BLOCK_LINE_PHRASES): return False
+    if re.search(EMOJI_RE, s): return False
+    return True
 
 def _near(a:str,b:str,th:float=0.90)->bool:
     return SequenceMatcher(a=a.lower(), b=b.lower()).ratio() >= th
@@ -220,6 +252,10 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
     out = []
     for j,o in enumerate(ops):
+        low = o.lower()
+        if any(p in low for p in BLOCK_LINE_PHRASES): continue
+        if re.search(EMOJI_RE, o): continue
+        if re.search(r"\bps\d+\b", low): continue  # e.g., PS3
         ok = True
         if len(o) < 40 or len(o) > 220: ok = False
         letters = [c for c in o if c.isalpha()]
@@ -227,14 +263,13 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
         if len(o.split()) < 6: ok = False
         if not re.search(VERB_RE, o, re.I): ok = False
         if j == 0 and ensure_first:
-            ok = True  # force-keep the correct option
+            ok = True  # keep the correct option
         if ok and not any(_near(o,p,0.96) for p in out):
             out.append(o)
         if len(out)==4: break
-    # If still <4 and ensure_first, pad from the tail of ops
     k=0
     while len(out)<4 and k < len(ops):
-        if ops[k] not in out:
+        if ops[k] not in out and not re.search(EMOJI_RE, ops[k]) and not any(p in ops[k].lower() for p in BLOCK_LINE_PHRASES):
             out.append(ops[k])
         k+=1
     return out[:4]
@@ -253,24 +288,24 @@ def extract_text_from_upload(file)->str:
             if pdfplumber:
                 pages=[]
                 with pdfplumber.open(io.BytesIO(buf)) as pdf:
-                    for p in pdf.pages[:30]:
+                    for p in pdf.pages[:80]:     # ↑ budget for bigger inputs
                         pages.append(p.extract_text() or "")
                 return _clean_lines("\n".join(pages))
             elif PdfReader:
                 reader = PdfReader(io.BytesIO(buf))
                 text=""
-                for pg in reader.pages[:30]:
+                for pg in reader.pages[:80]:
                     text += (pg.extract_text() or "") + "\n"
                 return _clean_lines(text)
             else:
                 return "[Could not parse PDF: install pdfplumber or PyPDF2]"
-        if name.endswith(".docx") and DocxDocument:
-            doc = DocxDocument(file)
-            return _clean_lines("\n".join((p.text or "") for p in doc.paragraphs[:300]))
+        if name.endswith(".docx") and DocxReader:
+            doc = DocxReader(file)
+            return _clean_lines("\n".join((p.text or "") for p in doc.paragraphs[:500]))
         if name.endswith(".pptx") and Presentation:
             prs = Presentation(file)
             parts=[]
-            for s in prs.slides[:50]:
+            for s in prs.slides[:100]:
                 for shp in s.shapes:
                     if hasattr(shp,"text") and shp.text:
                         parts.append(shp.text)
@@ -281,37 +316,21 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# ---------------- MCQ anchor policy ----------------
-BAD_ANCHORS = {
-    "rationale","engineering","data","sheet","concepts","theories",
-    "case","studies","real","world","overview","introduction","chapter",
-    "module","lesson","appendix","journal","glossary","summary"
-}
-STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
-
+# ---------------- Keyword miner ----------------
 def _keywords(text: str, top_n:int=24) -> List[str]:
-    toks = []
-    for w in re.split(r"[^A-Za-z0-9]+", text or ""):
-        w = w.lower()
-        if len(w) >= 4 and w not in BAD_ANCHORS and w not in STOP and not w.isdigit():
-            toks.append(w)
+    # Bigram-first (contentful phrases), then strong unigrams
+    t = re.sub(r"[^A-Za-z0-9\s-]", " ", (text or "").lower())
+    words = [w for w in t.split()
+             if len(w) >= 4 and w not in STOP and w not in BAD_ANCHORS and w not in STOP_EXTRA and not w.isdigit()]
     from collections import Counter
-    common = Counter(toks).most_common(top_n*3)
-    roots = []
-    for w,_ in common:
-        if all(not w.startswith(r[:5]) and not r.startswith(w[:5]) for r in roots):
-            roots.append(w)
-        if len(roots) >= top_n:
-            break
-    return roots
-
-def _is_sentence_like(s: str) -> bool:
-    if len(s.split()) < 8: return False
-    if sum(c.isdigit() for c in s) >= 6: return False
-    if not re.search(VERB_RE, s, re.I): return False
-    letters = [c for c in s if c.isalpha()]
-    if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
-    return True
+    bigrams = [f"{a} {b}" for a,b in zip(words, words[1:]) if a not in STOP and b not in STOP]
+    out = [w for w,_ in Counter(bigrams).most_common(top_n*2) if len(w.replace(" ","")) >= 8][:top_n]
+    if len(out) < top_n:
+        for w,_ in Counter(words).most_common(top_n*4):
+            if len(w) >= 5 and w not in STOP_EXTRA and w not in out:
+                out.append(w)
+            if len(out) >= top_n: break
+    return out
 
 def _has_context_neighbors(sents: List[str], idx: int) -> bool:
     neighbors = _window(sents, idx, 3)
@@ -320,29 +339,30 @@ def _has_context_neighbors(sents: List[str], idx: int) -> bool:
 # ---------------- Activities: step extraction ----------------
 STEP_LINE = re.compile(r"(?:^|\n)\s*(?:step\s*\d+\s*[:\-\.]|[0-9]{1,2}\.\s+|•\s+|\-\s+|—\s+)(.+)", re.I)
 def extract_steps(src: str, min_steps=3, max_steps=7):
-    rough = _normalize(src.replace("\r",""))
+    rough = _normalize((src or "").replace("\r",""))
     hits = [m.group(1).strip() for m in STEP_LINE.finditer(rough)]
     if len(hits) < min_steps:
-        parts = [p.strip() for p in re.split(r"[;•]", rough) if len(p.strip().split()) > 4]
-        hits.extend(parts)
-    uniq, seen = [], set()
+        hits += [p.strip() for p in re.split(r"[;•]", rough) if len(p.strip().split()) > 4]
+    clean = []
+    seen = set()
     for h in hits:
-        k = h.lower()
-        if k not in seen:
-            seen.add(k); uniq.append(h)
-    return uniq[:max_steps]
+        low = h.lower()
+        if any(p in low for p in BLOCK_LINE_PHRASES): continue
+        k = re.sub(r"\s+", " ", h).strip()
+        if k and k.lower() not in seen:
+            seen.add(k.lower()); clean.append(k)
+        if len(clean) == max_steps: break
+    return clean
 
-# ---------------- Generators ----------------
+# ---------------- MCQs: Exact (anchor-based) ----------------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
 
-    # Clean + split; sentence-like only
     sents = [s for s in _sentences(_clean_lines(source or "")) if _is_sentence_like(s)]
     if len(sents) < 12:
         raise ValueError("Not enough usable sentences after trimming headings/TOC (need ~12+).")
 
-    # Keywords only from real sentences; ban bad anchors
     keys = [k for k in _keywords(" ".join(sents), top_n=max(24, total_q*4)) if k not in BAD_ANCHORS]
 
     rows = []; rnd = random.Random(2025); made = 0; tiers = ["Low","Medium","High"]
@@ -352,7 +372,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if mode == "All High": return "High"
         return tiers[i % 3]
 
-    # Anchor-based path
     for k in keys:
         try:
             idx = next(i for i, s in enumerate(sents) if k in s.lower())
@@ -367,12 +386,8 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         cand = neigh + extra[:8]
 
         options = _quality_gate([correct] + cand, ensure_first=True)
-        # Safety: if filter accidentally dropped 'correct', reinsert it and trim
-        if correct not in options:
-            options = ([correct] + options)[:4]
-
-        if len(options) < 4:
-            continue
+        if correct not in options: options = ([correct] + options)[:4]
+        if len(options) < 4: continue
 
         tier = tier_for_q(made)
         stem = ("Which statement about **{k}** best fits *{ctx}*?"
@@ -382,7 +397,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 "Which option provides the strongest justification related to **{k}** in *{ctx}*?").format(k=k, ctx=ctx)
 
         rnd.shuffle(options)
-        # Now safe: 'correct' is guaranteed in options
         ans = ["A","B","C","D"][options.index(correct)]
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
@@ -394,10 +408,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         made += 1
         if made == total_q: break
 
-    # Fallback path (guaranteed)
+    # Fallback (guaranteed)
     if made < total_q:
         pool = [s for s in sents if 50 <= len(s) <= 200]
-        pool = [s for s in pool if re.search(VERB_RE, s, re.I)]
         pool = [s for s in pool if ("," in s or ";" in s)] + [s for s in pool if ("," not in s and ";" not in s)]
         used=set(); i=0
         while made < total_q and i < len(pool):
@@ -411,8 +424,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 dist.append(cand)
                 if len(dist) == 6: break
             options = _quality_gate([correct] + dist, ensure_first=True)
-            if correct not in options:
-                options = ([correct] + options)[:4]
+            if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
             rnd.shuffle(options)
             ans = ["A","B","C","D"][options.index(correct)]
@@ -427,17 +439,109 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             used.add(correct); made += 1
 
     if made == 0:
-        raise ValueError("Still couldn’t form MCQs from this section. Try pasting a narrative paragraph (not bullets).")
+        raise ValueError("Still couldn’t form MCQs from this section. Paste a narrative paragraph (not bullets).")
     return pd.DataFrame(rows).reset_index(drop=True)
 
+# ---------------- MCQs: Safe Mode (always works) ----------------
+def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]:
+    out = []
+    for cand in pool:
+        if cand == correct: continue
+        if abs(len(cand) - len(correct)) > 120: continue
+        sim = SequenceMatcher(a=correct.lower(), b=cand.lower()).ratio()
+        if 0.40 <= sim <= 0.85:
+            out.append(cand)
+        if len(out) == want: break
+    i = 0
+    while len(out) < want and i < len(pool):
+        c = pool[i]; i += 1
+        if c != correct and c not in out:
+            out.append(c)
+    return out[:want]
+
+def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
+    if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
+    ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
+
+    raw_sents = _sentences(_clean_lines(source or ""))
+    sents = [s for s in raw_sents if _is_clean_sentence(s)]
+    if len(sents) < 6:
+        extra = []
+        for s in raw_sents:
+            extra.extend([p.strip() for p in s.split(";") if len(p.strip().split()) >= 6])
+        sents = [s for s in (sents + extra) if _is_clean_sentence(s)]
+    if len(sents) < 4:
+        raise ValueError("Need at least 4 clean sentences. Paste a short narrative paragraph (no bullets).")
+
+    rich = [s for s in sents if ("," in s or ";" in s)]
+    plain = [s for s in sents if s not in rich]
+    pool = rich + plain
+
+    tiers = ["Low","Medium","High"]
+    def tier_for_q(i):
+        if mode == "All Low": return "Low"
+        if mode == "All Medium": return "Medium"
+        if mode == "All High": return "High"
+        return tiers[i % 3]
+
+    rnd = random.Random(2025)
+    rows = []; i = 0
+    stride = max(1, len(pool) // max(4, total_q))
+    while len(rows) < total_q and i < len(pool):
+        correct = pool[i]
+        distractors = _pick_distractors(pool, correct, 3)
+        options = _quality_gate([correct] + distractors, ensure_first=True)
+        if correct not in options: options = ([correct] + options)[:4]
+        if len(options) < 4:
+            i += 1; continue
+        tier = tier_for_q(len(rows))
+        stem = (
+            f"Which statement best fits *{ctx}*?" if tier=="Low" else
+            f"In *{ctx}*, which statement is most appropriate?" if tier=="Medium" else
+            f"Which option provides the strongest justification in *{ctx}*?"
+        )
+        rnd.shuffle(options)
+        ans = ["A","B","C","D"][options.index(correct)]
+        rows.append({
+            "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
+            "Question": stem,
+            "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
+            "Answer": ans, "Explanation": "Safe Mode: contrasts between plausible sentences.",
+            "Order": {"Low":1,"Medium":2,"High":3}[tier],
+        })
+        i += stride
+
+    j = 0
+    while len(rows) < total_q and j < len(pool):
+        correct = pool[j]; j += 1
+        distractors = _pick_distractors(pool, correct, 3)
+        options = _quality_gate([correct] + distractors, ensure_first=True)
+        if correct not in options: options = ([correct] + options)[:4]
+        if len(options) < 4: continue
+        tier = tier_for_q(len(rows))
+        stem = f"Which statement best fits *{ctx}*?"
+        random.shuffle(options)
+        ans = ["A","B","C","D"][options.index(correct)]
+        rows.append({
+            "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
+            "Question": stem,
+            "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
+            "Answer": ans, "Explanation": "Safe Mode (backfill).",
+            "Order": {"Low":1,"Medium":2,"High":3}[tier],
+        })
+
+    return pd.DataFrame(rows).reset_index(drop=True)
+
+# ---------------- Activities (safe, with step extraction) ----------------
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
+    # We’ll make the default activities robust (step extractor + fallback)
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
     verbs = {"Low":LOW_VERBS,"Medium":MED_VERBS,"High":HIGH_VERBS}.get(tier, MED_VERBS)[:6]
 
-    sents = [s for s in _sentences(_clean_lines(source or "")) if _is_sentence_like(s)]
-    if len(sents) < 12:
-        raise ValueError("Not enough source text to build activities (need ~12+ sentences of usable prose).")
+    sents = [s for s in _sentences(_clean_lines(source or "")) if _is_clean_sentence(s)]
+    if len(sents) < 6:
+        raise ValueError("Need ~6+ clean sentences to shape activities (paste a short paragraph).")
 
     steps = extract_steps(source)
     rnd = random.Random(99)
@@ -446,23 +550,20 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     for i in range(1, count + 1):
         v = verbs[(i - 1) % len(verbs)]
         t1=max(5,int(duration*0.2)); t2=max(10,int(duration*0.55)); t3=max(5,duration-(t1+t2))
-
-        if len(steps) < 3:
+        if len(steps) >= 3:
+            chosen = steps[:5]
+            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): " + "; ".join(chosen) + f". Plenary ({t3}m): Compare outputs; justify choices."
+        else:
             pool = [s for s in sents if 50 <= len(s) <= 220]
             rnd.shuffle(pool)
             a = pool[0] if pool else "review key ideas from the text"
             b = pool[1] if len(pool)>1 else "apply the concept to a small case"
             c = pool[2] if len(pool)>2 else "justify your decisions with evidence"
             step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): {a}; then {b}. Plenary ({t3}m): {c}."
-        else:
-            chosen = steps[:5]
-            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): " + "; ".join(chosen) + f". Plenary ({t3}m): Compare outputs; justify choices."
-
         style_note = ""
         if style == "Lab":          style_note = " Emphasize safety checks and hands-on measurement."
         elif style == "Group Task": style_note = " Organize into teams; assign roles for collaboration."
         elif style == "Reflection": style_note = " End with a short written reflection."
-
         rows.append({
             "Lesson": lesson, "Week": week, "Policy focus": tier,
             "Title": f"{ctx} — {tier} Activity {i}", "Tier": tier,
@@ -473,6 +574,10 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
             "Duration (mins)": duration,
         })
     return pd.DataFrame(rows)
+
+# For toggling, Safe version simply calls the same robust implementation (kept for symmetry)
+def generate_activities_safe(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
+    return generate_activities(count, duration, tier, topic, lesson, week, source, style)
 
 # ---------------- Exporters ----------------
 def _docx_heading(doc, text, level=0):
@@ -590,6 +695,7 @@ st.session_state.setdefault("topic", "")
 st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
+st.session_state.setdefault("safe_mode", True)  # default ON
 
 # ---------------- Header ----------------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
@@ -620,7 +726,7 @@ def progress_fraction()->float:
 with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Upload Lesson File</div>", unsafe_allow_html=True)
-    st.caption("We’ll extract text from your lesson to build MCQs & activities.")
+    st.caption("Upload .pptx / .pdf / .docx. We’ll extract text (avoid scanned PDFs).")
     up = st.file_uploader("Upload .pptx / .pdf / .docx", type=["pptx","pdf","docx"])
     if up:
         st.session_state.src_text = extract_text_from_upload(up)
@@ -629,7 +735,7 @@ with tab1:
             st.error(st.session_state.src_text)
             st.info("Tip: If a PPTX fails, export it as PDF and upload the PDF.")
         else:
-            st.success(f"File parsed: **{up.name}** ({up.type})")
+            st.success(f"File parsed: **{up.name}**")
             preview_lines = (st.session_state.src_text or "").split("\n")[:2]
             if any(preview_lines):
                 st.caption("Preview:")
@@ -642,6 +748,7 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
+    # Step 1 — lesson/week
     st.markdown("<div class='step'><b>Step 1 — Choose Lesson & Week</b></div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
     with c1: st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
@@ -652,35 +759,34 @@ with tab2:
     st.markdown(f"<div class='bloom-row'><span class='chip {_cls} hl'>🎯 Focus {_focus}</span></div>", unsafe_allow_html=True)
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
+    # Step 2 — review Bloom verbs
     st.markdown("<div class='step'><b>Step 2 — Review Bloom’s Focus</b></div>", unsafe_allow_html=True)
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==_focus else ""
         weeks = "1–4" if label=="Low" else "5–9" if label=="Medium" else "10–14"
-        chips = " ".join([
-            f"<span class='chip {cls}{hl}'>{v}</span>" if label==_focus else f"<span class='chip {cls} dimmed'>{v}</span>"
-            for v in verbs
-        ])
+        chips = " ".join([f"<span class='chip {cls}{hl}'>{v}</span>" if label==_focus else f"<span class='chip {cls} dimmed'>{v}</span>" for v in verbs])
         st.markdown(f"**{label} (Weeks {weeks})**", unsafe_allow_html=True)
         st.markdown(f"<div class='bloom-row'>{chips}</div>", unsafe_allow_html=True)
     bloom_row("Low", LOW_VERBS); bloom_row("Medium", MED_VERBS); bloom_row("High", HIGH_VERBS)
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
+    # Step 3 — topic
     st.markdown("<div class='step'><b>Step 3 — Learning Objective / Topic (optional)</b></div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
+    # Step 4 — source text
     st.markdown("<div class='step'><b>Step 4 — Paste/Edit Source Text</b></div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
     with csa:
-        st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit, height=180, placeholder="Add 1–2 short paragraphs (≈12+ sentences). Avoid bullet points.")
+        st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit, height=180, placeholder="Add 12–25 full sentences (avoid bullets).")
         txt = st.session_state.src_edit or ""
         sc = len(_sentences(txt)); ready = sc >= 12
         bullet_hit = ("•" in txt) or re.search(r"^\s*[-*]\s+", txt, re.M)
-        msg = f"Detected **{sc}** sentence(s). " + ("Ready ✓" if ready else "Need **12+**.")
-        st.caption(msg)
+        st.caption(f"Detected **{sc}** sentence(s). " + ("Ready ✓" if ready else "Need **12+**."))
         if bullet_hit:
-            st.info("Heads up: bullets were detected. Convert bullet points into full sentences for best results.")
+            st.info("Bullets detected. Convert to full sentences for best results (Safe Mode helps too).")
     with csb:
         if st.button("Paste sample text"): st.session_state.src_edit = SAMPLE_TEXT; st.rerun()
         if st.button("Reset all"):
@@ -690,14 +796,16 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
+    # Step 5 — MCQ setup + Safe Mode
     st.markdown("<div class='step'><b>Step 5 — MCQ Setup</b></div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
     st.session_state.mcq_mode = st.selectbox("MCQ distribution", ["Mixed","All Low","All Medium","All High"], index=["Mixed","All Low","All Medium","All High"].index(st.session_state.mcq_mode))
+    st.session_state.safe_mode = st.checkbox("Safe Mode (always works) — ignore anchors; use only clean sentences", value=st.session_state.safe_mode)
 
+    # Step 6 — Activities setup
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
-
     st.markdown("<div class='step'><b>Step 6 — Activity Setup</b></div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
     with colA:
@@ -724,10 +832,16 @@ with tab3:
         if st.button("📝 Generate MCQs", use_container_width=True):
             with st.spinner("Generating MCQs…"):
                 try:
-                    st.session_state.mcq_df = generate_mcqs_exact(
-                        st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
-                        st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
-                    )
+                    if st.session_state.safe_mode:
+                        st.session_state.mcq_df = generate_mcqs_safe(
+                            st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
+                            st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
+                        )
+                    else:
+                        st.session_state.mcq_df = generate_mcqs_exact(
+                            st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
+                            st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
+                        )
                     st.success("MCQs generated.")
                 except Exception as e:
                     st.error(f"Couldn’t generate MCQs: {e}")
@@ -736,11 +850,18 @@ with tab3:
             with st.spinner("Generating Activities…"):
                 try:
                     focus = bloom_focus_for_week(st.session_state.week)
-                    st.session_state.act_df = generate_activities(
-                        int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                        st.session_state.topic, st.session_state.lesson, st.session_state.week,
-                        st.session_state.src_edit, st.session_state.act_style
-                    )
+                    if st.session_state.safe_mode:
+                        st.session_state.act_df = generate_activities_safe(
+                            int(st.session_state.act_n), int(st.session_state.act_dur), focus,
+                            st.session_state.topic, st.session_state.lesson, st.session_state.week,
+                            st.session_state.src_edit, st.session_state.act_style
+                        )
+                    else:
+                        st.session_state.act_df = generate_activities(
+                            int(st.session_state.act_n), int(st.session_state.act_dur), focus,
+                            st.session_state.topic, st.session_state.lesson, st.session_state.week,
+                            st.session_state.src_edit, st.session_state.act_style
+                        )
                     st.success("Activities generated.")
                 except Exception as e:
                     st.error(f"Couldn’t generate activities: {e}")
