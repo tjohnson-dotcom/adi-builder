@@ -5,7 +5,6 @@ from docx import Document
 from PyPDF2 import PdfReader
 from pptx import Presentation
 import fitz  # PyMuPDF
-from datetime import datetime
 
 # ADI Branding Colors (no red)
 ADI_COLORS = {
@@ -14,10 +13,10 @@ ADI_COLORS = {
     "High": "#7ED321"     # Green
 }
 
-# Set page config
+# Page config
 st.set_page_config(page_title="ADI Builder", layout="wide")
 
-# ADI Logo and Tagline
+# Branding
 st.markdown("<h1 style='text-align: center; color: #0072C6;'>Academy of Defense Industries</h1>", unsafe_allow_html=True)
 st.markdown("<h3 style='text-align: center;'>Transforming Lessons into Measurable Learning</h3>", unsafe_allow_html=True)
 
