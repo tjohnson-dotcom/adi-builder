@@ -1,5 +1,4 @@
 
-
 import io, re, random, hashlib
 from typing import List, Tuple
 import pandas as pd
@@ -73,18 +72,26 @@ small.muted{ color:var(--muted); }
 """, unsafe_allow_html=True)
 
 # =====================
-# Safe session state
+# Safe session state (robust, no callables)
 # =====================
-for key, factory in {
-    "seen_q_sigs": set,
-    "seen_q_sigs_global": set,
-    "undo_mcq": list,
-    "undo_act": list,
+_defaults = {
+    "seen_q_sigs": set(),
+    "seen_q_sigs_global": set(),
+    "undo_mcq": [],
+    "undo_act": [],
     "mcq_df": pd.DataFrame(),
     "act_df": pd.DataFrame(),
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = factory()
+    # context defaults
+    "lesson": 1,
+    "week": 1,
+    "source_type": "E-book",
+    "focus": "Focus Medium",
+    "teacher_seed": "",
+    "src_text": "",
+}
+for _k, _v in _defaults.items():
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
 # =====================
 # Constants
@@ -97,10 +104,10 @@ ANSWER_LETTERS = ["A","B","C","D"]
 # Helpers
 # =====================
 def _strip_noise(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "")).strip()
+    return re.sub(r"\\s+", " ", (text or "")).strip()
 
 def _keywords(text: str, top_n: int = 24) -> List[str]:
-    t = re.sub(r"[^A-Za-z0-9\- ]+", " ", (text or "").lower())
+    t = re.sub(r"[^A-Za-z0-9\\- ]+", " ", (text or "").lower())
     words = [w for w in t.split() if len(w) >= 3]
     if not words:
         return []
@@ -120,8 +127,7 @@ def _seed_salt() -> int:
         seed_txt = ""
     if not seed_txt:
         return 0
-    import hashlib as _h
-    h = _h.md5(seed_txt.encode("utf-8")).hexdigest()[:8]
+    h = hashlib.md5(seed_txt.encode("utf-8")).hexdigest()[:8]
     return int(h, 16)
 
 def _quality_gate(options: List[str]) -> bool:
@@ -184,11 +190,13 @@ def _read_upload(file) -> str:
                 prs = Presentation(io.BytesIO(data)); txt = []
                 for slide in prs.slides:
                     for shp in slide.shapes:
+                        # Use hasattr for broad compatibility
                         if hasattr(shp, "text"): txt.append(shp.text)
                 return "\\n".join(txt)
             except Exception:
                 return ""
         if name.endswith(".pdf"):
+            # PDF parsing disabled in this build to avoid heavy deps
             return ""
     except Exception:
         return ""
@@ -319,10 +327,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # --- Generate ---
 st.markdown('<div class="card">', unsafe_allow_html=True)
 st.subheader("③ Generate")
-st.markdown('<div class="kit"><span class="chip">Lesson '
-            f'{st.session_state.lesson}</span><span class="chip">Week '
-            f'{st.session_state.week}</span><span class="chip">{st.session_state.source_type}</span>'
-            f'<span class="chip">{st.session_state.focus}</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="kit"><span class="chip">Lesson ' + str(st.session_state.lesson) + '</span><span class="chip">Week ' + str(st.session_state.week) + '</span><span class="chip">' + str(st.session_state.source_type) + '</span><span class="chip">' + str(st.session_state.focus) + '</span></div>', unsafe_allow_html=True)
 
 gc1, gc2 = st.columns([1,1])
 with gc1:
@@ -428,5 +433,3 @@ if isinstance(st.session_state.get("act_df"), pd.DataFrame) and len(st.session_s
 else:
     st.info("No Activities to export yet.")
 st.markdown('</div>', unsafe_allow_html=True)
-
-
