@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (v3: diversified stems + fuller backfill to hit target count)
+# app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
 
@@ -171,19 +171,26 @@ def _clean_lines(text: str) -> str:
         seen.add(k); out.append(ln)
     return "\n".join(out)[:16000]
 
+# ---------- PATCHED: richer sentence harvesting ----------
 def _sentences(text: str) -> List[str]:
-    chunks = re.split(r"(?<=[.!?])\s+|[•\u2022\u2023\u25CF]|(?:\n\s*\-\s*)|(?:\n\s*\*\s*)", text or "")
+    # split on punctuation/bullets
+    chunks = re.split(r"(?<=[.!?])\s+|[•\u2022\u2023\u25CF]|(?:\n\s*-\s*)|(?:\n\s*\*\s*)", text or "")
     rough = [re.sub(r"\s+", " ", c).strip() for c in chunks if c and c.strip()]
+    # split very long sentences into sub-clauses
+    split_more = []
+    for s in rough:
+        if len(s) > 240:
+            parts = re.split(r"\s*;\s*|\s*—\s*|\s*–\s*|\s*:\s*", s)
+            split_more.extend([p.strip() for p in parts if p and len(p.split()) >= 6])
+        else:
+            split_more.append(s)
     def good(s: str) -> bool:
-        if not (35 <= len(s) <= 230): return False  # relaxed a bit
+        if not (28 <= len(s) <= 240): return False
         if len(s.split()) < 6: return False
         if sum(ch.isdigit() for ch in s) >= max(6, int(0.25*len(s))): return False
-        if not re.search(VERB_RE, s, re.I): return False
-        letters = [c for c in s if c.isalpha()]
-        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
         return True
-    sents = [s for s in rough if good(s)]
-    return sents[:220]
+    sents = [s for s in split_more if good(s)]
+    return sents[:260]
 
 def _is_sentence_like(s: str) -> bool:
     if len(s.split()) < 6: return False
@@ -207,10 +214,10 @@ def _norm_q(s: str) -> str:
 def _q_signature(options: List[str]) -> str:
     return "||".join(sorted(_norm_q(o) for o in options))
 
-# ---------- Option filter (adaptive) ----------
+# ---------- PATCHED: more permissive option gate ----------
 def _quality_gate(options: List[str], ensure_first: bool = True,
-                  min_len: int = 40, max_len: int = 230,
-                  min_words: int = 6, require_verb: bool = True) -> List[str]:
+                  min_len: int = 30, max_len: int = 230,
+                  min_words: int = 5, require_verb: bool = False) -> List[str]:
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
     out: List[str] = []
     for j, o in enumerate(ops):
@@ -223,9 +230,7 @@ def _quality_gate(options: List[str], ensure_first: bool = True,
         if not (min_len <= len(o) <= max_len): ok = False
         if len(o.split()) < min_words: ok = False
         if require_verb and not re.search(VERB_RE, o, re.I): ok = False
-
-        if j == 0 and ensure_first:
-            ok = True
+        if j == 0 and ensure_first: ok = True
 
         if ok and not any(_near(o, p, 0.96) for p in out):
             out.append(o)
@@ -324,7 +329,7 @@ def _strip_noise(s: str) -> str:
     s = re.sub(r"defence\s*personnel", "defence personnel", s, flags=re.I)
     return re.sub(r"\s{2,}", " ", s).strip()
 
-# ---------- MCQ stem templates (bigger, varied) ----------
+# ---------- MCQ stem templates (diversified) ----------
 STEMS = {
     "Low": [
         "Which statement is most accurate?",
@@ -353,7 +358,6 @@ STEMS = {
 }
 def _stem_for_tier(tier: str, idx: int) -> str:
     bank = STEMS.get(tier, STEMS["Medium"])
-    # rotate without repeating too soon
     return bank[idx % len(bank)]
 
 # ---------- MCQs (Exact mode) ----------
@@ -394,7 +398,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
         options = _quality_gate([correct] + cand, ensure_first=True)
         if len(options) < 4:
-            options = _quality_gate([correct] + cand, ensure_first=True, min_len=30)  # relaxed a bit
+            options = _quality_gate([correct] + cand, ensure_first=True, min_len=30)
         if len(options) < 4:
             options = _quality_gate_loose([correct] + cand, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
@@ -435,7 +439,6 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 if abs(len(cand) - len(correct)) > 140: continue
                 dist.append(cand)
                 if len(dist) == 6: break
-            # adaptive gates
             options = _quality_gate([correct] + dist, ensure_first=True, min_len=35)
             if len(options) < 4:
                 options = _quality_gate([correct] + dist, ensure_first=True, min_len=30)
@@ -468,7 +471,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         raise ValueError("Still couldn’t form MCQs from this section. Paste a narrative paragraph (not bullets).")
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- MCQs (Safe mode) ----------
+# ---------- Safe helpers ----------
 def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]:
     out = []
     for cand in pool:
@@ -485,6 +488,7 @@ def _pick_distractors(pool: List[str], correct: str, want: int = 3) -> List[str]
             out.append(c)
     return out[:want]
 
+# ---------- MCQs (Safe mode) with Pass C fill ----------
 def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     raw_sents = _sentences(_clean_lines(source or ""))
@@ -512,7 +516,7 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
     used_pool: Set[str] = set()
     local_sigs: Set[str] = set()
 
-    # Pass A — strict enough
+    # Pass A
     for correct in pool:
         if len(rows) == total_q: break
         if any(_too_similar(correct, u) for u in used_corrects): continue
@@ -543,7 +547,7 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
         })
         used_corrects.append(correct); used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
 
-    # Pass B — very loose backfill if still short
+    # Pass B
     if len(rows) < total_q:
         for correct in pool:
             if len(rows) == total_q: break
@@ -570,6 +574,42 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
                 "Order": {"Low":1,"Medium":2,"High":3}[tier],
             })
             used_corrects.append(correct); used_pool.update(options); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
+
+    # PATCH: Pass C — very-loose fill to reach requested count
+    if len(rows) < total_q:
+        rndC = random.Random(777)
+        for correct in pool:
+            if len(rows) == total_q: break
+            if any(_too_similar(correct, u) for u in used_corrects): continue
+            candidates = [c for c in pool if c != correct]
+            rndC.shuffle(candidates)
+            distractors = []
+            for c in candidates:
+                if len(distractors) == 3: break
+                if SequenceMatcher(a=correct.lower(), b=c.lower()).ratio() > 0.93:
+                    continue
+                distractors.append(c)
+            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
+            if correct not in options: options = ([correct] + options)[:4]
+            if len(options) < 4: continue
+            sig = _q_signature(options)
+            if sig in local_sigs or sig in st.session_state.get("seen_q_sigs", set()):
+                continue
+
+            tier = tier_for_q(len(rows))
+            stem = _stem_for_tier(tier, len(rows))
+            stem = _strip_noise(stem)
+            options = [_strip_noise(o) for o in options]
+            rndC.shuffle(options)
+            ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
+            rows.append({
+                "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
+                "Question": stem,
+                "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
+                "Answer": ans, "Explanation": "Very-loose fill: uses well-formed sentences from the same source.",
+                "Order": {"Low":1,"Medium":2,"High":3}[tier],
+            })
+            used_corrects.append(correct); local_sigs.add(sig); st.session_state.seen_q_sigs.add(sig)
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
