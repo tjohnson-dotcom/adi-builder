@@ -13,6 +13,70 @@ import streamlit as st
 # ---------- Streamlit base ----------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
 
+
+
+def _read_pptx(file_bytes: bytes) -> str:
+    """Robust PPTX text extractor that ignores unsupported shapes and never touches relationship rIds."""
+    try:
+        from pptx import Presentation
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+    except Exception:
+        return ""
+    def push_text(s: str, bucket: list):
+        s = (s or "").strip()
+        if s:
+            bucket.append(" ".join(s.split()))
+    def walk_shape(shape, bucket: list):
+        try:
+            if getattr(shape, "has_text_frame", False):
+                tf = shape.text_frame
+                # paragraphs → runs
+                if getattr(tf, "paragraphs", None):
+                    for p in tf.paragraphs:
+                        txt = "".join(getattr(r, "text", "") for r in getattr(p, "runs", []))
+                        push_text(txt, bucket)
+                else:
+                    push_text(getattr(tf, "text", ""), bucket)
+            if hasattr(shape, "table"):
+                try:
+                    for row in shape.table.rows:
+                        for cell in row.cells:
+                            push_text(getattr(cell, "text", ""), bucket)
+                except Exception:
+                    pass
+            if getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.GROUP and hasattr(shape, "shapes"):
+                for s in shape.shapes:
+                    walk_shape(s, bucket)
+        except Exception:
+            pass
+
+    try:
+        prs = Presentation(BytesIO(file_bytes))
+    except Exception:
+        return ""
+
+    lines = []
+    for slide in prs.slides:
+        try:
+            title_txt = ""
+            if getattr(slide, "shapes", None):
+                # Try slide title placeholder
+                for sh in slide.shapes:
+                    if getattr(sh, "has_text_frame", False) and getattr(sh.text_frame, "text", "").strip():
+                        title_txt = sh.text_frame.text.strip()
+                        break
+            if title_txt:
+                lines.append(f"# {title_txt}")
+            for sh in slide.shapes:
+                walk_shape(sh, lines)
+            if getattr(slide, "has_notes_slide", False) and slide.notes_slide and slide.notes_slide.notes_text_frame:
+                push_text(slide.notes_slide.notes_text_frame.text, lines)
+            lines.append("")
+        except Exception:
+            continue
+
+    return "\n".join(lines).strip()
+
 # ---------- Parsers ----------
 try:
     import fitz  # PyMuPDF
@@ -287,16 +351,15 @@ def extract_text_from_upload(file)->str:
         if name.endswith(".docx") and DocxReader:
             doc = DocxReader(file)
             return _clean_lines("\n".join((p.text or "") for p in doc.paragraphs[:500]))
-        if name.endswith(".pptx") and Presentation:
-            prs = Presentation(file)
-            parts=[]
-            for s in prs.slides[:100]:
-                for shp in s.shapes:
-                    if hasattr(shp,"text") and shp.text:
-                        parts.append(shp.text)
-                if getattr(s,"has_notes_slide",False) and getattr(s.notes_slide,"notes_text_frame",None):
-                    parts.append(s.notes_slide.notes_text_frame.text or "")
-            return _clean_lines("\n".join(parts))
+        if name.endswith(".pptx"):
+            buf = file.read() if hasattr(file,"read") else file.getvalue()
+            try:
+                text = _read_pptx(buf)
+                if not text.strip():
+                    return "[Parsed 0 text — PPTX contained no readable text. Try exporting to PDF and upload.]"
+                return _clean_lines(text)
+            except Exception as ee:
+                return f"[Could not parse file: {ee}]"
         return "[Unsupported file type or missing parser]"
     except Exception as e:
         return f"[Could not parse file: {e}]"
