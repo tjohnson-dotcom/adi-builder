@@ -1,10 +1,9 @@
 # Learning Tracker Question Generator — ADI
-# Streamlit app that matches the “modal card” style you like.
-# Tabs: Upload • Setup • Generate • Edit • Export
-# Features: Upload PDF/DOCX/PPTX → Bloom-aware MCQs & Activities → Edit → Export (Word/CSV)
+# Modal-style Streamlit app with tabs: Upload • Setup • Generate • Edit • Export
+# Upload PPTX/PDF/DOCX → Bloom-aware MCQs & Activities → Edit → Export (Word/CSV)
 
-import io, re, random, base64
-from typing import Any, List, Tuple
+import io, re, random, base64, os
+from typing import Any, List
 
 import pandas as pd
 import streamlit as st
@@ -37,7 +36,7 @@ except Exception:
     Pt = None
     Inches = None
 
-# ---------- Page & CSS (replicates the modal look) ----------
+# ---------- Page & CSS ----------
 st.set_page_config(page_title="Learning Tracker Question Generator — ADI", page_icon="🧭", layout="centered")
 
 CSS = """
@@ -81,6 +80,24 @@ hr.soft { height:1px; background:var(--border); border:0; margin:18px 0; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+# ---------- Base64 logo (fallback if Logo.png missing) ----------
+_FALLBACK_LOGO_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAKAAAABACAYAAAB8m9ySAAAACXBIWXMAAAsSAAALEgHS3X78AAAB"
+    "..."  # (shortened) – safe placeholder; will show a neutral tile if Logo.png not found
+)
+
+def _load_logo_bytes() -> bytes:
+    try:
+        if os.path.exists("Logo.png"):
+            with open("Logo.png", "rb") as f:
+                return f.read()
+    except Exception:
+        pass
+    try:
+        return base64.b64decode(_FALLBACK_LOGO_B64)
+    except Exception:
+        return b""
 
 # ---------- Bloom policy ----------
 LOW_VERBS  = ["define","identify","list","describe","recall","label"]
@@ -337,7 +354,7 @@ st.session_state.setdefault("topic", "")
 st.session_state.setdefault("mcq_blocks", 5)
 st.session_state.setdefault("act_n", 3)
 st.session_state.setdefault("act_dur", 45)
-st.session_state.setdefault("logo_bytes", b"")
+st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 
 # ---------- Modal card ----------
@@ -345,22 +362,19 @@ with st.container():
     st.markdown("<div class='modal'>", unsafe_allow_html=True)
 
     # Header row (logo + title)
-    col_logo, = st.columns(1)
-    with col_logo:
-        st.markdown("<div class='logo-row'>", unsafe_allow_html=True)
-        if st.session_state.logo_bytes:
-            b64 = base64.b64encode(st.session_state.logo_bytes).decode()
-            st.markdown(f"<img class='logo-img' src='data:image/png;base64,{b64}' />", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div class='logo-row'>", unsafe_allow_html=True)
+    if st.session_state.logo_bytes:
+        b64 = base64.b64encode(st.session_state.logo_bytes).decode()
+        st.markdown(f"<img class='logo-img' src='data:image/png;base64,{b64}' />", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("<div class='brand-title'>Learning Tracker Question Generator</div>", unsafe_allow_html=True)
-        st.markdown("<div class='brand-sub'>Transforming Lessons into Measurable Learning</div>", unsafe_allow_html=True)
-        st.write("")
-
+    st.markdown("<div class='brand-title'>Learning Tracker Question Generator</div>", unsafe_allow_html=True)
+    st.markdown("<div class='brand-sub'>Transforming Lessons into Measurable Learning</div>", unsafe_allow_html=True)
+    st.write("")
     st.markdown("<button class='big-cta'>Begin Tracking Learning</button>", unsafe_allow_html=True)
     st.write("")
 
-    # Tabs (Streamlit)
+    # Tabs
     t1, t2, t3, t4, t5 = st.tabs(["Upload", "Setup", "Generate", "Edit", "Export"])
 
     # --- Upload tab ---
@@ -380,21 +394,19 @@ with st.container():
     with t2:
         c1, c2 = st.columns(2)
         with c1:
-            st.session_state.lesson = st.selectbox("Lesson", [f"Lesson {i}" for i in range(1,21)], index=st.session_state.lesson-1)
-            st.session_state.lesson = int(st.session_state.lesson.split()[-1])
+            lesson_label = st.selectbox("Lesson", [f"Lesson {i}" for i in range(1,21)], index=st.session_state.lesson-1)
+            st.session_state.lesson = int(lesson_label.split()[-1])
         with c2:
-            st.session_state.week = st.selectbox("Week", [f"Week {i}" for i in range(1,15)], index=st.session_state.week-1)
-            st.session_state.week = int(st.session_state.week.split()[-1])
+            week_label = st.selectbox("Week", [f"Week {i}" for i in range(1,15)], index=st.session_state.week-1)
+            st.session_state.week = int(week_label.split()[-1])
 
         bloom = bloom_focus_for_week(st.session_state.week)
         c3, c4 = st.columns([3,1])
         st.session_state.topic = c3.text_input("Learning Objective / Topic", st.session_state.topic, placeholder="Identify key-themes and arguments in the text")
         c4.text_input("Bloom focus (auto)", value=f"Week {st.session_state.week}: {bloom}", disabled=True)
 
-        # Source preview/edit
         st.text_area("Source (editable)", value=st.session_state.src_text, height=160, key="src_edit")
 
-        # Bloom verbs (highlight active tier)
         st.write("#### Bloom’s verbs (ADI Policy)")
         st.caption("Grouped by policy tiers and week ranges")
 
@@ -403,8 +415,8 @@ with st.container():
             st.markdown(f"<div class='{row_cls}'>", unsafe_allow_html=True)
             st.markdown(f"<div class='row-head'><div><strong>{title}</strong></div><div class='row-cap'>{right}</div></div>", unsafe_allow_html=True)
             cls = 'low' if title.startswith('Low') else 'med' if title.startswith('Medium') else 'high'
-            chips = " ".join([f\"<span class='chip {cls}'>{v}</span>\" for v in verbs])
-            st.markdown(f\"<div class='chips'>{chips}</div>\", unsafe_allow_html=True)
+            chips = " ".join([f"<span class='chip {cls}'>{v}</span>" for v in verbs])
+            st.markdown(f"<div class='chips'>{chips}</div>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
         _row("Low (Weeks 1–4)", LOW_VERBS, "Remember / Understand", active=(bloom=="Low"))
@@ -416,24 +428,28 @@ with st.container():
         st.write("#### Create Questions & Activities")
         g1, g2, g3 = st.columns([1,1,2])
         with g1:
-            blocks = st.number_input("MCQ Blocks (3 Qs per block)", min_value=1, value=5, step=1)
+            blocks = st.number_input("MCQ Blocks (3 Qs per block)", min_value=1, value=st.session_state.mcq_blocks, step=1)
         with g2:
-            act_n = st.number_input("Activities (count)", min_value=1, value=st.session_state.act_n, step=1)
+            st.session_state.act_n = st.number_input("Activities (count)", min_value=1, value=st.session_state.act_n, step=1)
         with g3:
-            act_d = st.number_input("Activity duration (mins)", min_value=5, value=st.session_state.act_dur, step=5)
+            st.session_state.act_dur = st.number_input("Activity duration (mins)", min_value=5, value=st.session_state.act_dur, step=5)
 
         bloom = bloom_focus_for_week(st.session_state.week)
-        if st.button("Create Questions", type="primary"):
-            st.session_state.mcq_df = generate_mcq_blocks(
-                st.session_state.topic, st.session_state.src_edit, blocks, st.session_state.week, st.session_state.lesson
-            )
-            st.success("MCQs generated.")
 
-        if st.button("Create Activities"):
-            st.session_state.act_df = generate_activities(
-                act_n, act_d, bloom, st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
-            )
-            st.success("Activities generated.")
+        cL, cR = st.columns(2)
+        with cL:
+            if st.button("Create Questions", type="primary"):
+                st.session_state.mcq_df = generate_mcq_blocks(
+                    st.session_state.topic, st.session_state.src_edit, int(blocks), st.session_state.week, st.session_state.lesson
+                )
+                st.success("MCQs generated.")
+        with cR:
+            if st.button("Create Activities"):
+                st.session_state.act_df = generate_activities(
+                    int(st.session_state.act_n), int(st.session_state.act_dur), bloom,
+                    st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
+                )
+                st.success("Activities generated.")
 
         st.write("")
         if "mcq_df" in st.session_state:
@@ -459,7 +475,6 @@ with st.container():
     # --- Export tab ---
     with t5:
         st.write("#### Export")
-        dl = []
         if "mcq_df" in st.session_state:
             mcq_csv = st.session_state.mcq_df.to_csv(index=False).encode("utf-8")
             st.download_button("Download MCQs (CSV)", mcq_csv, "mcqs.csv", "text/csv")
@@ -482,3 +497,4 @@ with st.container():
             st.info("Generate Activities to enable downloads.")
 
     st.markdown("</div>", unsafe_allow_html=True)
+
