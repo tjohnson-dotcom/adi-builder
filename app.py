@@ -1,5 +1,3 @@
-# app.py — ADI Learning Tracker (polish with spinners, bullet warning, next-step hints, answer toggle)
-
 import io, os, re, base64, random
 from io import BytesIO
 from typing import List
@@ -50,7 +48,8 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
 .stTabs [role="tab"] p{ margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem; }
 .stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; }
 .stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; }
-.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; }
+/* CHANGED: Generate tab number color to ADI gold */
+.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#C8A85A; }
 .stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; }
 .stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
 .stTabs [role="tab"][aria-selected="true"]{ border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,0.16); transform: translateY(-1px); }
@@ -121,6 +120,8 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .chip.med{   background:#C8A85A; color:#111; border-color:#9c874b; }
 .chip.high{  background:#333;    color:#fff; border-color:#222; }
 .chip.hl{ outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
+/* NEW: dim non-active Bloom chips */
+.chip.dimmed { opacity:0.55; }
 
 /* Pill radios */
 [data-testid="stRadio"] div[role="radiogroup"]{ display:flex; gap:.5rem; flex-wrap:wrap; }
@@ -233,6 +234,7 @@ _FALLBACK_LOGO_B64 = (
     "Jw3emcQ0n9Oq7dZrXw9kqgk5yA9iO1l0wB7mQxI3o3eV+o3oM2v8YUpbG6c6WcY8B6bZ9FfQLQ+"
     "s5n8n4Zb3T3w9y7K0gN4d8c4sR4mxD9j8c+J6o9+3yCw1o0b7YpAAAAAElFTkSuQmCC"
 )
+
 def _load_logo_bytes() -> bytes:
     try:
         if os.path.exists("Logo.png"):
@@ -246,6 +248,7 @@ def _load_logo_bytes() -> bytes:
 LOW_VERBS  = ["define","identify","list","describe","recall","label"]
 MED_VERBS  = ["apply","demonstrate","solve","illustrate","analyze","interpret","compare"]
 HIGH_VERBS = ["evaluate","synthesize","design","justify","formulate","critique"]
+
 def bloom_focus_for_week(week:int)->str:
     if 1<=week<=4: return "Low"
     if 5<=week<=9: return "Medium"
@@ -261,6 +264,7 @@ _STOP = {
     "module","lesson","week","activity","activities","objective","objectives","outcome","outcomes","question","questions","topic","topics",
     "student","students","teacher","instructor","course","unit","learning","overview","summary","introduction","conclusion","content","contents"
 }
+
 def _clean_lines(text: str) -> str:
     lines = [ln.strip() for ln in (text or "").replace("\r","\n").split("\n") if ln.strip()]
     lines = [ln for ln in lines if not re.fullmatch(r"(page\s*\d+|\d+)", ln, flags=re.I)]
@@ -270,10 +274,12 @@ def _clean_lines(text: str) -> str:
         if k in seen: continue
         seen.add(k); out.append(ln)
     return "\n".join(out)[:8000]
+
 def _sentences(text: str) -> List[str]:
     chunks = re.split(r"[.\u2022\u2023\u25CF•]|(?:\n\s*\-\s*)|(?:\n\s*\*\s*)", text or "")
     rough = [re.sub(r"\s+", " ", c).strip() for c in chunks if c and c.strip()]
     return [s for s in rough if 30 <= len(s) <= 180][:400]
+
 def _keywords(text: str, top_n:int=24) -> List[str]:
     from collections import Counter
     toks=[]
@@ -287,8 +293,10 @@ def _keywords(text: str, top_n:int=24) -> List[str]:
             roots.append(w)
         if len(roots)>=top_n: break
     return roots
+
 def _near(a:str,b:str,th:float=0.90)->bool:
     return SequenceMatcher(a=a.lower(), b=b.lower()).ratio() >= th
+
 def _uniq_keep(seq: List[str], key=lambda s: s.lower()):
     seen=set(); out=[]
     for s in seq:
@@ -296,6 +304,7 @@ def _uniq_keep(seq: List[str], key=lambda s: s.lower()):
         if k and k not in seen:
             seen.add(k); out.append(s)
     return out
+
 def _quality_gate(options: List[str]) -> List[str]:
     ops=[re.sub(r"\s+"," ",o.strip()) for o in options if o and o.strip()]
     out=[]
@@ -304,11 +313,13 @@ def _quality_gate(options: List[str]) -> List[str]:
         if not any(_near(o,p,0.96) for p in out): out.append(o)
         if len(out)==4: break
     return out[:4]
+
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
 
 # ---------------- Upload parsing
+
 def extract_text_from_upload(file)->str:
     if file is None: return ""
     name = (getattr(file, "name", "") or "").lower()
@@ -347,6 +358,7 @@ def extract_text_from_upload(file)->str:
         return f"[Could not parse file: {e}]"
 
 # ---------------- MCQs
+
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1) -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
@@ -390,6 +402,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     return pd.DataFrame(rows).reset_index(drop=True)
 
 # ---------------- Activities
+
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "") -> pd.DataFrame:
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
@@ -424,11 +437,13 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
     return pd.DataFrame(rows)
 
 # ---------------- DOCX + GIFT
+
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
     if level==0: r.bold=True; r.font.size=Pt(16)
     elif level==1: r.bold=True; r.font.size=Pt(13)
     else: r.font.size=Pt(11)
+
 def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
     if Document is None: return b""
     doc=Document(); sec=doc.sections[0]
@@ -444,6 +459,7 @@ def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
     for i, r in df.reset_index(drop=True).iterrows():
         doc.add_paragraph(f"Q{i+1}: {r['Answer']}")
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+
 def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->bytes:
     if Document is None: return b""
     doc=Document(); sec=doc.sections[0]
@@ -460,18 +476,20 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
         doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
         doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+
 _GIFT_ESCAPE = str.maketrans({"~": r"\~","=": r"\=","#": r"\#","{": r"\{","}": r"\}",":": r"\:","\n": r"\n"})
+
 def _gift_escape(s:str)->str: return (s or "").translate(_GIFT_ESCAPE)
+
 def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
     lines=[]; title_prefix=f"Lesson {lesson} • Week {week}" + (f" • {topic}" if topic else "")
     for i,r in df.reset_index(drop=True).iterrows():
         qname=f"{title_prefix} — Q{i+1} ({r.get('Tier','')})"
-        stem=_gift_escape(str(r.get("Question","")).strip())
-        opts=[str(r.get("Option A","")).strip(),str(r.get("Option B","")).strip(),
-              str(r.get("Option C","")).strip(),str(r.get("Option D","")).strip()]
+        stem=_gift_escape(str(r.get("Question",""))).strip()
+        opts=[str(r.get("Option A","")),str(r.get("Option B","")),str(r.get("Option C","")),str(r.get("Option D",""))]
         idx={"A":0,"B":1,"C":2,"D":3}.get(str(r.get("Answer","A")).strip().upper(),0)
         parts=[("="+_gift_escape(o)) if j==idx else ("~"+_gift_escape(o)) for j,o in enumerate(opts)]
-        exp=str(r.get("Explanation","")).strip()
+        exp=str(r.get("Explanation",""))
         comment=f"#### {_gift_escape(exp)}" if exp else ""
         lines.append(f"::{_gift_escape(qname)}:: {stem} {{\n" + "\n".join(parts) + f"\n}} {comment}\n")
     return "\n".join(lines).strip()+"\n"
@@ -522,6 +540,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"
 ])
 
+
 def progress_fraction()->float:
     steps = 0
     total = 4
@@ -530,6 +549,7 @@ def progress_fraction()->float:
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     return steps/total
+
 
 def next_step_bar(text_left:str, text_right:str):
     st.markdown("<div class='nextbar'>", unsafe_allow_html=True)
@@ -549,7 +569,12 @@ with tab1:
             st.error(st.session_state.src_text)
             st.info("Tip: If a PPTX fails, export it as PDF and upload the PDF.")
         else:
-            st.success("File uploaded and parsed.")
+            st.success(f"File parsed: **{up.name}** ({up.type})")
+            # Preview first ~2 lines for reassurance
+            preview_lines = (st.session_state.src_text or "").split("\n")[:2]
+            if any(preview_lines):
+                st.caption("Preview:")
+                st.code("\n".join(preview_lines), language="markdown")
     st.progress(progress_fraction())
     next_step_bar("Next:", "Go to ② Setup and complete Steps 1–6.")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -559,7 +584,7 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    # Step 1
+    # Step 1 — Lesson & Week
     st.markdown("<div class='step green'><div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
     with c1:
@@ -582,28 +607,35 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 2
+    # Step 2 — Bloom review
     st.markdown("<div class='step neutral'><div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
+
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==_focus else ""
         weeks = "1–4" if label=="Low" else "5–9" if label=="Medium" else "10–14"
-        chips = " ".join([f"<span class='chip {cls}{hl}'>{v}</span>" for v in verbs])
+        # Dim chips for non-active tiers
+        chips = " ".join([
+            f"<span class='chip {cls}{hl}'>{v}</span>" if label==_focus 
+            else f"<span class='chip {cls} dimmed'>{v}</span>"
+            for v in verbs
+        ])
         st.markdown(f"**{label} (Weeks {weeks})**", unsafe_allow_html=True)
         st.markdown(f"<div class='bloom-row'>{chips}</div>", unsafe_allow_html=True)
+
     bloom_row("Low", LOW_VERBS); bloom_row("Medium", MED_VERBS); bloom_row("High", HIGH_VERBS)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 3
+    # Step 3 — Topic
     st.markdown("<div class='step gold'><div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 4
+    # Step 4 — Source text
     st.markdown("<div class='step neutral'><div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
     with csa:
@@ -635,7 +667,7 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 5
+    # Step 5 — MCQ Setup
     st.markdown("<div class='step green'><div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
@@ -644,7 +676,7 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 6
+    # Step 6 — Activities
     st.markdown("<div class='step gold'><div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
     with colA:
@@ -738,21 +770,24 @@ with tab4:
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Download your question set in multiple formats.</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
-        st.download_button("Download MCQs (CSV)",
-                           st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
-                           f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv",
-                           "text/csv")
+        if st.download_button("Download MCQs (CSV)",
+                              st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
+                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.csv",
+                              "text/csv"):
+            st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-        st.download_button("Download MCQs (Moodle GIFT)",
-                           gift_txt.encode("utf-8"),
-                           f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift",
-                           "text/plain")
+        if st.download_button("Download MCQs (Moodle GIFT)",
+                              gift_txt.encode("utf-8"),
+                              f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.gift",
+                              "text/plain"):
+            st.toast("✅ MCQs GIFT download started")
         if Document:
             mcq_docx = export_mcqs_docx(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-            st.download_button("Download MCQs (Word)",
-                               mcq_docx,
-                               f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.docx",
-                               "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            if st.download_button("Download MCQs (Word)",
+                                  mcq_docx,
+                                  f"mcqs_l{st.session_state.lesson}_w{st.session_state.week}.docx",
+                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+                st.toast("✅ MCQs Word download started")
         else:
             st.caption("Install python-docx for Word export.")
     else:
@@ -764,16 +799,18 @@ with tab4:
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Export practical activities aligned to Bloom’s focus.</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
-        st.download_button("Download Activities (CSV)",
-                           st.session_state.act_df.to_csv(index=False).encode("utf-8"),
-                           f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv",
-                           "text/csv")
+        if st.download_button("Download Activities (CSV)",
+                              st.session_state.act_df.to_csv(index=False).encode("utf-8"),
+                              f"activities_l{st.session_state.lesson}_w{st.session_state.week}.csv",
+                              "text/csv"):
+            st.toast("✅ Activities CSV download started")
         if Document:
             act_docx = export_acts_docx(st.session_state.act_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
-            st.download_button("Download Activities (Word)",
-                               act_docx,
-                               f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx",
-                               "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            if st.download_button("Download Activities (Word)",
+                                  act_docx,
+                                  f"activities_l{st.session_state.lesson}_w{st.session_state.week}.docx",
+                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"):
+                st.toast("✅ Activities Word download started")
         else:
             st.caption("Install python-docx for Word export.")
     else:
@@ -783,3 +820,5 @@ with tab4:
     st.progress(progress_fraction())
     next_step_bar("All set:", "Share the files or print as needed.")
     st.markdown("</div>", unsafe_allow_html=True)
+
+ 
