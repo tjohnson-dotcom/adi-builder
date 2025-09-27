@@ -1,3 +1,4 @@
+
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -1180,13 +1181,60 @@ with tab3:
             except Exception as e:
                 st.error(f"Couldn’t generate: {e}")
 
+    # Quick switch to reveal the other mode if label wasn't obvious
+    switch_col1, switch_col2 = st.columns([1,3])
+    with switch_col1:
+        other = "Activities" if st.session_state.gen_type == "MCQs" else "MCQs"
+        if st.button(f"Switch to {other}", use_container_width=True):
+            st.session_state.gen_type = other
+            st.toast(f"Switched to {other}")
+    with switch_col2:
+        st.caption("Tip: Toggle in Setup (Step 4A) or use this switch to change what the big button generates.")
+
+
     # ---- Live Previews (always visible) ----
     st.markdown("<div class='h3'>MCQs Preview</div>", unsafe_allow_html=True)
     if 'mcq_df' in st.session_state and isinstance(st.session_state.mcq_df, pd.DataFrame) and len(st.session_state.mcq_df) > 0:
-        mcq_edited = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", key="mcq_editor", use_container_width=True)
+        mcq_edited = st.data_editor(
+            st.session_state.mcq_df,
+            num_rows="dynamic",
+            key="mcq_editor",
+            use_container_width=True,
+            height=560,
+            column_config={
+                "Question": st.column_config.TextColumn(width="large"),
+                "Option A": st.column_config.TextColumn(width="large"),
+                "Option B": st.column_config.TextColumn(width="large"),
+                "Option C": st.column_config.TextColumn(width="large"),
+                "Option D": st.column_config.TextColumn(width="large"),
+                "Explanation": st.column_config.TextColumn(width="large"),
+            },
+            disabled=["Order"] if "Order" in st.session_state.mcq_df.columns else None
+        )
         if st.button("💾 Save MCQ edits"):
             st.session_state.mcq_df = mcq_edited
             st.toast("Saved MCQ edits")
+
+        with st.expander("✏️ Full-width editor (one question)"):
+            df = st.session_state.mcq_df
+            if isinstance(df, pd.DataFrame) and len(df) > 0:
+                row = st.number_input("Select question row", 0, len(df)-1, 0)
+                c1, c2 = st.columns([2,1])
+                with c1:
+                    qtxt = st.text_area("Question", value=str(df.loc[row, "Question"]), height=160)
+                    expl = st.text_area("Explanation", value=str(df.loc[row, "Explanation"]), height=100)
+                with c2:
+                    tier = st.selectbox("Tier", ["Low","Medium","High"], index=["Low","Medium","High"].index(str(df.loc[row, "Tier"])) if str(df.loc[row,"Tier"]) in ["Low","Medium","High"] else 0)
+                    qnum = st.selectbox("Q#", [1,2,3], index=[1,2,3].index(int(df.loc[row, "Q#"])) if str(df.loc[row, "Q#"]).isdigit() else 0)
+                oa = st.text_area("Option A", value=str(df.loc[row, "Option A"]), height=90)
+                ob = st.text_area("Option B", value=str(df.loc[row, "Option B"]), height=90)
+                oc = st.text_area("Option C", value=str(df.loc[row, "Option C"]), height=90)
+                od = st.text_area("Option D", value=str(df.loc[row, "Option D"]), height=90)
+                ans = st.selectbox("Answer", ["A","B","C","D"], index=["A","B","C","D"].index(str(df.loc[row, "Answer"])) if str(df.loc[row, "Answer"]) in ["A","B","C","D"] else 0)
+                if st.button("💾 Save this question"):
+                    df.loc[row, ["Question","Explanation","Tier","Q#","Option A","Option B","Option C","Option D","Answer"]] = [qtxt, expl, tier, qnum, oa, ob, oc, od, ans]
+                    st.session_state.mcq_df = df
+                    st.toast("Saved single-question edits")
     if st.button("🔄 Reset MCQs"):
         if "mcq_df_backup" in st.session_state:
             st.session_state.mcq_df = st.session_state.mcq_df_backup.copy(deep=True)
@@ -1198,10 +1246,41 @@ with tab3:
 
     st.markdown("<div class='h3' style='margin-top:1rem'>Activities Preview</div>", unsafe_allow_html=True)
     if 'act_df' in st.session_state and isinstance(st.session_state.act_df, pd.DataFrame) and len(st.session_state.act_df) > 0:
-        act_edited = st.data_editor(st.session_state.act_df, num_rows="dynamic", key="act_editor", use_container_width=True)
+        act_edited = st.data_editor(
+            st.session_state.act_df,
+            num_rows="dynamic",
+            key="act_editor",
+            use_container_width=True,
+            height=560,
+            column_config={
+                "title": st.column_config.TextColumn(width="large"),
+                "objective": st.column_config.TextColumn(width="large"),
+                "steps": st.column_config.TextColumn(width="large"),
+                "materials": st.column_config.TextColumn(width="medium"),
+                "assessment": st.column_config.TextColumn(width="large"),
+            },
+        )
         if st.button("💾 Save Activity edits"):
             st.session_state.act_df = act_edited
             st.toast("Saved Activity edits")
+
+        with st.expander("✏️ Full-width editor (one activity)"):
+            df = st.session_state.act_df
+            if isinstance(df, pd.DataFrame) and len(df) > 0:
+                row = st.number_input("Select activity row", 0, len(df)-1, 0, key="act_row")
+                title = st.text_input("Title", value=str(df.loc[row, "title"]))
+                c1, c2 = st.columns([2,1])
+                with c1:
+                    objective = st.text_area("Objective", value=str(df.loc[row, "objective"]), height=120)
+                    steps = st.text_area("Steps", value=str(df.loc[row, "steps"]), height=180)
+                with c2:
+                    duration = st.number_input("Duration (min)", value=int(df.loc[row, "duration"]) if str(df.loc[row, "duration"]).isdigit() else 15, step=5)
+                materials = st.text_area("Materials", value=str(df.loc[row, "materials"]), height=80)
+                assessment = st.text_area("Assessment", value=str(df.loc[row, "assessment"]), height=120)
+                if st.button("💾 Save this activity"):
+                    df.loc[row, ["title","objective","steps","materials","assessment","duration"]] = [title, objective, steps, materials, assessment, duration]
+                    st.session_state.act_df = df
+                    st.toast("Saved single-activity edits")
     if st.button("🔄 Reset Activities"):
         if "act_df_backup" in st.session_state:
             st.session_state.act_df = st.session_state.act_df_backup.copy(deep=True)
