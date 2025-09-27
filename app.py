@@ -372,20 +372,16 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     sents_raw = _sentences(lines)
 
     def _good(s: str) -> bool:
-        if len(s.split()) < 6:
-            return False
-        if sum(c.isdigit() for c in s) >= 6:
-            return False
+        if len(s.split()) < 6: return False
+        if sum(c.isdigit() for c in s) >= 6: return False
         low = s.lower()
         bad_phrases = [
             "table of contents","chapter ","lesson ","module ",
-            "key concepts","case studies","engineering data sheet","learner journal"
+            "key concepts","case studies","engineering data sheet","learner journal","structure of the e-book"
         ]
-        if any(bp in low for bp in bad_phrases):
-            return False
+        if any(bp in low for bp in bad_phrases): return False
         letters = [c for c in s if c.isalpha()]
-        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55:
-            return False
+        if letters and sum(c.isupper() for c in letters)/len(letters) > 0.55: return False
         return True
 
     sents = [s for s in sents_raw if _good(s)]
@@ -394,8 +390,9 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
 
     # Mine keywords from cleaned sentences only
     keys = _keywords(" ".join(sents), top_n=max(24, total_q*4))
-    if not keys:
-        raise ValueError("Couldn’t mine keywords; upload a richer section.")
+    # Remove heading-like single words that often cause noise
+    key_block = {"rationale","engineering","data","sheet","concepts","theories","case","studies","real","world"}
+    keys = [k for k in keys if k.lower() not in key_block]
 
     rows=[]; rnd=random.Random(2025); made=0; tiers=["Low","Medium","High"]
 
@@ -405,6 +402,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         if mode == "All High": return "High"
         return tiers[i % 3]
 
+    # ---------- Primary (anchor-based) path ----------
     for k in keys:
         try:
             idx = next(i for i, s in enumerate(sents) if k.lower() in s.lower())
@@ -414,7 +412,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         neigh = _window(sents, idx, 3)
         cand = [s for s in neigh if s != correct]
         if len(cand) < 6:
-            extra = [s for s in sents if any(t in s.lower() for t in ["avoid","verify","select","compare","justify","ensure","limit","risk","threshold","condition"])]
+            extra = [s for s in sents if any(t in s.lower() for t in ["avoid","verify","select","compare","justify","ensure","limit","risk","threshold","condition","measure","calculate","design","evaluate","apply"]) ]
             rnd.shuffle(extra); cand += extra[:8]
         options = _quality_gate([correct] + cand)
         if len(options) < 4:
@@ -438,6 +436,42 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         made += 1
         if made == total_q:
             break
+
+    # ---------- Fallback path (guaranteed questions) ----------
+    if made < total_q:
+        # Build a pool of strong sentences as potential correct options
+        pool = [s for s in sents if _good(s) and 50 <= len(s) <= 200]
+        # Prefer sentences that contain commas/semicolons (richer content)
+        pool_prio = [s for s in pool if ("," in s or ";" in s)] + [s for s in pool if ("," not in s and ";" not in s)]
+        used = set()
+        i = 0
+        while made < total_q and i < len(pool_prio):
+            correct = pool_prio[i]; i += 1
+            if correct in used: continue
+            # Pull distractors that are not too similar
+            dist = []
+            for cand in pool_prio:
+                if cand == correct: continue
+                if SequenceMatcher(a=correct.lower(), b=cand.lower()).ratio() > 0.80: continue
+                if abs(len(cand) - len(correct)) > 120: continue
+                dist.append(cand)
+                if len(dist) == 6: break
+            options = _quality_gate([correct] + dist)
+            if len(options) < 4: continue
+            rnd.shuffle(options)
+            ans = ["A","B","C","D"][options.index(correct)]
+            tier = tier_for_q(made)
+            q = f"Which statement best fits *{ctx}*?"
+            rows.append({
+                "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
+                "Question": q,
+                "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
+                "Answer": ans, "Explanation": "Fallback mode: options are sentence-level paraphrase contrasts.",
+                "Order": {"Low":1,"Medium":2,"High":3}[tier],
+            })
+            used.add(correct)
+            made += 1
+
     if made == 0:
         raise ValueError("Could not extract enough anchored items — try a different section.")
     return pd.DataFrame(rows).reset_index(drop=True)
