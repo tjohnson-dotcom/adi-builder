@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (final, with PyMuPDF + Safe Mode + fixes)
+# app.py — ADI Learning Tracker (final, with PyMuPDF, Safe Mode, noise cleaner, upgraded Activities)
 # English-only • PDF/PPTX/DOCX input • Robust extraction • MCQs & Activities
 # Exports: CSV / GIFT / Word / Combined Word
 
@@ -278,7 +278,7 @@ def _has_context_neighbors(sents: List[str], idx: int) -> bool:
     neighbors = _window(sents, idx, 3)
     return sum(1 for x in neighbors if x and x != sents[idx] and _is_sentence_like(x)) >= 2
 
-# ---------- Activities step extraction ----------
+# ---------- Activities step extraction (kept for future, not required by upgraded activity gen) ----------
 STEP_LINE = re.compile(r"(?:^|\n)\s*(?:step\s*\d+\s*[:\-\.]|[0-9]{1,2}\.\s+|•\s+|\-\s+|—\s+)(.+)", re.I)
 def extract_steps(src: str, min_steps=3, max_steps=7):
     rough = _normalize((src or "").replace("\r",""))
@@ -295,6 +295,16 @@ def extract_steps(src: str, min_steps=3, max_steps=7):
             seen.add(k.lower()); clean.append(k)
         if len(clean) == max_steps: break
     return clean
+
+# ---------- Noise cleaner (applied to stems/options/steps) ----------
+def _strip_noise(s: str) -> str:
+    if not s: return s
+    s = re.sub(r"\s*\((?:PS|LO|CO)\d+(?:,\s*(?:PS|LO|CO)\d+)*\)\s*", " ", s)         # (PS3, PS8)
+    s = re.sub(r"\s*\([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*,\s*\d{4}\)\s*", " ", s)  # (Defense News, 2023)
+    s = re.sub(r"\s+[o•\-]\s+", " ", s)                                             # stray bullets
+    s = re.sub(r"defence\s*systems", "defence systems", s, flags=re.I)
+    s = re.sub(r"defence\s*personnel", "defence personnel", s, flags=re.I)
+    return re.sub(r"\s{2,}", " ", s).strip()
 
 # ---------- MCQs (Exact mode) ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1, mode: str = "Mixed") -> pd.DataFrame:
@@ -339,13 +349,17 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 if tier=="Medium" else
                 "Which option provides the strongest justification related to **{k}** in *{ctx}*?").format(k=k, ctx=ctx)
 
+        # Clean stem/options
+        stem = _strip_noise(stem)
+        options = [_strip_noise(o) for o in options]
+
         rnd.shuffle(options)
-        ans = ["A","B","C","D"][options.index(correct)]
+        ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
             "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
-            "Answer": ans, "Explanation": f"Anchored on a sentence mentioning '{k}'.",
+            "Answer": ans, "Explanation": _strip_noise(f"Anchored on a sentence mentioning '{k}'."),
             "Order": {"Low":1,"Medium":2,"High":3}[tier],
         })
         made += 1
@@ -369,12 +383,15 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
             options = _quality_gate([correct] + dist, ensure_first=True)
             if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
+            stem = f"Which statement best fits *{ctx}*?"
+            stem = _strip_noise(stem)
+            options = [_strip_noise(o) for o in options]
             rnd.shuffle(options)
-            ans = ["A","B","C","D"][options.index(correct)]
+            ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
             tier = tier_for_q(made)
             rows.append({
                 "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
-                "Question": f"Which statement best fits *{ctx}*?",
+                "Question": stem,
                 "Option A": options[0], "Option B": options[1], "Option C": options[2], "Option D": options[3],
                 "Answer": ans, "Explanation": "Fallback mode: contrasts between plausible sentences.",
                 "Order": {"Low":1,"Medium":2,"High":3}[tier],
@@ -446,8 +463,10 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             f"In *{ctx}*, which statement is most appropriate?" if tier=="Medium" else
             f"Which option provides the strongest justification in *{ctx}*?"
         )
+        stem = _strip_noise(stem)
+        options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
-        ans = ["A","B","C","D"][options.index(correct)]
+        ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
@@ -464,10 +483,11 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
         options = _quality_gate([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
+        stem = _strip_noise(f"Which statement best fits *{ctx}*?")
+        options = [_strip_noise(o) for o in options]
         tier = tier_for_q(len(rows))
-        stem = f"Which statement best fits *{ctx}*?"
         random.shuffle(options)
-        ans = ["A","B","C","D"][options.index(correct)]
+        ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
             "Question": stem,
@@ -478,45 +498,41 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Activities ----------
+# ---------- Upgraded Activities ----------
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
-    topic = (topic or "").strip()
-    ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
-    verbs = {"Low":LOW_VERBS,"Medium":MED_VERBS,"High":HIGH_VERBS}.get(tier, MED_VERBS)[:6]
+    topic = (topic or "Project scope, WBS, risk register, stakeholders").strip()
+    ctx = f"Lesson {lesson} • Week {week}"
+    verbs = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}.get(tier, MED_VERBS)
 
-    sents = [s for s in _sentences(_clean_lines(source or "")) if _is_clean_sentence(s)]
-    if len(sents) < 6:
-        raise ValueError("Need ~6+ clean sentences to shape activities (paste a short paragraph).")
+    # Clean source & strip course codes / citations
+    txt = _clean_lines(source or "")
+    txt = _strip_noise(txt)
 
-    steps = extract_steps(source)
-    rnd = random.Random(99)
+    # Time split
+    t1 = max(5, int(duration*0.17)); t3 = max(8, int(duration*0.17)); t2 = max(10, duration - (t1+t3))
 
-    rows=[]
-    for i in range(1, count + 1):
-        v = verbs[(i - 1) % len(verbs)]
-        t1=max(5,int(duration*0.2)); t2=max(10,int(duration*0.55)); t3=max(5,duration-(t1+t2))
-        if len(steps) >= 3:
-            chosen = steps[:5]
-            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): " + "; ".join(chosen) + f". Plenary ({t3}m): Compare outputs; justify choices."
-        else:
-            pool = [s for s in sents if 50 <= len(s) <= 220]
-            rnd.shuffle(pool)
-            a = pool[0] if pool else "review key ideas from the text"
-            b = pool[1] if len(pool)>1 else "apply the concept to a small case"
-            c = pool[2] if len(pool)>2 else "justify your decisions with evidence"
-            step_line = f"Starter ({t1}m): {v.capitalize()} prior knowledge. Main ({t2}m): {a}; then {b}. Plenary ({t3}m): {c}."
-        style_note = ""
-        if style == "Lab":          style_note = " Emphasize safety checks and hands-on measurement."
-        elif style == "Group Task": style_note = " Organize into teams; assign roles for collaboration."
-        elif style == "Reflection": style_note = " End with a short written reflection."
+    rows = []
+    for i in range(1, count+1):
+        v = verbs[(i-1) % len(verbs)]
+        deliverable = "1-page mini plan (scope + WBS L2 + top-3 risks + stakeholder RACI)"
+        steps = [
+            f"Starter ({t1}m): {v.capitalize()} prior knowledge with a quick success checklist (time, cost, quality, security).",
+            f"Main ({t2}m): 1) Draft scope (in/out); 2) Sketch WBS to level-2; 3) Build risk register (owner & response); 4) Map stakeholders (RACI).",
+            f"Plenary ({t3}m): Swap plans; one strength & one question; justify one change."
+        ]
+        if style == "Lab": steps[1] += " Emphasize safe handling and verification steps."
+        if style == "Group Task": steps[1] += " Assign roles: Lead, Scribe, Risk owner, Reviewer."
+        if style == "Reflection": steps[2] += " Submit a 2-minute written reflection."
+
         rows.append({
             "Lesson": lesson, "Week": week, "Policy focus": tier,
-            "Title": f"{ctx} — {tier} Activity {i}", "Tier": tier,
-            "Objective": f"Students will {v} key ideas anchored to today’s source.",
-            "Steps": step_line + style_note,
-            "Materials": "Lesson PDF/PPT, mini-whiteboards, markers; timer",
-            "Assessment": "Performance check aligned to the steps; brief justification.",
-            "Duration (mins)": duration,
+            "Title": f"{ctx} — {tier} Activity {i}",
+            "Tier": tier,
+            "Objective": f"Students will {v} key ideas anchored to {topic}.",
+            "Steps": _strip_noise(" ".join(steps)),
+            "Materials": "Brief handout, A3 paper, markers; timer",
+            "Assessment": "Rubric (scope, WBS L2, risks with responses, RACI) each /3 → /12.",
+            "Duration (mins)": duration
         })
     return pd.DataFrame(rows)
 
@@ -698,7 +714,7 @@ with tab2:
     with c1: st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
     with c2: st.session_state.week   = st.selectbox("Week", list(range(1,15)), index=st.session_state.week-1)
     with c3:
-        focus = bloom_focus_for_week(st.session_state.week)   # always fresh (fix)
+        focus = bloom_focus_for_week(st.session_state.week)   # always fresh
         st.markdown(f"**Bloom focus (auto): Week {st.session_state.week}: {focus}**")
     _focus = focus
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
@@ -766,7 +782,7 @@ with tab2:
 # ===== ③ Generate =====
 with tab3:
     sc = len(_sentences(st.session_state.get("src_edit","")))
-    min_req = 6 if st.session_state.get("safe_mode", True) else 12  # allow Safe Mode with fewer
+    min_req = 6 if st.session_state.get("safe_mode", True) else 12  # Safe Mode unlocks earlier
     if sc < min_req:
         st.info(f"Add at least {min_req} full sentences in **② Setup** to enable Generate.")
         st.progress(progress_fraction()); st.stop()
@@ -797,18 +813,11 @@ with tab3:
             with st.spinner("Generating Activities…"):
                 try:
                     focus = bloom_focus_for_week(st.session_state.week)
-                    if st.session_state.safe_mode:
-                        st.session_state.act_df = generate_activities_safe(
-                            int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                            st.session_state.topic, st.session_state.lesson, st.session_state.week,
-                            st.session_state.src_edit, st.session_state.act_style
-                        )
-                    else:
-                        st.session_state.act_df = generate_activities(
-                            int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                            st.session_state.topic, st.session_state.lesson, st.session_state.week,
-                            st.session_state.src_edit, st.session_state.act_style
-                        )
+                    st.session_state.act_df = generate_activities_safe(
+                        int(st.session_state.act_n), int(st.session_state.act_dur), focus,
+                        st.session_state.topic, st.session_state.lesson, st.session_state.week,
+                        st.session_state.src_edit, st.session_state.act_style
+                    )
                     st.success("Activities generated.")
                 except Exception as e:
                     st.error(f"Couldn’t generate activities: {e}")
