@@ -1,6 +1,5 @@
-pip install 
 streamlit
 python-pptx
 python-docx
 PyMuPDF
- PyPDF2
+PyPDF2
