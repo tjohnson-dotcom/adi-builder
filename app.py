@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (logo larger + tier-colored previews + strong CTAs)
+# app.py — ADI Learning Tracker (polish with spinners, bullet warning, next-step hints, answer toggle)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -8,6 +8,7 @@ import streamlit as st
 
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
 
+# ---------------- CSS (polish)
 CSS = r'''
 <style>
 :root{
@@ -30,45 +31,32 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
 
 /* Header */
 .header-wrap{display:flex; align-items:center; gap:16px; margin-bottom:6px;}
-.logo-wrap{display:flex; align-items:center; justify-content:center; width:160px;}
+.logo-wrap{display:flex; align-items:center; justify-content:center; width:240px;}
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
 
-/* Tabs — bold, icons, ADI-colored numbers, single underline */
+/* Tabs */
 .stTabs [role="tablist"]{
-  gap:.5rem;
-  border-bottom:0;
-  padding:0 .25rem .35rem .25rem;
-  position:relative;
+  gap:.5rem; border-bottom:0; padding:0 .25rem .35rem .25rem; position:relative;
 }
 .stTabs [role="tab"]{
-  position:relative;
-  padding:.65rem 1.2rem;
-  border-radius:14px 14px 0 0;
-  font-weight:800;
-  font-size:1.05rem;
-  background:#ffffff;
-  border:1px solid #e7ecea;
-  border-bottom:none;
-  box-shadow:0 6px 14px rgba(36,90,52,.06);
+  position:relative; padding:.65rem 1.2rem; border-radius:14px 14px 0 0;
+  font-weight:800; font-size:1.05rem; background:#ffffff;
+  border:1px solid #e7ecea; border-bottom:none;
+  box-shadow:0 6px 14px rgba(36,90,52,0.06);
   transition:transform .08s ease, box-shadow .18s ease, color .18s ease;
 }
-.stTabs [role="tab"]:hover{
-  transform:translateY(-1px);
-  box-shadow:0 10px 22px rgba(36,90,52,.12);
-}
-.stTabs [role="tab"] p{
-  margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem;
-}
-.stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; } /* Upload */
-.stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; } /* Setup  */
-.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; } /* Generate */
-.stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; } /* Export */
+.stTabs [role="tab"]:hover{ transform:translateY(-1px); box-shadow:0 10px 22px rgba(36,90,52,0.12); }
+.stTabs [role="tab"] p{ margin:0; font-weight:800; color:#223047; display:flex; align-items:center; gap:.45rem; }
+.stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; }
+.stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; }
+.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; }
+.stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; }
 .stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
-.stTabs [role="tab"][aria-selected="true"]{ border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,.16); }
+.stTabs [role="tab"][aria-selected="true"]{ border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,0.16); transform: translateY(-1px); }
 .stTabs [role="tab"][aria-selected="true"]::after{
   content:""; position:absolute; left:10px; right:10px; bottom:-3px; height:4px; border-radius:999px;
-  background:linear-gradient(90deg,#245a34,#C8A85A); box-shadow:0 2px 6px rgba(36,90,52,.18);
+  background:linear-gradient(90deg,#245a34,#C8A85A); box-shadow:0 2px 6px rgba(36,90,52,0.18);
 }
 .stTabs [role="tablist"]::after,.stTabs [role="tablist"]::before{ content:none !important; display:none !important; }
 
@@ -98,15 +86,16 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 [data-testid="stFileUploaderDropzone"]:hover{
   border-color:#8fb8a3 !important; background:#fcfefd !important; outline:3px solid rgba(36,90,52,0.25);
+  box-shadow: 0 14px 32px rgba(36,90,52,0.16);
 }
 
 /* Steps & separators */
-.step-title{ font-weight:900; color:#0f172a; margin:.4rem 0 .3rem; }
+.step-title{ font-weight:900; color:#0f172a; margin:.4rem 0 .3rem; letter-spacing:.2px; }
 .step{ border:2px solid var(--border); border-radius:16px; padding:14px; background:#fff; box-shadow:0 8px 22px rgba(36,90,52,0.06); }
 .step.green{  border-color:#cfe1d7; }
 .step.gold{   border-color:#eadebd; }
 .step.neutral{ border-color:#dfe7e3; }
-.separator{ height:12px; border-radius:999px; background:linear-gradient(90deg, rgba(36,90,52,.12), rgba(200,168,90,.12)); box-shadow: inset 0 1px 0 #fff; margin:16px 0; }
+.separator{ height:12px; border-radius:999px; background:linear-gradient(90deg, rgba(36,90,52,0.12), rgba(200,168,90,0.12)); box-shadow: inset 0 1px 0 #fff; margin:16px 0; }
 
 /* Toolbar summary */
 .toolbar{
@@ -151,7 +140,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .note-green{ padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0; background:linear-gradient(180deg,#f9fefb,#f3fbf6); color:#133c23; font-weight:600; }
 .note-amber{ padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7; background:linear-gradient(180deg,#fffdf7,#fffaf0); color:#4a3d14; font-weight:600; }
 
-/* Strong CTA buttons (Generate) */
+/* Strong CTA buttons (Generate/Export) */
 .stButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
   color:#fff !important; border:1px solid #1f4e31 !important;
@@ -160,13 +149,14 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stButton>button:hover{ filter:brightness(1.06); transform:translateY(-1px); }
 
-/* Previews — tier-coloured borders */
+/* Previews — tier-coloured borders + label separator */
 .preview-card{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .mcq-item{ border-left:6px solid #e5e7eb; padding-left:10px; margin:8px 0; }
 .mcq-low{   border-left-color:#245a34; }
 .mcq-med{   border-left-color:#C8A85A; }
 .mcq-high{  border-left-color:#333; }
-.act-card{ border-left:6px solid #e5e7eb; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,.06); }
+.mcq-item b::after{ content:"  ·  "; color:#9aa6a0; font-weight:400; }
+.act-card{ border-left:6px solid #e5e7eb; border-radius:12px; padding:10px 12px; margin:10px 0; background:#fff; box-shadow:0 6px 16px rgba(36,90,52,0.06); }
 .act-low{   border-left-color:#245a34; }
 .act-med{   border-left-color:#C8A85A; }
 .act-high{  border-left-color:#333; }
@@ -183,17 +173,32 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stDownloadButton>button:hover{ filter:brightness(1.06); }
 
-/* Sticky status (Generate) */
+/* Sticky strip + Next step helper */
 .sticky-strip{
   position: sticky; top: 8px; z-index: 5;
   background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:8px 12px;
-  box-shadow:0 8px 18px rgba(36,90,52,.12);
+  box-shadow:0 8px 18px rgba(36,90,52,0.12);
 }
+.nextbar{
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px 12px;
+  box-shadow:0 8px 18px rgba(36,90,52,0.10); margin-top:12px;
+}
+.nextbar .hint{ color:#374151; font-weight:700; }
+.nextbar .soft{ color:#6b7280; font-weight:600; }
+
+/* Soft secondary button style for "Next step" */
+.next-btn button{
+  background:#ffffff !important; color:#245a34 !important; border:2px solid #cfe1d7 !important;
+  font-weight:800 !important; border-radius:10px !important; padding:.55rem .9rem !important;
+  box-shadow:0 6px 16px rgba(36,90,52,0.10) !important;
+}
+.next-btn button:hover{ background:#f6fbf8 !important; }
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
 
-# ---------- Optional parsers ----------
+# ---------------- Optional parsers
 try:
     import pdfplumber
 except Exception:
@@ -211,7 +216,7 @@ try:
 except Exception:
     Presentation = None
 
-# ---------- Word export ----------
+# ---------------- Word export
 try:
     from docx import Document
     from docx.shared import Pt, Inches
@@ -219,7 +224,7 @@ except Exception:
     Document = None
     Pt = Inches = None
 
-# ---------- Logo helper ----------
+# ---------------- Logo helper
 _FALLBACK_LOGO_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAAAAACqG3XIAAACMElEQVR4nM2WsW7TQBiFf6a0H5yq"
     "zF0y2y5hG0c6zF4k1u5u9m3JHqz4dM7M9kP3C0k1bC0bC2A1vM9Y7mY0JgVv8uJbVYy0C4d6i3gC"
@@ -237,7 +242,7 @@ def _load_logo_bytes() -> bytes:
         pass
     return base64.b64decode(_FALLBACK_LOGO_B64)
 
-# ---------- Bloom policy ----------
+# ---------------- Bloom policy
 LOW_VERBS  = ["define","identify","list","describe","recall","label"]
 MED_VERBS  = ["apply","demonstrate","solve","illustrate","analyze","interpret","compare"]
 HIGH_VERBS = ["evaluate","synthesize","design","justify","formulate","critique"]
@@ -246,7 +251,7 @@ def bloom_focus_for_week(week:int)->str:
     if 5<=week<=9: return "Medium"
     return "High"
 
-# ---------- Text helpers ----------
+# ---------------- Text helpers
 from difflib import SequenceMatcher
 _STOP = {
     "the","a","an","and","or","of","to","in","on","for","with","by","as","is","are","be","was","were","this","that","these","those",
@@ -303,7 +308,7 @@ def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
     return sentences[L:R]
 
-# ---------- Upload parsing ----------
+# ---------------- Upload parsing
 def extract_text_from_upload(file)->str:
     if file is None: return ""
     name = (getattr(file, "name", "") or "").lower()
@@ -341,7 +346,7 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# ---------- MCQs ----------
+# ---------------- MCQs
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1) -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
@@ -384,7 +389,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     if made == 0: raise ValueError("Could not extract enough anchored items — try a different section.")
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Activities ----------
+# ---------------- Activities
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "") -> pd.DataFrame:
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
@@ -418,7 +423,7 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
         })
     return pd.DataFrame(rows)
 
-# ---------- DOCX + GIFT ----------
+# ---------------- DOCX + GIFT
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
     if level==0: r.bold=True; r.font.size=Pt(16)
@@ -455,7 +460,6 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
         doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
         doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
-
 _GIFT_ESCAPE = str.maketrans({"~": r"\~","=": r"\=","#": r"\#","{": r"\{","}": r"\}",":": r"\:","\n": r"\n"})
 def _gift_escape(s:str)->str: return (s or "").translate(_GIFT_ESCAPE)
 def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
@@ -472,7 +476,7 @@ def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
         lines.append(f"::{_gift_escape(qname)}:: {stem} {{\n" + "\n".join(parts) + f"\n}} {comment}\n")
     return "\n".join(lines).strip()+"\n"
 
-# ---------- Sample text ----------
+# ---------------- Sample text
 SAMPLE_TEXT = (
     "Ohm’s Law states that the current through a conductor between two points is directly proportional "
     "to the voltage across the two points. The constant of proportionality is the resistance. "
@@ -488,7 +492,7 @@ SAMPLE_TEXT = (
     "A systematic approach records known quantities and applies V=IR to solve unknowns."
 )
 
-# ---------- App state ----------
+# ---------------- App state
 st.session_state.setdefault("lesson", 1)
 st.session_state.setdefault("week", 1)
 st.session_state.setdefault("mcq_total", 10)
@@ -499,40 +503,55 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 
-# ---------- Header (enlarged logo) ----------
+# ---------------- Header
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
-with st.container():
-    cols = st.columns([1.2, 4])
-    with cols[0]:
-        if st.session_state.logo_bytes:
-            b64 = base64.b64encode(st.session_state.logo_bytes).decode()
-            # widen footprint via wrapper; st.image width keeps 140–160px visually crisp
-            st.markdown("<div class='logo-wrap'>", unsafe_allow_html=True)
-            st.image(f"data:image/png;base64,{b64}", width=140)
-            st.markdown("</div>", unsafe_allow_html=True)
-    with cols[1]:
-        st.markdown("<div class='h1'>ADI Learning Tracker</div>", unsafe_allow_html=True)
-        st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+cols = st.columns([1.2, 4])
+with cols[0]:
+    if st.session_state.logo_bytes:
+        b64 = base64.b64encode(st.session_state.logo_bytes).decode()
+        st.markdown("<div class='logo-wrap'>", unsafe_allow_html=True)
+        st.image(f"data:image/png;base64,{b64}", width=210)
+        st.markdown("</div>", unsafe_allow_html=True)
+with cols[1]:
+    st.markdown("<div class='h1'>ADI Learning Tracker</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
 st.divider()
 
-# ---------- Tabs ----------
+# ---------------- Tabs
 tab1, tab2, tab3, tab4 = st.tabs([
     "① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"
 ])
+
+def progress_fraction()->float:
+    steps = 0
+    total = 4
+    if (st.session_state.get("src_edit") or "").strip(): steps += 1
+    if len(_sentences(st.session_state.get("src_edit",""))) >= 12: steps += 1
+    if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
+    if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
+    return steps/total
+
+def next_step_bar(text_left:str, text_right:str):
+    st.markdown("<div class='nextbar'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='hint'>{text_left} <span class='soft'>{text_right}</span></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ① Upload =====
 with tab1:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Upload Lesson File</div>", unsafe_allow_html=True)
+    st.caption("We’ll extract text from your lesson to build MCQs & activities.")
     up = st.file_uploader("Upload .pptx / .pdf / .docx", type=["pptx","pdf","docx"])
     if up:
         st.session_state.src_text = extract_text_from_upload(up)
         st.session_state.src_edit = st.session_state.src_text
         if st.session_state.src_text.startswith("[Could not parse"):
             st.error(st.session_state.src_text)
+            st.info("Tip: If a PPTX fails, export it as PDF and upload the PDF.")
         else:
             st.success("File uploaded and parsed.")
+    st.progress(progress_fraction())
+    next_step_bar("Next:", "Go to ② Setup and complete Steps 1–6.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ② Setup =====
@@ -540,8 +559,8 @@ with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step green'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
+    # Step 1
+    st.markdown("<div class='step green'><div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
     with c1:
         st.session_state.lesson = st.selectbox("Lesson", [1,2,3,4], index=st.session_state.lesson-1)
@@ -563,8 +582,8 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
+    # Step 2
+    st.markdown("<div class='step neutral'><div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==_focus else ""
@@ -577,30 +596,47 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step gold'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
+    # Step 3
+    st.markdown("<div class='step gold'><div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
+    # Step 4
+    st.markdown("<div class='step neutral'><div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
     with csa:
-        st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
-                                                 height=180, placeholder="Paste or edit ~12+ full sentences here (avoid bullet points).")
+        st.session_state.src_edit = st.text_area(
+            "Source (editable)",
+            value=st.session_state.src_edit,
+            height=180,
+            placeholder="Add 1–2 short paragraphs (≈12+ sentences). Avoid bullet points."
+        )
+        # Inline sentence counter + bullet warning
+        txt = st.session_state.src_edit or ""
+        sc = len(_sentences(txt))
+        ready = sc >= 12
+        bullet_hit = ("•" in txt) or re.search(r"^\s*[-*]\s+", txt, re.M)
+        msg = f"Detected **{sc}** sentence(s). " + ("Ready ✓" if ready else "Need **12+**.")
+        st.caption(msg)
+        if bullet_hit:
+            st.markdown("<div class='note'>Heads up: bullets were detected. Convert bullet points into full sentences for best results.</div>", unsafe_allow_html=True)
     with csb:
         if st.button("Paste sample text"):
             st.session_state.src_edit = SAMPLE_TEXT
             st.experimental_rerun()
-        st.markdown("<div class='helper'>Quick demo</div>", unsafe_allow_html=True)
+        if st.button("Reset all"):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
+            st.experimental_rerun()
+        st.markdown("<div class='helper'>Quick actions</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step green'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
+    # Step 5
+    st.markdown("<div class='step green'><div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
@@ -608,8 +644,8 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='step gold'>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
+    # Step 6
+    st.markdown("<div class='step gold'><div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
     with colA:
         st.session_state.act_n = st.radio("Activities", [1,2,3], index=st.session_state.act_n-1, horizontal=True)
@@ -617,56 +653,58 @@ with tab2:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    st.progress(progress_fraction())
+    next_step_bar("Next:", "Open ③ Generate and click the green buttons.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ③ Generate =====
 with tab3:
+    sc = len(_sentences(st.session_state.get("src_edit","")))
+    if sc < 12:
+        st.info("Add at least 12 full sentences in **② Setup** to enable Generate.")
+        st.progress(progress_fraction())
+        next_step_bar("Tip:", "Paste sample text in Step 4 to try it out instantly.")
+        st.stop()
+
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Generate Questions & Activities</div>", unsafe_allow_html=True)
-
-    sent_count = len(_sentences(st.session_state.src_edit or ""))
-    need = 12
-    ready = sent_count >= need
-    status_text = f"Ready • {sent_count} sentences detected" if ready else f"Add text • {sent_count}/{need} sentences"
-    st.markdown(f"<div class='sticky-strip'>{status_text}</div>", unsafe_allow_html=True)
-
-    if not st.session_state.src_edit.strip():
-        st.markdown("<div class='note'>Add some lesson text first. Paste a short section (one page or a few paragraphs).</div>", unsafe_allow_html=True)
-    elif not ready:
-        st.markdown(f"<div class='note'>We found <b>{sent_count}/{need}</b> full sentences. Paste continuous text (avoid bullets) until this reaches 12+.</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='note-green'>Ready to generate — <b>{sent_count}</b> sentences detected.</div>", unsafe_allow_html=True)
-    st.progress(min(1.0, sent_count/need) if need else 1.0)
+    st.markdown(f"<div class='sticky-strip'>Ready • {sc} sentences detected</div>", unsafe_allow_html=True)
 
     colQ, colA = st.columns([1,1])
     with colQ:
         if st.button("📝 Generate MCQs", use_container_width=True):
-            try:
-                st.session_state.mcq_df = generate_mcqs_exact(
-                    st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
-                    st.session_state.week, st.session_state.lesson
-                )
-                st.success("MCQs generated.")
-            except Exception as e:
-                st.error(f"Couldn’t generate MCQs: {e}")
+            with st.spinner("Generating MCQs…"):
+                try:
+                    st.session_state.mcq_df = generate_mcqs_exact(
+                        st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
+                        st.session_state.week, st.session_state.lesson
+                    )
+                    st.success("MCQs generated.")
+                except Exception as e:
+                    st.error(f"Couldn’t generate MCQs: {e}")
     with colA:
         if st.button("🧩 Generate Activities", use_container_width=True):
-            try:
-                focus = bloom_focus_for_week(st.session_state.week)
-                st.session_state.act_df = generate_activities(
-                    int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                    st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
-                )
-                st.success("Activities generated.")
-            except Exception as e:
-                st.error(f"Couldn’t generate activities: {e}")
+            with st.spinner("Generating Activities…"):
+                try:
+                    focus = bloom_focus_for_week(st.session_state.week)
+                    st.session_state.act_df = generate_activities(
+                        int(st.session_state.act_n), int(st.session_state.act_dur), focus,
+                        st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
+                    )
+                    st.success("Activities generated.")
+                except Exception as e:
+                    st.error(f"Couldn’t generate activities: {e}")
+
+    # Answer key toggle
+    show_answers = st.checkbox("Show answer key in preview", value=False)
 
     if "mcq_df" in st.session_state:
         st.write("**MCQs (preview)**")
         st.markdown("<div class='preview-card'>", unsafe_allow_html=True)
         for i,row in st.session_state.mcq_df.reset_index(drop=True).iterrows():
             cls = "mcq-low" if row["Tier"]=="Low" else ("mcq-med" if row["Tier"]=="Medium" else "mcq-high")
-            st.markdown(f"<div class='mcq-item {cls}'><b>{i+1}.</b> {row['Question']}</div>", unsafe_allow_html=True)
+            ans = f" <i>(Answer: {row['Answer']})</i>" if show_answers else ""
+            st.markdown(f"<div class='mcq-item {cls}'><b>{i+1}. {row['Tier']}</b> {row['Question']}{ans}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     if "act_df" in st.session_state:
@@ -678,13 +716,21 @@ with tab3:
                         f"<span><b>Objective:</b> {r['Objective']}</span><br>"
                         f"<span><b>Steps:</b> {r['Steps']}</span><br>"
                         f"<span><b>Duration:</b> {r['Duration (mins)']} mins</span></div>", unsafe_allow_html=True)
+
+    st.progress(progress_fraction())
+    next_step_bar("Next:", "Open ④ Export to download CSV / Word / GIFT.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ④ Export =====
 with tab4:
+    if "mcq_df" not in st.session_state and "act_df" not in st.session_state:
+        st.info("Generate content in **③ Generate** to enable exports.")
+        st.progress(progress_fraction())
+        next_step_bar("Tip:", "Use the green Generate buttons first.")
+        st.stop()
+
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Export</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='export-grid'>", unsafe_allow_html=True)
 
     # MCQ exports
@@ -734,5 +780,6 @@ with tab4:
         st.markdown("<div class='note-amber'>Generate Activities in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # grid
-    st.markdown("</div>", unsafe_allow_html=True)  # card
+    st.progress(progress_fraction())
+    next_step_bar("All set:", "Share the files or print as needed.")
+    st.markdown("</div>", unsafe_allow_html=True)
