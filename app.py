@@ -1051,7 +1051,7 @@ with tab4:
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
         
-        st.caption(f\"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}\")
+        st.caption(f"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}")
 if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
                               f"mcqs_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
@@ -1079,7 +1079,7 @@ if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(inde
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
         
-        st.caption(f\"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}\")
+        st.caption(f"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}")
 if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
                               f"activities_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
