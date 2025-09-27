@@ -1,3 +1,5 @@
+
+      
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -24,6 +26,16 @@ def _seed_salt() -> int:
 
 # ---------- Streamlit base ----------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
+
+# ---- Safe state initialization ----
+for key, factory in {
+    "seen_q_sigs": set,
+    "seen_q_sigs_global": set,
+    "undo_mcq": list,
+    "undo_act": list,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = factory()
 
 
 
@@ -322,10 +334,16 @@ def _quality_gate(options: List[str], ensure_first: bool = True,
 def _quality_gate_loose(options: List[str], ensure_first: bool = True) -> List[str]:
     return _quality_gate(options, ensure_first=ensure_first, min_len=25, min_words=5, require_verb=False)
 
+
 def _distractors_for_sentence(sent: str, mode: str = "safe"):
-    """Return (distractors, correct) for a sentence.
-    Heuristic fallback: pick a plausible 'correct' anchor from local keywords,
-    and distractors from global keywords not overlapping the anchor.
+    """
+    Improved distractor generator:
+    - picks a multi-word correct anchor from the sentence if possible
+    - mines candidate phrases from the wider corpus (other sentences)
+    - filters by lexical overlap (Jaccard) to be plausible but not identical
+    - prefers similar length and varied first words
+    - falls back to keyword-based foils if the corpus is short
+    Returns (distractors, correct).
     """
     try:
         corpus = (st.session_state.get("src_edit") or st.session_state.get("src_text") or "")
@@ -334,46 +352,117 @@ def _distractors_for_sentence(sent: str, mode: str = "safe"):
     s = _strip_noise(sent or "")
     if not s:
         return [], ""
-    # local anchors from this sentence
-    loc_kws = _keywords(s, top_n=8)
-    # choose a multi-word anchor if possible
+
+    # --- helpers ---
+    STOP = {
+        "the","a","an","of","to","and","in","on","for","with","by","from","as","at","is","are","was","were",
+        "be","been","being","that","which","this","these","those","it","its","their","our","your","or","if",
+        "into","over","under","about","than","then","so","such","may","can","should","must","will","would"
+    }
+    def _tokset(text: str) -> set:
+        text = re.sub(r"[^A-Za-z0-9\- ]+", " ", (text or "").lower())
+        return {w for w in text.split() if w and w not in STOP}
+    def _jaccard(a: str, b: str) -> float:
+        A, B = _tokset(a), _tokset(b)
+        if not A or not B: return 0.0
+        return len(A & B) / len(A | B)
+
+    # Local anchors from this sentence
+    loc_kws = _keywords(s, top_n=10)
     correct = ""
     for kw in loc_kws:
-        if " " in kw and len(kw) >= 8:
+        if " " in kw and len(kw.split()) >= 2 and len(kw) >= 8:
             correct = kw
             break
     if not correct:
-        correct = (loc_kws[0] if loc_kws else s.split(".")[0])[:160]
+        # fallback: mid-length window
+        words = [w for w in re.sub(r"[^A-Za-z0-9\- ]+", " ", s).split() if w]
+        n = min(6, max(3, len(words)//3 or 3))
+        if len(words) >= n:
+            mid = max(0, (len(words)//2) - n//2)
+            correct = " ".join(words[mid:mid+n])
+        else:
+            correct = s.strip()
     correct = correct.strip().capitalize()
 
-    # candidate distractors from the whole corpus
-    glob_kws = _keywords(corpus, top_n=48) if corpus else []
-    cset = set(correct.lower().split())
-    d = []
-    for kw in glob_kws:
-        if kw == correct.lower(): 
+    # --- mine candidate phrases from the corpus ---
+    sents = [t for t in re.split(r'(?<=[.!?])\s+', _strip_noise(corpus)) if t.strip()]
+    # Exclude the current sentence to reduce duplicates
+    cands = []
+    for ss in sents:
+        if ss.strip() == s.strip(): 
             continue
-        if set(kw.split()).intersection(cset):
-            continue
-        if kw.strip() and kw.lower() not in {"none", "all", "above", "below"}:
-            d.append(kw.capitalize())
-        if len(d) >= 6: 
+        toks = [w for w in re.sub(r"[^A-Za-z0-9\- ]+", " ", ss).split() if w]
+        # sliding windows of 3..8 words
+        for k in range(3, 9):
+            for i in range(0, max(0, len(toks) - k + 1), max(1, k//2)):
+                ph = " ".join(toks[i:i+k]).strip()
+                if 8 <= len(ph) <= 120:
+                    cands.append(ph.capitalize())
+        if len(cands) > 600:
             break
 
-    # Fill if short
-    while len(d) < 3:
-        extra = correct.split()
-        if len(extra) > 1:
-            extra = extra[::-1]
-        cand = " ".join(extra).capitalize()
-        if cand not in d and cand != correct:
-            d.append(cand)
-        else:
-            d.append((correct + " policy").capitalize())
-        if len(d) >= 3: break
+    # Scoring: want moderate similarity, similar length, and varied starts
+    target_len = len(correct.split())
+    def score(ph: str) -> float:
+        j = _jaccard(correct, ph)
+        # prefer moderate similarity 0.15..0.45
+        sim_ok = 1.0 - abs(j - 0.3)
+        # length proximity
+        lp = 1.0 - abs(len(ph.split()) - target_len) / max(1.0, target_len)
+        return 0.6*sim_ok + 0.4*lp
 
-    # Trim to three distractors
-    return d[:3], correct
+    # Filter: remove too-similar or almost identical
+    filtered = []
+    cset = _tokset(correct)
+    for ph in cands:
+        if ph.lower() == correct.lower():
+            continue
+        j = _jaccard(correct, ph)
+        if j < 0.12 or j > 0.55:
+            continue
+        if _tokset(ph).issubset(cset):
+            continue
+        filtered.append(ph)
+
+    filtered = sorted(set(filtered), key=score, reverse=True)
+
+    # Enforce varied first words
+    used_first = set()
+    distractors = []
+    for ph in filtered:
+        first = ph.split()[0].lower()
+        if first in used_first:
+            continue
+        used_first.add(first)
+        distractors.append(ph)
+        if len(distractors) >= 6:
+            break
+
+    # Fallback to keyword-based foils if not enough
+    if len(distractors) < 3:
+        glob_kws = _keywords(corpus, top_n=48) if corpus else []
+        for kw in glob_kws:
+            if kw.strip() and kw.lower() not in {"none","all","above","below"} and kw.lower() not in correct.lower():
+                cand = kw.capitalize()
+                if cand not in distractors and _jaccard(correct, cand) < 0.4:
+                    distractors.append(cand)
+                if len(distractors) >= 6:
+                    break
+
+    # If still short, synthesize near-miss forms
+    while len(distractors) < 3:
+        parts = correct.split()
+        if len(parts) > 2:
+            near = " ".join(parts[:-1] + [parts[-1] + "s"]).capitalize()
+        else:
+            near = (correct + " process").capitalize()
+        if near != correct and near not in distractors:
+            distractors.append(near)
+        else:
+            distractors.append((correct + " guideline").capitalize())
+
+    return distractors[:3], correct
 
 
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
@@ -623,7 +712,7 @@ def generate_mcqs_safe(topic: str, src_text: str, total: int, week: int, lesson:
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
         ans = ["A","B","C","D"][options.index(_strip_noise(correct))]
-        st.session_state.seen_q_sigs_global.add(anchor)
+        st.session_state.setdefault('seen_q_sigs_global', set()).add(anchor)
 
         rows.append({
             "Tier": tier, "Q#": {"Low":1,"Medium":2,"High":3}[tier],
@@ -1492,5 +1581,3 @@ try:
 
 except Exception as _e:
     pass
-
-
