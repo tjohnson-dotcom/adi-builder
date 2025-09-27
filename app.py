@@ -717,6 +717,3 @@ with tab4:
 
     st.markdown("</div>", unsafe_allow_html=True)  # grid
     st.markdown("</div>", unsafe_allow_html=True)  # card
-
-  
-
