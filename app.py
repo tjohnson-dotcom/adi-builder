@@ -1131,12 +1131,14 @@ with tab3:
         unsafe_allow_html=True
     )
 
-    # Single smart Generate button (respects MCQs/Activities toggle)
-    label = "📝 Generate MCQs" if st.session_state.gen_type == "MCQs" else "🧩 Generate Activities"
-    if st.button(label, use_container_width=True):
-        with st.spinner("Generating…"):
-            try:
-                if st.session_state.gen_type == "MCQs":
+    
+    # Two explicit generate buttons (MCQs and Activities)
+    colQ, colA = st.columns(2)
+
+    with colQ:
+        if st.button("📝 Generate MCQs", use_container_width=True):
+            with st.spinner("Generating MCQs…"):
+                try:
                     if st.session_state.safe_mode:
                         st.session_state.mcq_df = generate_mcqs_safe(
                             st.session_state.topic,
@@ -1161,9 +1163,17 @@ with tab3:
                             "Paste a longer narrative to reach the target."
                         )
                     else:
-                        st.session_state.mcq_df_backup = st.session_state.mcq_df.copy(deep=True)
                         st.success(f"MCQs generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
-                else:
+                    # keep a backup for reset
+                    if isinstance(st.session_state.mcq_df, pd.DataFrame):
+                        st.session_state.mcq_df_backup = st.session_state.mcq_df.copy(deep=True)
+                except Exception as e:
+                    st.error(f"Couldn’t generate MCQs: {e}")
+
+    with colA:
+        if st.button("🧩 Generate Activities", use_container_width=True):
+            with st.spinner("Generating Activities…"):
+                try:
                     focus = bloom_focus_for_week(st.session_state.week)
                     st.session_state.act_df = generate_activities_safe(
                         int(st.session_state.act_n),
@@ -1176,23 +1186,13 @@ with tab3:
                         st.session_state.act_style,
                         student=st.session_state.student_handout,
                     )
-                    st.session_state.act_df_backup = st.session_state.act_df.copy(deep=True)
                     st.success(f"Activities generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
-            except Exception as e:
-                st.error(f"Couldn’t generate: {e}")
-
-    # Quick switch to reveal the other mode if label wasn't obvious
-    switch_col1, switch_col2 = st.columns([1,3])
-    with switch_col1:
-        other = "Activities" if st.session_state.gen_type == "MCQs" else "MCQs"
-        if st.button(f"Switch to {other}", use_container_width=True):
-            st.session_state.gen_type = other
-            st.toast(f"Switched to {other}")
-    with switch_col2:
-        st.caption("Tip: Toggle in Setup (Step 4A) or use this switch to change what the big button generates.")
-
-
-    # ---- Live Previews (always visible) ----
+                    # keep a backup for reset
+                    if isinstance(st.session_state.act_df, pd.DataFrame):
+                        st.session_state.act_df_backup = st.session_state.act_df.copy(deep=True)
+                except Exception as e:
+                    st.error(f"Couldn’t generate Activities: {e}")
+# ---- Live Previews (always visible) ----
     st.markdown("<div class='h3'>MCQs Preview</div>", unsafe_allow_html=True)
     if 'mcq_df' in st.session_state and isinstance(st.session_state.mcq_df, pd.DataFrame) and len(st.session_state.mcq_df) > 0:
         mcq_edited = st.data_editor(
