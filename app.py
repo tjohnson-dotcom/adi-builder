@@ -1,4 +1,3 @@
-
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
@@ -322,6 +321,60 @@ def _quality_gate(options: List[str], ensure_first: bool = True,
 
 def _quality_gate_loose(options: List[str], ensure_first: bool = True) -> List[str]:
     return _quality_gate(options, ensure_first=ensure_first, min_len=25, min_words=5, require_verb=False)
+
+def _distractors_for_sentence(sent: str, mode: str = "safe"):
+    """Return (distractors, correct) for a sentence.
+    Heuristic fallback: pick a plausible 'correct' anchor from local keywords,
+    and distractors from global keywords not overlapping the anchor.
+    """
+    try:
+        corpus = (st.session_state.get("src_edit") or st.session_state.get("src_text") or "")
+    except Exception:
+        corpus = ""
+    s = _strip_noise(sent or "")
+    if not s:
+        return [], ""
+    # local anchors from this sentence
+    loc_kws = _keywords(s, top_n=8)
+    # choose a multi-word anchor if possible
+    correct = ""
+    for kw in loc_kws:
+        if " " in kw and len(kw) >= 8:
+            correct = kw
+            break
+    if not correct:
+        correct = (loc_kws[0] if loc_kws else s.split(".")[0])[:160]
+    correct = correct.strip().capitalize()
+
+    # candidate distractors from the whole corpus
+    glob_kws = _keywords(corpus, top_n=48) if corpus else []
+    cset = set(correct.lower().split())
+    d = []
+    for kw in glob_kws:
+        if kw == correct.lower(): 
+            continue
+        if set(kw.split()).intersection(cset):
+            continue
+        if kw.strip() and kw.lower() not in {"none", "all", "above", "below"}:
+            d.append(kw.capitalize())
+        if len(d) >= 6: 
+            break
+
+    # Fill if short
+    while len(d) < 3:
+        extra = correct.split()
+        if len(extra) > 1:
+            extra = extra[::-1]
+        cand = " ".join(extra).capitalize()
+        if cand not in d and cand != correct:
+            d.append(cand)
+        else:
+            d.append((correct + " policy").capitalize())
+        if len(d) >= 3: break
+
+    # Trim to three distractors
+    return d[:3], correct
+
 
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
     L=max(0, idx-w); R=min(len(sentences), idx+w+1)
@@ -1439,3 +1492,5 @@ try:
 
 except Exception as _e:
     pass
+
+
