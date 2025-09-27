@@ -1,5 +1,4 @@
-# app.py — ADI Learning Tracker (step-by-step setup, ADI colors, full generation + export)
-# + Pill selectors, Sample text button, Sticky readiness strip
+# app.py — ADI Learning Tracker (tabs with icons & ADI-colored numbers, full flow)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -7,10 +6,8 @@ from typing import List
 import pandas as pd
 import streamlit as st
 
-# ---------- Page config ----------
 st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="centered")
 
-# ---------- ADI Theme / CSS ----------
 CSS = r'''
 <style>
 :root{
@@ -27,7 +24,7 @@ CSS = r'''
   --field-shadow:0 6px 16px rgba(36,90,52,0.06), inset 0 1px 0 rgba(255,255,255,0.5);
   --field-shadow-focus:0 10px 24px rgba(36,90,52,0.18);
 }
-*{font-family: ui-sans-serif, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;}
+*{font-family: ui-sans-serif,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Liberation Sans",sans-serif;}
 html, body { background:var(--stone); }
 main .block-container { padding-top:.75rem; max-width: 980px; }
 
@@ -35,22 +32,60 @@ main .block-container { padding-top:.75rem; max-width: 980px; }
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
 
-/* Tabs — lively with ADI underline */
+/* Tabs — bold, icons, ADI-colored numbers, single underline */
 .stTabs [role="tablist"]{
-  gap:.4rem; border-bottom:1px solid #e3e8e6; padding:0 .25rem .25rem .25rem;
+  gap:.5rem;
+  border-bottom:0;                 /* remove default underline */
+  padding:0 .25rem .35rem .25rem;
+  position:relative;
 }
 .stTabs [role="tab"]{
-  position:relative; padding:.55rem .95rem; border-radius:12px 12px 0 0;
-  font-weight:800; color:#334155; background:#ffffff; border:1px solid #eef2f0; border-bottom:none;
+  position:relative;
+  padding:.65rem 1.2rem;
+  border-radius:14px 14px 0 0;
+  font-weight:800;
+  font-size:1.05rem;
+  background:#ffffff;
+  border:1px solid #e7ecea;
+  border-bottom:none;
   box-shadow:0 6px 14px rgba(36,90,52,.06);
-  transition:transform .08s ease, box-shadow .18s ease, color .18s ease, background .18s ease;
+  transition:transform .08s ease, box-shadow .18s ease, color .18s ease;
 }
-.stTabs [role="tab"]:hover{ transform:translateY(-1px); box-shadow:0 10px 22px rgba(36,90,52,.12); color:#1f2a37; }
-.stTabs [role="tab"][aria-selected="true"]{ color:#245a34 !important; border-color:#dfe7e3; box-shadow:0 12px 26px rgba(36,90,52,.16); }
+.stTabs [role="tab"]:hover{
+  transform:translateY(-1px);
+  box-shadow:0 10px 22px rgba(36,90,52,.12);
+}
+/* Label content */
+.stTabs [role="tab"] p{
+  margin:0;
+  font-weight:800;
+  color:#223047;
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+}
+/* Color-coded numbers (first character of string) */
+.stTabs [role="tab"]:nth-of-type(1) p::first-letter{ color:#245a34; } /* Upload = green */
+.stTabs [role="tab"]:nth-of-type(2) p::first-letter{ color:#C8A85A; } /* Setup  = gold */
+.stTabs [role="tab"]:nth-of-type(3) p::first-letter{ color:#b91c1c; } /* Generate = red */
+.stTabs [role="tab"]:nth-of-type(4) p::first-letter{ color:#245a34; } /* Export = green */
+
+/* Active tab */
+.stTabs [role="tab"][aria-selected="true"] p{ color:#245a34 !important; }
+.stTabs [role="tab"][aria-selected="true"]{
+  border-color:#dfe7e3;
+  box-shadow:0 12px 26px rgba(36,90,52,.16);
+}
+/* Single gradient underline */
 .stTabs [role="tab"][aria-selected="true"]::after{
-  content:""; position:absolute; left:8px; right:8px; bottom:-2px; height:4px; border-radius:999px;
-  background:linear-gradient(90deg,#245a34,#C8A85A); box-shadow:0 2px 6px rgba(36,90,52,.18);
+  content:"";
+  position:absolute; left:10px; right:10px; bottom:-3px;
+  height:4px; border-radius:999px;
+  background:linear-gradient(90deg,#245a34,#C8A85A);
+  box-shadow:0 2px 6px rgba(36,90,52,.18);
 }
+.stTabs [role="tablist"]::after,
+.stTabs [role="tablist"]::before{ content:none !important; display:none !important; }
 
 /* Cards + Headings */
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
@@ -70,11 +105,11 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stTextInput input, .stTextArea textarea{ padding:.8rem .9rem !important; font-weight:600 !important; color:#0f172a !important; }
 .stTextArea textarea::placeholder, .stTextInput input::placeholder{ color:#9aa6a0 !important; }
-/* Disabled look */
+/* Disabled */
 .stTextInput > div > div:has(input[disabled]){ background:#f7faf9 !important; border-color:#e6efe9 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
 .stTextInput input[disabled]{ color:#667d72 !important; font-weight:700 !important; }
 
-/* Drag & drop */
+/* File dropzone */
 [data-testid="stFileUploaderDropzone"]{
   border:2.5px dashed #b9cfc4 !important; border-radius:18px !important; background:#ffffff !important;
   box-shadow:0 10px 26px rgba(36,90,52,0.08); transition:all .2s ease;
@@ -83,7 +118,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
   border-color:#8fb8a3 !important; background:#fcfefd !important; outline:3px solid rgba(36,90,52,0.25);
 }
 
-/* Step panels & dividers */
+/* Steps & separators */
 .step-title{ font-weight:900; color:#0f172a; margin:.4rem 0 .3rem; }
 .step{ border:2px solid var(--border); border-radius:16px; padding:14px; background:#fff; box-shadow:0 8px 22px rgba(36,90,52,0.06); }
 .step.green{  border-color:#cfe1d7; }
@@ -116,28 +151,23 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .chip.high{  background:#333;    color:#fff; border-color:#222; }
 .chip.hl{ outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
 
-/* Pill radios — transform radios into chunky chips */
-[data-testid="stRadio"] div[role="radiogroup"]{
-  display:flex; gap:.5rem; flex-wrap:wrap;
-}
+/* Pill radios */
+[data-testid="stRadio"] div[role="radiogroup"]{ display:flex; gap:.5rem; flex-wrap:wrap; }
 [data-testid="stRadio"] label{
   background:#ffffff; border:1.8px solid var(--border); border-radius:999px; padding:.45rem .9rem;
   font-weight:800; color:#0f172a; box-shadow:0 6px 16px rgba(36,90,52,0.06);
 }
 [data-testid="stRadio"] label:hover{ border-color:#cfe1d7; }
-[data-testid="stRadio"] > div:has(input[type="radio"]:checked) label{
-  /* fallback; not used */
-}
 [data-testid="stRadio"] div[role="radio"][aria-checked="true"]{
-  background:#f3fbf6; border-radius:999px; box-shadow:0 10px 22px rgba(36,90,52,0.12);
-  border:2px solid #cfe1d7;
+  background:#f3fbf6; border-radius:999px; box-shadow:0 10px 22px rgba(36,90,52,0.12); border:2px solid #cfe1d7;
 }
-[data-testid="stRadio"] div[role="radio"][aria-checked="true"] > div{
-  font-weight:900;
-}
+[data-testid="stRadio"] div[role="radio"][aria-checked="true"] > div{ font-weight:900; }
 
-/* Small helper note */
+/* Helper / notes */
 .helper{ color:#667085; font-size:13px; }
+.note{ padding:12px 14px; border-radius:12px; border:1px solid #eadebd; background:linear-gradient(180deg,#fffdf5,#fffaf0); color:#3b351c; }
+.note-green{ padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0; background:linear-gradient(180deg,#f9fefb,#f3fbf6); color:#133c23; font-weight:600; }
+.note-amber{ padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7; background:linear-gradient(180deg,#fffdf7,#fffaf0); color:#4a3d14; font-weight:600; }
 
 /* Previews */
 .badge{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; color:#fff; font-weight:800; font-size:12px; margin-right:10px; }
@@ -145,12 +175,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 .qcard{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .qitem{ display:flex; gap:10px; align-items:flex-start; padding:6px 0; }
 
-/* Notes + color-coded reminders */
-.note{ padding:12px 14px; border-radius:12px; border:1px solid #eadebd; background:linear-gradient(180deg,#fffdf5,#fffaf0); color:#3b351c; }
-.note-green{ padding:12px 14px; border-radius:12px; border:1px solid #b5d1c0; background:linear-gradient(180deg,#f9fefb,#f3fbf6); color:#133c23; font-weight:600; }
-.note-amber{ padding:12px 14px; border-radius:12px; border:1px solid #e4d3a7; background:linear-gradient(180deg,#fffdf7,#fffaf0); color:#4a3d14; font-weight:600; }
-
-/* Export grid + green download buttons */
+/* Export */
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width: 760px){ .export-grid{ grid-template-columns: 1fr; } }
 .export-card{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow:var(--shadow); }
@@ -162,7 +187,7 @@ label, .stMarkdown p + label{ font-weight:700 !important; color:#0f172a !importa
 }
 .stDownloadButton>button:hover{ filter:brightness(1.06); }
 
-/* Sticky status strip (Generate tab) */
+/* Sticky status (Generate) */
 .sticky-strip{
   position: sticky; top: 8px; z-index: 5;
   background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:8px 12px;
@@ -320,13 +345,12 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# ---------- Anchored MCQs ----------
+# ---------- MCQs ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1) -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
     sents = _sentences(source or "")
-    if len(sents) < 12:
-        raise ValueError("Not enough source text (need ~12+ good sentences).")
+    if len(sents) < 12: raise ValueError("Not enough source text (need ~12+ good sentences).")
     keys = _keywords(source or topic or "", top_n=max(24, total_q*4))
     if not keys: raise ValueError("Couldn’t mine keywords; upload a richer section.")
     rows=[]; rnd=random.Random(2025); made=0; tiers=["Low","Medium","High"]
@@ -364,20 +388,18 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
     if made == 0: raise ValueError("Could not extract enough anchored items — try a different section.")
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Anchored Activities ----------
+# ---------- Activities ----------
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "") -> pd.DataFrame:
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
     verbs = {"Low":LOW_VERBS,"Medium":MED_VERBS,"High":HIGH_VERBS}.get(tier, MED_VERBS)[:6]
     sents = _sentences(source or "")
-    if len(sents) < 12:
-        raise ValueError("Not enough source text to build activities (need ~12+ sentences).")
+    if len(sents) < 12: raise ValueError("Not enough source text to build activities (need ~12+ sentences).")
     hints = [s for s in sents if re.search(
         r"\b(first|then|next|measure|calculate|record|verify|inspect|threshold|risk|control|select|compare|interpret|justify|design)\b",
         s, re.I)]
     hints = _uniq_keep(hints)[:60]
-    if not hints:
-        raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
+    if not hints: raise ValueError("Couldn’t find steps/constraints in the source to anchor activities.")
     rnd = random.Random(99)
     rows=[]
     for i in range(1, count + 1):
@@ -400,7 +422,7 @@ def generate_activities(count: int, duration: int, tier: str, topic: str, lesson
         })
     return pd.DataFrame(rows)
 
-# ---------- DOCX helpers ----------
+# ---------- DOCX + GIFT ----------
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
     if level==0: r.bold=True; r.font.size=Pt(16)
@@ -438,7 +460,6 @@ def export_acts_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="")->byte
         doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
 
-# ---------- GIFT export ----------
 _GIFT_ESCAPE = str.maketrans({"~": r"\~","=": r"\=","#": r"\#","{": r"\{","}": r"\}",":": r"\:","\n": r"\n"})
 def _gift_escape(s:str)->str: return (s or "").translate(_GIFT_ESCAPE)
 def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
@@ -493,8 +514,10 @@ with col_title:
     st.markdown("<div class='small'>Transform lessons into measurable learning</div>", unsafe_allow_html=True)
 st.divider()
 
-# ---------- Tabs ----------
-tab1, tab2, tab3, tab4 = st.tabs(["① Upload", "② Setup", "③ Generate", "④ Export"])
+# ---------- Tabs (icon + number labels) ----------
+tab1, tab2, tab3, tab4 = st.tabs([
+    "① 📂 Upload", "② ⚙️ Setup", "③ ✨ Generate", "④ 📤 Export"
+])
 
 # ===== ① Upload =====
 with tab1:
@@ -510,12 +533,11 @@ with tab1:
             st.success("File uploaded and parsed.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== ② Setup (ONE PAGE, step-by-step) =====
+# ===== ② Setup =====
 with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
 
-    # Step 1 — Lesson & Week
     st.markdown("<div class='step green'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 1 — Choose Lesson & Week</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,1,2])
@@ -539,7 +561,6 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 2 — Bloom’s verbs
     st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 2 — Review Bloom’s Focus</div>", unsafe_allow_html=True)
     def bloom_row(label, verbs):
@@ -554,7 +575,6 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 3 — Topic (optional)
     st.markdown("<div class='step gold'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 3 — Learning Objective / Topic (optional)</div>", unsafe_allow_html=True)
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
@@ -562,7 +582,6 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 4 — Source text (+ sample)
     st.markdown("<div class='step neutral'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 4 — Paste/Edit Source Text</div>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
@@ -578,7 +597,6 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 5 — MCQ setup (pill radios)
     st.markdown("<div class='step green'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 5 — MCQ Setup</div>", unsafe_allow_html=True)
     choices = [5,10,20,30]
@@ -588,7 +606,6 @@ with tab2:
 
     st.markdown("<div class='separator'></div>", unsafe_allow_html=True)
 
-    # Step 6 — Activity setup (pill + slider)
     st.markdown("<div class='step gold'>", unsafe_allow_html=True)
     st.markdown("<div class='step-title'>Step 6 — Activity Setup</div>", unsafe_allow_html=True)
     colA, colB = st.columns([1,2])
@@ -598,14 +615,13 @@ with tab2:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)  # /card
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ===== ③ Generate =====
 with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Generate Questions & Activities</div>", unsafe_allow_html=True)
 
-    # Sticky strip showing readiness
     sent_count = len(_sentences(st.session_state.src_edit or ""))
     need = 12
     ready = sent_count >= need
@@ -668,7 +684,7 @@ with tab4:
 
     st.markdown("<div class='export-grid'>", unsafe_allow_html=True)
 
-    # MCQ card
+    # MCQ exports
     st.markdown("<div class='export-card'>", unsafe_allow_html=True)
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Download your question set in multiple formats.</div>", unsafe_allow_html=True)
@@ -694,7 +710,7 @@ with tab4:
         st.markdown("<div class='note-green'>Generate MCQs in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Activities card
+    # Activities exports
     st.markdown("<div class='export-card'>", unsafe_allow_html=True)
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     st.markdown("<div class='export-note'>Export practical activities aligned to Bloom’s focus.</div>", unsafe_allow_html=True)
