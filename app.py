@@ -1,4 +1,5 @@
 
+
 # app.py — ADI Learning Tracker (v3.1, patched)
 # English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
