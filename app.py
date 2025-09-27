@@ -204,30 +204,74 @@ def _is_clean_sentence(s: str) -> bool:
 def _near(a:str,b:str,th:float=0.90)->bool:
     return SequenceMatcher(a=a.lower(), b=b.lower()).ratio() >= th
 
+# ---------- Option filter (fixed) ----------
 def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
     ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
-    out = []
-    for j,o in enumerate(ops):
+    out: List[str] = []
+    for j, o in enumerate(ops):
         low = o.lower()
-        if any(p in low for p in BLOCK_LINE_PHRASES): continue
-        if _has_emoji(o): continue
-        if re.search(r"\bps\d+\b", low): continue
+        if any(p in low for p in BLOCK_LINE_PHRASES):
+            continue
+        if _has_emoji(o):
+            continue
+        if re.search(r"\bps\d+\b", low):
+            continue
+
         ok = True
-        if len(o) < 40 or len(o) > 220: ok = False
+        if len(o) < 40 or len(o) > 220:
+            ok = False
         letters = [c for c in o if c.isalpha()]
-        if letters and sum(c.isupper() for c in letters)/len(c for c in letters): pass  # keep linter happy
-        if letters and sum(c.isupper() for c in o if c.isalpha())/len([c for c in o if c.isalpha()]) > 0.55: ok = False
-        if len(o.split()) < 6: ok = False
-        if not re.search(VERB_RE, o, re.I): ok = False
-        if j == 0 and ensure_first: ok = True
-        if ok and not any(_near(o,p,0.96) for p in out):
+        # uppercase ratio filter (avoid all-caps headings)
+        if letters and (sum(1 for c in letters if c.isupper()) / len(letters)) > 0.55:
+            ok = False
+        if len(o.split()) < 6:
+            ok = False
+        if not re.search(VERB_RE, o, re.I):
+            ok = False
+
+        if j == 0 and ensure_first:
+            ok = True  # keep the first candidate as the "correct" baseline
+
+        if ok and not any(_near(o, p, 0.96) for p in out):
             out.append(o)
-        if len(out)==4: break
-    k=0
-    while len(out)<4 and k < len(ops):
+        if len(out) == 4:
+            break
+
+    # backfill if we still need options
+    k = 0
+    while len(out) < 4 and k < len(ops):
         if ops[k] not in out and not _has_emoji(ops[k]) and not any(p in ops[k].lower() for p in BLOCK_LINE_PHRASES):
             out.append(ops[k])
-        k+=1
+        k += 1
+    return out[:4]
+
+# Ultra-compatible fallback (requested)
+def _quality_gate_loose(options: List[str], ensure_first: bool = True) -> List[str]:
+    """
+    Emergency fallback: minimal screening, prioritises getting 4 options.
+    Keeps the first item (the 'correct' sentence), then adds reasonably
+    long, distinct sentences; finally backfills anything to reach 4.
+    """
+    ops = [re.sub(r"\s+"," ", o.strip()) for o in options if o and o.strip()]
+    out: List[str] = []
+    for j, o in enumerate(ops):
+        if j == 0 and ensure_first:
+            out.append(o)
+            continue
+        if _has_emoji(o):
+            continue
+        if len(o) < 25:
+            continue
+        if any(SequenceMatcher(a=o.lower(), b=p.lower()).ratio() >= 0.98 for p in out):
+            continue
+        out.append(o)
+        if len(out) == 4:
+            break
+    k = 0
+    while len(out) < 4 and k < len(ops):
+        if ops[k] not in out:
+            out.append(ops[k])
+        k += 1
     return out[:4]
 
 def _window(sentences: List[str], idx: int, w: int = 2) -> List[str]:
@@ -361,12 +405,13 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         cand = neigh + extra[:8]
 
         options = _quality_gate([correct] + cand, ensure_first=True)
+        if len(options) < 4:
+            options = _quality_gate_loose([correct] + cand, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
 
         tier = tier_for_q(made)
-        tmpl_list = STEMS[tier]
-        stem = tmpl_list[made % len(tmpl_list)]  # rotate stems
+        stem = STEMS[tier][made % len(STEMS[tier])]  # rotate stems
         stem = _strip_noise(stem)
         options = [_strip_noise(o) for o in options]
         rnd.shuffle(options)
@@ -399,6 +444,8 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
                 dist.append(cand)
                 if len(dist) == 6: break
             options = _quality_gate([correct] + dist, ensure_first=True)
+            if len(options) < 4:
+                options = _quality_gate_loose([correct] + dist, ensure_first=True)
             if correct not in options: options = ([correct] + options)[:4]
             if len(options) < 4: continue
             tier = tier_for_q(made)
@@ -474,6 +521,8 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             i += 1; continue
         distractors = _pick_distractors(pool, correct, 3)
         options = _quality_gate([correct] + distractors, ensure_first=True)
+        if len(options) < 4:
+            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4:
             i += 1; continue
@@ -500,6 +549,8 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
             continue
         distractors = _pick_distractors(pool, correct, 3)
         options = _quality_gate([correct] + distractors, ensure_first=True)
+        if len(options) < 4:
+            options = _quality_gate_loose([correct] + distractors, ensure_first=True)
         if correct not in options: options = ([correct] + options)[:4]
         if len(options) < 4: continue
         tier = tier_for_q(len(rows))
@@ -780,6 +831,7 @@ with tab2:
     with c3:
         focus = bloom_focus_for_week(st.session_state.week)
         st.markdown(f"**Bloom focus (auto): Week {st.session_state.week}: {focus}**")
+    # Focus chip (boxed pill)
     _focus = focus
     _cls = "low" if _focus=="Low" else ("med" if _focus=="Medium" else "high")
     st.markdown(f"<div class='bloom-row'><span class='chip {_cls} hl'>🎯 Focus {_focus}</span></div>", unsafe_allow_html=True)
