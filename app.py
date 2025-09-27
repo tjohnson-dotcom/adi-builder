@@ -651,8 +651,63 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
         })
     return pd.DataFrame(rows)
 
-def generate_activities_safe(*args, **kwargs) -> pd.DataFrame:
-    return generate_activities(*args, **kwargs)
+def generate_activities_safe(n:int, dur:int, focus:str, topic:str, lesson:int, week:int, src_text:str, style:str, student:bool=False)->pd.DataFrame:
+    """
+    Safe activity generator with variability by week/lesson and Bloom focus.
+    """
+    rng_seed = week * 100 + lesson
+    random.seed(rng_seed)
+
+    style_pool = ["Standard", "Lab", "Group Task", "Reflection", "Debate", "Simulation", "Case Study", "Gallery Walk"]
+    verbs = {
+        "Low": ["identify", "list", "describe"],
+        "Medium": ["apply", "analyze", "compare"],
+        "High": ["evaluate", "design", "create"],
+    }
+    frames = [("Starter", 5), ("Main", max(10, dur-10)), ("Plenary", 5)]
+
+    # Choose styles
+    chosen_styles = []
+    for i in range(n):
+        if style == "Standard":
+            chosen_styles.append(random.choice(style_pool))
+        else:
+            chosen_styles.append(style)
+
+    rows = []
+    base_topic = (topic or "this week’s learning")[:120]
+    task_bits = {
+        "Lab": ["run a quick experiment", "collect measurements", "plot a simple graph"],
+        "Group Task": ["brainstorm alternatives", "split roles", "synthesize on an A3"],
+        "Reflection": ["write a minute paper", "pair-share takeaways", "log uncertainties"],
+        "Debate": ["form two teams", "list claims & evidence", "rebut with counter-arguments"],
+        "Simulation": ["play roles", "simulate a scenario", "debrief decisions"],
+        "Case Study": ["skim a short case", "extract key facts", "present recommendations"],
+        "Gallery Walk": ["post drafts", "rotate in groups", "leave warm/cool feedback"],
+        "Standard": ["work through guided prompts", "check against rubric", "share one improvement"],
+    }
+
+    for i in range(n):
+        s = chosen_styles[i]
+        v = random.choice(verbs.get(focus, verbs["Medium"]))
+        bits = list(task_bits.get(s, task_bits["Standard"]))
+        random.shuffle(bits)
+        starter_mins, main_mins, plenary_mins = frames[0][1], frames[1][1], frames[2][1]
+        title = f"{focus} Activity {i+1} — {s}"
+        objective = f"You will {v} key ideas related to {base_topic} (Lesson {lesson}, Week {week}, focus: {focus})."
+        steps = (
+            f"Starter ({starter_mins}m). {v.title()} prior knowledge on {base_topic}.\n"
+            f"Starter ({starter_mins}m). {v.title()} prior knowledge on {base_topic}.\n"
+            f"Main ({main_mins}m). Teams {bits[0]}, then {bits[1]}; capture outcomes tied to {focus}.\n"
+            f"Plenary ({plenary_mins}m). {bits[2].capitalize()}, then share one insight and one question."
+            f"Plenary ({plenary_mins}m). {bits[2].capitalize()}, then share one insight and one question."
+        )
+        materials = "Timer; A3 paper; markers" + ("; student handout" if student else "")
+        assessment = f"Rubric aligned to {focus}: clarity, correctness, and application to scenario (each /3 → /9)."
+        rows.append({"title": title, "objective": objective, "steps": steps, "materials": materials, "assessment": assessment, "duration": dur})
+
+    return pd.DataFrame(rows, columns=["title","objective","steps","materials","assessment","duration"])
+
 
 # ---------- Export helpers ----------
 def _docx_heading(doc, text, level=0):
@@ -1017,6 +1072,7 @@ with tab3:
                             "Paste a longer narrative to reach the target."
                         )
                     else:
+                        st.session_state.mcq_df_backup = st.session_state.mcq_df.copy(deep=True)
                         st.success(f"MCQs generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
                 else:
                     focus = bloom_focus_for_week(st.session_state.week)
@@ -1031,6 +1087,7 @@ with tab3:
                         st.session_state.act_style,
                         student=st.session_state.student_handout,
                     )
+                    st.session_state.act_df_backup = st.session_state.act_df.copy(deep=True)
                     st.success(f"Activities generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
             except Exception as e:
                 st.error(f"Couldn’t generate: {e}")
@@ -1042,6 +1099,12 @@ with tab3:
         if st.button("💾 Save MCQ edits"):
             st.session_state.mcq_df = mcq_edited
             st.toast("Saved MCQ edits")
+    if st.button("🔄 Reset MCQs"):
+        if "mcq_df_backup" in st.session_state:
+            st.session_state.mcq_df = st.session_state.mcq_df_backup.copy(deep=True)
+            st.toast("Restored last generated MCQs")
+        else:
+            st.warning("No backup found yet — generate first.")
     else:
         st.info("No MCQs to show yet — choose **MCQs** and click **Generate** above. If you generated but see nothing, add more sentences in Step 4 and try again.")
 
@@ -1051,6 +1114,12 @@ with tab3:
         if st.button("💾 Save Activity edits"):
             st.session_state.act_df = act_edited
             st.toast("Saved Activity edits")
+    if st.button("🔄 Reset Activities"):
+        if "act_df_backup" in st.session_state:
+            st.session_state.act_df = st.session_state.act_df_backup.copy(deep=True)
+            st.toast("Restored last generated Activities")
+        else:
+            st.warning("No backup found yet — generate first.")
     else:
         st.info("No Activities to show yet — choose **Activities** and click **Generate** above.")
 # ===== ④ Export =====
