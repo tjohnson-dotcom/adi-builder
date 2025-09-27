@@ -1,5 +1,5 @@
-# app.py — ADI Learning Tracker (final build with preview & DOCX highlight toggles)
-# English-only • PDF/PPTX/DOCX input • Robust extraction • MCQs & Activities
+# app.py — ADI Learning Tracker (stable build)
+# English-only • PDF/PPTX/DOCX input • MCQs & Activities • Print-friendly DOCX
 # Exports: CSV / GIFT / Word / Combined Word
 
 import io, os, re, base64, random, unicodedata
@@ -15,19 +15,19 @@ st.set_page_config(page_title="ADI Learning Tracker", page_icon="🧭", layout="
 
 # ---------- Parsers ----------
 try:
-    import fitz  # PyMuPDF (primary)
+    import fitz  # PyMuPDF
 except Exception:
     fitz = None
 try:
-    import pdfplumber  # fallback 1
+    import pdfplumber
 except Exception:
     pdfplumber = None
 try:
-    from PyPDF2 import PdfReader  # fallback 2
+    from PyPDF2 import PdfReader
 except Exception:
     PdfReader = None
 
-# DOCX reader alias (separate from python-docx writer)
+# DOCX reader (separate from python-docx writer)
 try:
     import docx  # reader
     DocxReader = docx.Document
@@ -126,19 +126,21 @@ def _load_logo_bytes() -> bytes:
 LOW_VERBS  = ["define","identify","list","describe","recall","label"]
 MED_VERBS  = ["apply","demonstrate","solve","illustrate","analyze","interpret","compare"]
 HIGH_VERBS = ["evaluate","synthesize","design","justify","formulate","critique"]
-
 def bloom_focus_for_week(week:int)->str:
     if 1<=week<=4: return "Low"
     if 5<=week<=9: return "Medium"
     return "High"
 
-# ---------- Filters & helpers ----------
+# ---------- Helpers & filters ----------
 VERB_RE = r"\b(is|are|was|were|be|being|been|has|have|can|should|may|include|includes|use|uses|measure|calculate|design|evaluate|apply|compare|justify|explain|describe|identify)\b"
 BAD_ANCHORS = {"rationale","engineering","data","sheet","concepts","theories","case","studies","real","world","overview","introduction","chapter","module","lesson","appendix","journal","glossary","summary"}
 STOP = set("a an the and or of for to in on with by from as at into over under than then is are was were be been being this that these those it its they them he she we you your our their not no".split())
 STOP_EXTRA = {"will","ensuring","ensure","various","several","overall","general","saudi","arabia","vision","project’s","project-based","activity","exercise","diagram","figure"}
 BLOCK_LINE_PHRASES = ["exercise","diagram","figure","glossary","learning outcomes","error! bookmark not defined","lesson","week"]
-EMOJI_RE = r"[\u2600-\u27BF\U0001F300-\u1FAFF]"
+
+def _has_emoji(s: str) -> bool:
+    # covers ☀–⚿ and the main emoji block
+    return any(0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF for ch in s or "")
 
 def _normalize(s: str) -> str:
     s = unicodedata.normalize("NFKC", s or "")
@@ -196,7 +198,7 @@ def _is_clean_sentence(s: str) -> bool:
     if not _is_sentence_like(s): return False
     low = s.lower()
     if any(p in low for p in BLOCK_LINE_PHRASES): return False
-    if re.search(EMOJI_RE, s): return False
+    if _has_emoji(s): return False
     return True
 
 def _near(a:str,b:str,th:float=0.90)->bool:
@@ -208,7 +210,7 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
     for j,o in enumerate(ops):
         low = o.lower()
         if any(p in low for p in BLOCK_LINE_PHRASES): continue
-        if re.search(EMOJI_RE, o): continue
+        if _has_emoji(o): continue
         if re.search(r"\bps\d+\b", low): continue
         ok = True
         if len(o) < 40 or len(o) > 220: ok = False
@@ -222,7 +224,7 @@ def _quality_gate(options: List[str], ensure_first: bool = True) -> List[str]:
         if len(out)==4: break
     k=0
     while len(out)<4 and k < len(ops):
-        if ops[k] not in out and not re.search(EMOJI_RE, ops[k]) and not any(p in ops[k].lower() for p in BLOCK_LINE_PHRASES):
+        if ops[k] not in out and not _has_emoji(ops[k]) and not any(p in ops[k].lower() for p in BLOCK_LINE_PHRASES):
             out.append(ops[k])
         k+=1
     return out[:4]
@@ -493,28 +495,28 @@ def generate_mcqs_safe(topic: str, source: str, total_q: int, week: int, lesson:
 
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Activities (sentence style, no lesson/week in title) ----------
+# ---------- Activities (sentence style; student-handout wording optional) ----------
 def generate_activities(count: int, duration: int, tier: str, topic: str,
-                        lesson: int, week: int, source: str = "", style: str = "Standard") -> pd.DataFrame:
+                        lesson: int, week: int, source: str = "", style: str = "Standard",
+                        student: bool = False) -> pd.DataFrame:
     topic = (topic or "Project scope, WBS, risk register, stakeholders").strip()
     verbs = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}.get(tier, MED_VERBS)
-    txt = _strip_noise(_clean_lines(source or ""))
+    _ = _strip_noise(_clean_lines(source or ""))
 
     # Time split
     t1 = max(5, int(duration*0.17)); t3 = max(8, int(duration*0.17)); t2 = max(10, duration - (t1+t3))
+    subj = "You" if student else "Students"
 
     rows = []
     for i in range(1, count+1):
         v = verbs[(i-1) % len(verbs)]
         steps = [
-            f"Starter ({t1}m). Students {v} prior knowledge using a success checklist for time, cost, quality, and security.",
-            ("Main ({t2}m). Students draft a scope statement showing what is in and what is out. "
-             "They sketch a level-2 WBS with three to six work packages. "
-             "They build a risk register with an owner and a response for each risk. "
-             "They map stakeholders and mark a simple RACI.").format(t2=t2),
-            f"Plenary ({t3}m). Teams exchange plans, offer one strength and one question, and justify one change."
+            f"Starter ({t1}m). {subj} {v} prior knowledge using a short checklist for time, cost, quality, and security.",
+            ("Main ({t2}m). {subj} write a clear scope (what is in / out), sketch a level-2 WBS, "
+             "list risks with an owner and a response, and map stakeholders with a simple RACI.").format(t2=t2),
+            f"Plenary ({t3}m). Teams swap work, share one strength and one question, then justify one change."
         ]
-        if style == "Lab": steps[1] += " Students follow lab safety rules and verify each step."
+        if style == "Lab": steps[1] += " Follow lab safety rules and verify each step."
         elif style == "Group Task": steps[1] += " Teams assign roles: Lead, Scribe, Risk Owner, Reviewer."
         elif style == "Reflection": steps[2] += " Each student writes a two-minute reflection."
 
@@ -522,7 +524,7 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
             "Lesson": lesson, "Week": week, "Policy focus": tier,
             "Title": f"{tier} Activity {i}",
             "Tier": tier,
-            "Objective": f"Students will {v} key ideas anchored to {topic}.",
+            "Objective": f"{subj} will {v} key ideas anchored to {topic}.",
             "Steps": " ".join(steps),
             "Materials": "Brief handout, A3 paper, markers; timer.",
             "Assessment": "Rubric: scope clarity, WBS level-2, risks with owner/response, and RACI (each /3 → /12).",
@@ -536,14 +538,14 @@ def generate_activities_safe(*args, **kwargs) -> pd.DataFrame:
 # ---------- Export helpers ----------
 def _docx_heading(doc, text, level=0):
     p=doc.add_paragraph(); r=p.add_run(text)
-    if level==0: r.bold=True; r.font.size=Pt(18)   # larger title
-    elif level==1: r.bold=True; r.font.size=Pt(15) # section headers
+    if level==0: r.bold=True; r.font.size=Pt(20)   # larger title
+    elif level==1: r.bold=True; r.font.size=Pt(16) # section headers
     else: r.font.size=Pt(13)
 
 def _set_doc_defaults(doc):
     try:
-        doc.styles["Normal"].font.size = Pt(12)  # readable when printed
-        doc.styles["Normal"].paragraph_format.line_spacing = 1.15
+        doc.styles["Normal"].font.size = Pt(13)       # larger body
+        doc.styles["Normal"].paragraph_format.line_spacing = 1.25
     except Exception:
         pass
 
@@ -551,7 +553,7 @@ def _add_mcq_stem(doc, qnum: int, text: str, highlight: bool = True):
     p = doc.add_paragraph()
     r = p.add_run(f"Q{qnum}. {text}")
     r.bold = True
-    r.font.size = Pt(13)
+    r.font.size = Pt(14)  # larger stems
     if highlight and RGBColor is not None:
         try:
             r.font.color.rgb = RGBColor(0x24, 0x5A, 0x34)  # ADI green
@@ -563,7 +565,7 @@ def _add_mcq_stem(doc, qnum: int, text: str, highlight: bool = True):
 def _add_mcq_option(doc, label: str, text: str):
     p = doc.add_paragraph()
     if Inches is not None:
-        p.paragraph_format.left_indent = Inches(0.25)
+        p.paragraph_format.left_indent = Inches(0.30)
         p.paragraph_format.first_line_indent = Inches(0)
     p.paragraph_format.space_after = Pt(1)
     p.add_run(f"{label}. ").bold = True
@@ -572,7 +574,7 @@ def _add_mcq_option(doc, label: str, text: str):
 def export_mcqs_docx(df: pd.DataFrame, lesson:int, week:int, topic:str="", highlight_stems: bool = True)->bytes:
     if Document is None: return b""
     doc=Document(); _set_doc_defaults(doc)
-    if Inches: 
+    if Inches:
         sec=doc.sections[0]; sec.left_margin=Inches(0.8); sec.right_margin=Inches(0.8)
     _docx_heading(doc, "Knowledge MCQs" + (f" • {topic}" if topic else ""), 0)
     doc.add_paragraph()
@@ -687,10 +689,11 @@ st.session_state.setdefault("logo_bytes", _load_logo_bytes())
 st.session_state.setdefault("src_text", "")
 st.session_state.setdefault("src_edit", "")
 st.session_state.setdefault("safe_mode", True)
-# New toggles
-st.session_state.setdefault("hl_stems_docx", True)          # DOCX stems highlight
-st.session_state.setdefault("hl_stems_preview", True)       # preview stems highlight
-st.session_state.setdefault("hl_act_titles_preview", True)  # preview activity titles highlight
+# Highlight toggles & student handout
+st.session_state.setdefault("hl_stems_docx", True)
+st.session_state.setdefault("hl_stems_preview", True)
+st.session_state.setdefault("hl_act_titles_preview", True)
+st.session_state.setdefault("student_handout", False)
 
 # ---------- Header ----------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
@@ -712,7 +715,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["① 📂 Upload", "② ⚙️ Setup", "③ �
 def progress_fraction()->float:
     steps = 0; total = 4
     if (st.session_state.get("src_edit") or "").strip(): steps += 1
-    if len(_sentences(st.session_state.get("src_edit",""))) >= 6: steps += 1  # Safe Mode precheck
+    if len(_sentences(st.session_state.get("src_edit",""))) >= 6: steps += 1
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     if ("mcq_df" in st.session_state) or ("act_df" in st.session_state): steps += 1
     return steps/total
@@ -810,6 +813,8 @@ with tab2:
         st.session_state.act_style = st.selectbox("Activity style", ["Standard","Lab","Group Task","Reflection"], index=["Standard","Lab","Group Task","Reflection"].index(st.session_state.act_style))
     with colB:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
+    # Student handout wording
+    st.session_state.student_handout = st.checkbox("Student handout wording (use 'You/We' in activities)", value=st.session_state.student_handout)
 
     st.progress(progress_fraction())
     st.markdown("</div>", unsafe_allow_html=True)
@@ -851,7 +856,8 @@ with tab3:
                     st.session_state.act_df = generate_activities_safe(
                         int(st.session_state.act_n), int(st.session_state.act_dur), focus,
                         st.session_state.topic, st.session_state.lesson, st.session_state.week,
-                        st.session_state.src_edit, st.session_state.act_style
+                        st.session_state.src_edit, st.session_state.act_style,
+                        student=st.session_state.student_handout
                     )
                     st.success("Activities generated.")
                 except Exception as e:
