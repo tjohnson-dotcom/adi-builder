@@ -813,6 +813,8 @@ st.session_state.setdefault("hl_stems_preview", True)
 st.session_state.setdefault("hl_act_titles_preview", True)
 st.session_state.setdefault("student_handout", False)
 st.session_state.setdefault("seen_q_sigs", set())
+st.session_state.setdefault("gen_type", "MCQs")
+st.session_state.setdefault("source_type", "PPT")
 
 # ---------- Header ----------
 st.markdown("<div class='header-wrap'>", unsafe_allow_html=True)
@@ -895,6 +897,29 @@ with tab2:
     st.session_state.topic = st.text_input("Learning Objective / Topic", value=st.session_state.topic, placeholder="e.g., Understand Ohm’s Law and apply it to simple circuits")
     st.markdown("<hr>", unsafe_allow_html=True)
 
+    # Step 4A — What to generate & Source type (new)
+    st.markdown("<b>Step 4A — What to generate & Source type</b>", unsafe_allow_html=True)
+    sA, sB, sC = st.columns([1.2, 1.2, 2.6])
+    with sA:
+        st.session_state.gen_type = st.radio(
+            "Generate",
+            ["MCQs", "Activities"],
+            index=["MCQs","Activities"].index(st.session_state.gen_type),
+            horizontal=True,
+        )
+    with sB:
+        st.session_state.source_type = st.selectbox(
+            "Source",
+            ["PPT", "E-book", "Lesson plan"],
+            index=["PPT","E-book","Lesson plan"].index(st.session_state.source_type),
+        )
+    with sC:
+        st.caption(
+            f"Context → Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}"
+        )
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+
     # Step 4
     st.markdown("<b>Step 4 — Paste/Edit Source Text</b>", unsafe_allow_html=True)
     csa, csb = st.columns([4,1])
@@ -952,75 +977,63 @@ with tab3:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Generate Questions & Activities</div>", unsafe_allow_html=True)
 
-    colQ, colA = st.columns([1,1])
-    with colQ:
-        if st.button("📝 Generate MCQs", use_container_width=True):
-            with st.spinner("Generating MCQs…"):
-                try:
+    
+    # Context banner
+    st.markdown(
+        f"<div class='bloom-row'><span class='chip hl'>Lesson {st.session_state.lesson}</span>"
+        f"<span class='chip hl'>Week {st.session_state.week}</span>"
+        f"<span class='chip hl'>{st.session_state.source_type}</span>"
+        f"<span class='chip {'low' if bloom_focus_for_week(st.session_state.week)=='Low' else ('med' if bloom_focus_for_week(st.session_state.week)=='Medium' else 'high')}'>Focus {bloom_focus_for_week(st.session_state.week)}</span></div>",
+        unsafe_allow_html=True
+    )
+
+    # Single smart Generate button (respects MCQs/Activities toggle)
+    label = "📝 Generate MCQs" if st.session_state.gen_type == "MCQs" else "🧩 Generate Activities"
+    if st.button(label, use_container_width=True):
+        with st.spinner("Generating…"):
+            try:
+                if st.session_state.gen_type == "MCQs":
                     if st.session_state.safe_mode:
                         st.session_state.mcq_df = generate_mcqs_safe(
-                            st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
-                            st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
+                            st.session_state.topic,
+                            st.session_state.src_edit,
+                            int(st.session_state.mcq_total),
+                            st.session_state.week,
+                            st.session_state.lesson,
+                            st.session_state.mcq_mode,
                         )
                     else:
                         st.session_state.mcq_df = generate_mcqs_exact(
-                            st.session_state.topic, st.session_state.src_edit, int(st.session_state.mcq_total),
-                            st.session_state.week, st.session_state.lesson, st.session_state.mcq_mode
+                            st.session_state.topic,
+                            st.session_state.src_edit,
+                            int(st.session_state.mcq_total),
+                            st.session_state.week,
+                            st.session_state.lesson,
+                            st.session_state.mcq_mode,
                         )
                     if len(st.session_state.mcq_df) < st.session_state.mcq_total:
-                        st.warning(f"Generated {len(st.session_state.mcq_df)} of {st.session_state.mcq_total}. Paste a longer narrative to reach the target.")
+                        st.warning(
+                            f"Generated {len(st.session_state.mcq_df)} of {st.session_state.mcq_total}. "
+                            "Paste a longer narrative to reach the target."
+                        )
                     else:
-                        st.success("MCQs generated.")
-                except Exception as e:
-                    st.error(f"Couldn’t generate MCQs: {e}")
-    with colA:
-        if st.button("🧩 Generate Activities", use_container_width=True):
-            with st.spinner("Generating Activities…"):
-                try:
+                        st.success(f"MCQs generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
+                else:
                     focus = bloom_focus_for_week(st.session_state.week)
                     st.session_state.act_df = generate_activities_safe(
-                        int(st.session_state.act_n), int(st.session_state.act_dur), focus,
-                        st.session_state.topic, st.session_state.lesson, st.session_state.week,
-                        st.session_state.src_edit, st.session_state.act_style,
-                        student=st.session_state.student_handout
+                        int(st.session_state.act_n),
+                        int(st.session_state.act_dur),
+                        focus,
+                        st.session_state.topic,
+                        st.session_state.lesson,
+                        st.session_state.week,
+                        st.session_state.src_edit,
+                        st.session_state.act_style,
+                        student=st.session_state.student_handout,
                     )
-                    st.success("Activities generated.")
-                except Exception as e:
-                    st.error(f"Couldn’t generate activities: {e}")
-
-    show_answers = st.checkbox("Show answer key in preview", value=False)
-    st.session_state.hl_stems_preview = st.checkbox("🔆 Highlight MCQ question stems (preview)", value=st.session_state.get("hl_stems_preview", True))
-    st.session_state.hl_act_titles_preview = st.checkbox("🔆 Highlight activity titles (preview)", value=st.session_state.get("hl_act_titles_preview", True))
-
-    if "mcq_df" in st.session_state:
-        st.write("**MCQs (preview)**")
-        st.markdown("<div class='preview-card'>", unsafe_allow_html=True)
-        for i,row in st.session_state.mcq_df.reset_index(drop=True).iterrows():
-            cls = "mcq-low" if row["Tier"]=="Low" else ("mcq-med" if row["Tier"]=="Medium" else "mcq-high")
-            ans = f" <i>(Answer: {row['Answer']})</i>" if show_answers else ""
-            stem_html = f"<div class='mcq-stem'>Q{i+1}. {row['Question']}</div>" if st.session_state.get("hl_stems_preview", True) else f"<b>Q{i+1}. {row['Question']}</b>"
-            meta_html = f"<div class='mcq-meta'><b>{row['Tier']}</b>{ans}</div>"
-            st.markdown(f"<div class='mcq-item {cls}'>{stem_html}{meta_html}</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    if "act_df" in st.session_state:
-        st.write("**Activities (preview)**")
-        for i,r in st.session_state.act_df.reset_index(drop=True).iterrows():
-            tier = r.get("Policy focus","Medium")
-            cls = "act-low" if tier=="Low" else ("act-med" if tier=="Medium" else "act-high")
-            title = r.get('Title','Activity')
-            title_html = f"<span class='act-title'>{i+1}. {title}</span>" if st.session_state.get("hl_act_titles_preview", True) else f"<b>{i+1}. {title}</b>"
-            st.markdown(
-                f"<div class='act-card {cls}'>{title_html}<br>"
-                f"<span><b>Objective:</b> {r['Objective']}</span><br>"
-                f"<span><b>Steps:</b> {r['Steps']}</span><br>"
-                f"<span><b>Duration:</b> {r['Duration (mins)']} mins</span></div>",
-                unsafe_allow_html=True
-            )
-
-    st.progress(progress_fraction())
-    st.markdown("</div>", unsafe_allow_html=True)
-
+                    st.success(f"Activities generated for Lesson {st.session_state.lesson}, Week {st.session_state.week} ({st.session_state.source_type}).")
+            except Exception as e:
+                st.error(f"Couldn’t generate: {e}")
 # ===== ④ Export =====
 with tab4:
     if "mcq_df" not in st.session_state and "act_df" not in st.session_state:
@@ -1037,7 +1050,9 @@ with tab4:
     st.markdown("<div class='export-card'>", unsafe_allow_html=True)
     st.markdown("<div class='export-title'>MCQs</div>", unsafe_allow_html=True)
     if "mcq_df" in st.session_state:
-        if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
+        
+        st.caption(f\"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}\")
+if st.download_button("Download MCQs (CSV)", st.session_state.mcq_df.to_csv(index=False).encode("utf-8"),
                               f"mcqs_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ MCQs CSV download started")
         gift_txt = export_mcqs_gift(st.session_state.mcq_df, st.session_state.lesson, st.session_state.week, st.session_state.topic)
@@ -1063,7 +1078,9 @@ with tab4:
     st.markdown("<div class='export-card'>", unsafe_allow_html=True)
     st.markdown("<div class='export-title'>Activities</div>", unsafe_allow_html=True)
     if "act_df" in st.session_state:
-        if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
+        
+        st.caption(f\"Context: Lesson {st.session_state.lesson} • Week {st.session_state.week} • {st.session_state.source_type}\")
+if st.download_button("Download Activities (CSV)", st.session_state.act_df.to_csv(index=False).encode("utf-8"),
                               f"activities_w{st.session_state.week:02d}.csv", "text/csv"):
             st.toast("✅ Activities CSV download started")
         if Document:
