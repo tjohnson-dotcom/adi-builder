@@ -1,4 +1,4 @@
-# app.py — ADI Learning Tracker (polished rebuild)
+# app.py — ADI Learning Tracker (full rebuild, ADI-styled, anchored generation)
 
 import io, os, re, base64, random
 from io import BytesIO
@@ -25,18 +25,22 @@ CSS = r'''
 html, body { background:var(--stone); }
 main .block-container { padding-top:.75rem; max-width: 980px; }
 
+/* Header */
 .h1{ font-size:30px; font-weight:900; color:var(--ink); margin:0 0 2px 0; letter-spacing:.2px; }
 .small{ color:var(--muted); font-size:14px; }
 hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.25), rgba(36,90,52,0.06)); margin:.8rem 0 1rem; }
 
+/* Cards + Headings */
 .card{ background:#fff; border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:var(--shadow); margin-bottom:1rem; }
 .h2{ font-size:19px; font-weight:800; color:var(--ink); margin:0 0 10px 0; }
 
+/* Tabs */
 .stTabs [role="tablist"] { gap:.5rem; }
 .stTabs [role="tab"] { font-weight:800; padding:.6rem .9rem; border-radius:12px 12px 0 0; }
-.stTabs [data-baseweb="tab-highlight"] { height:3px; background:linear-gradient(90deg,var(--adi),var(--gold)) !important; }
-.stTabs [aria-selected="true"] { color:var(--adi) !important; }
+.stTabs [data-baseweb="tab-highlight"]{ height:3px; background:linear-gradient(90deg,var(--adi),var(--gold)) !important; }
+.stTabs [aria-selected="true"] { color: var(--adi) !important; }
 
+/* Primary buttons */
 .stButton>button{
   background: linear-gradient(180deg, #2b6c40, var(--adi));
   color:#fff; border:1px solid #1f4e31; font-weight:800; border-radius:12px;
@@ -45,27 +49,46 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .stButton>button:hover{ filter:brightness(1.06); }
 .stButton>button:focus{ outline:3px solid rgba(36,90,52,0.28); }
 
+/* Inputs */
 .stNumberInput > div > div, .stTextInput > div > div, .stTextArea > div > div{
   border-radius:12px !important; border-color:#e4e9e6 !important;
 }
 .stTextArea textarea::placeholder{ color:#9aa6a0; }
-[data-testid="stFileUploaderDropzone"]{
-  border:2px dashed #dfe7e3 !important; border-radius:16px !important; background:#fff !important;
-}
-[data-testid="stFileUploaderDropzone"]:hover{ border-color:#cfe1d7 !important; background:#fbfdfc !important; }
 
-/* Bloom chips */
+/* ① Upload – POP drag/drop */
+[data-testid="stFileUploaderDropzone"]{
+  border:2.5px dashed #b9cfc4 !important;
+  border-radius:18px !important;
+  background: radial-gradient(1200px 300px at 20% -20%, rgba(36,90,52,0.08), transparent 60%), #ffffff !important;
+  box-shadow:0 10px 26px rgba(36,90,52,0.08);
+}
+[data-testid="stFileUploaderDropzone"]:hover{
+  border-color:#8fb8a3 !important;
+  background: radial-gradient(1200px 300px at 20% -20%, rgba(36,90,52,0.12), transparent 60%), #fcfefd !important;
+  outline:3px solid rgba(36,90,52,0.25);
+}
+
+/* ② Setup – accent panels */
+.panel{
+  border:2px solid var(--border); border-radius:16px; padding:14px; margin:.6rem 0 1rem;
+  background:#fff; box-shadow:0 8px 22px rgba(36,90,52,0.06);
+}
+.accent-mcq{   border-color:#dfe7e3; box-shadow:0 10px 24px rgba(36,90,52,0.08), inset 0 0 0 2px rgba(36,90,52,0.10); }
+.accent-act{   border-color:#eadebd; box-shadow:0 10px 24px rgba(200,168,90,0.18), inset 0 0 0 2px rgba(200,168,90,0.18); }
+.accent-bloom{ border-color:#cfd6d4; box-shadow:0 10px 24px rgba(0,0,0,0.06), inset 0 0 0 2px rgba(36,90,52,0.10); }
+
+/* Bloom chips (pop + highlight by week) */
 .bloom-row{ display:flex; flex-wrap:wrap; gap:.5rem .6rem; margin:.35rem 0 1rem; }
 .chip{
   display:inline-flex; align-items:center; justify-content:center; padding:6px 14px;
-  border-radius:999px; font-size:13px; font-weight:800; letter-spacing:.2px; position:relative;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.08), inset 0 -2px 0 rgba(255,255,255,0.25);
+  border-radius:999px; font-size:13px; font-weight:800; letter-spacing:.2px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.10), inset 0 -2px 0 rgba(255,255,255,0.25);
   border:1px solid rgba(0,0,0,0.10);
 }
 .chip.low   { background:#245a34; color:#fff; border-color:#1a4628; }
 .chip.med   { background:#C8A85A; color:#111; border-color:#9c874b; }
 .chip.high  { background:#333;    color:#fff; border-color:#222; }
-.chip.hl { outline:3px solid rgba(36,90,52,0.40); box-shadow:0 10px 28px rgba(36,90,52,0.18); }
+.chip.hl { outline:3px solid rgba(36,90,52,0.40); box-shadow:0 12px 32px rgba(36,90,52,0.20); }
 
 /* MCQ preview */
 .badge{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; color:#fff; font-weight:800; font-size:12px; margin-right:10px; }
@@ -73,7 +96,10 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .qcard{ border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:#fff; }
 .qitem{ display:flex; gap:10px; align-items:flex-start; padding:6px 0; }
 
-/* Export cards */
+/* Notes (replace blue info) */
+.note{ padding:12px 14px; border-radius:12px; border:1px solid #eadebd; background:linear-gradient(180deg,#fffdf5,#fffaf0); color:#3b351c; }
+
+/* ④ Export – grid + green buttons */
 .export-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:1rem; }
 @media (max-width: 760px){ .export-grid{ grid-template-columns: 1fr; } }
 .export-card{ background:#fff; border:1px solid var(--border); border-radius:16px; padding:14px; box-shadow:var(--shadow); }
@@ -81,10 +107,11 @@ hr{ border:none; height:1px; background:linear-gradient(90deg, rgba(36,90,52,0.2
 .export-note{ color:var(--muted); font-size:13px; margin-bottom:.6rem; }
 
 .stDownloadButton>button{
-  background:linear-gradient(180deg,#fafafa,#f1f5f2); color:#1b1b1b; border:1px solid #e1e7e3;
-  border-radius:12px; font-weight:800; padding:.55rem .9rem;
+  background: linear-gradient(180deg, #2b6c40, var(--adi)) !important;
+  color:#fff !important; border:1px solid #1f4e31 !important; font-weight:800 !important;
+  border-radius:12px !important; padding:.55rem .9rem !important; box-shadow:0 8px 20px rgba(36,90,52,0.25) !important;
 }
-.stDownloadButton>button:hover{ filter:brightness(0.98); }
+.stDownloadButton>button:hover{ filter:brightness(1.06); }
 </style>
 '''
 st.markdown(CSS, unsafe_allow_html=True)
@@ -237,7 +264,7 @@ def extract_text_from_upload(file)->str:
     except Exception as e:
         return f"[Could not parse file: {e}]"
 
-# ---------- Strict, source-anchored MCQs ----------
+# ---------- Anchored MCQs ----------
 def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson: int = 1) -> pd.DataFrame:
     if total_q < 1: raise ValueError("Total questions must be ≥ 1.")
     ctx = (topic or "").strip() or f"Lesson {lesson} • Week {week}"
@@ -282,7 +309,7 @@ def generate_mcqs_exact(topic: str, source: str, total_q: int, week: int, lesson
         raise ValueError("Could not extract enough anchored items — try a different section.")
     return pd.DataFrame(rows).reset_index(drop=True)
 
-# ---------- Strict, source-anchored Activities ----------
+# ---------- Anchored Activities ----------
 def generate_activities(count: int, duration: int, tier: str, topic: str, lesson: int, week: int, source: str = "") -> pd.DataFrame:
     topic = (topic or "").strip()
     ctx = f"Lesson {lesson} • Week {week}" + (f" — {topic}" if topic else "")
@@ -376,7 +403,7 @@ def export_mcqs_gift(df:pd.DataFrame, lesson:int, week:int, topic:str="")->str:
 # ---------- App state ----------
 st.session_state.setdefault("lesson", 1)
 st.session_state.setdefault("week", 1)
-st.session_state.setdefault("mcq_total", 10)  # will be constrained to choices
+st.session_state.setdefault("mcq_total", 10)
 st.session_state.setdefault("act_n", 1)
 st.session_state.setdefault("act_dur", 30)
 st.session_state.setdefault("topic", "")
@@ -412,7 +439,7 @@ with tab1:
             st.success("File uploaded and parsed.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===== ② Setup (all together) =====
+# ===== ② Setup =====
 with tab2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<div class='h2'>Setup</div>", unsafe_allow_html=True)
@@ -432,43 +459,39 @@ with tab2:
     st.session_state.src_edit = st.text_area("Source (editable)", value=st.session_state.src_edit,
                                              height=160, placeholder="Paste or edit full sentences here…")
 
-    st.markdown("---")
-
-    # MCQ setup
+    # --- MCQ setup panel
+    st.markdown("<div class='panel accent-mcq'>", unsafe_allow_html=True)
     st.write("### MCQ Setup")
     choices = [5,10,20,30]
     default_idx = choices.index(st.session_state.mcq_total) if st.session_state.mcq_total in choices else 1
     st.session_state.mcq_total = st.radio("Number of MCQs", choices, index=default_idx, horizontal=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-
-    # Activity setup
+    # --- Activity setup panel
+    st.markdown("<div class='panel accent-act'>", unsafe_allow_html=True)
     st.write("### Activity Setup")
     colA, colB = st.columns([1,2])
     with colA:
         st.session_state.act_n = st.radio("Activities", [1,2,3], index=st.session_state.act_n-1, horizontal=True)
     with colB:
         st.session_state.act_dur = st.slider("Duration per Activity (mins)", 10, 60, st.session_state.act_dur, 5)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-
-    # Bloom chips — auto-highlight by week
+    # --- Bloom panel
+    st.markdown("<div class='panel accent-bloom'>", unsafe_allow_html=True)
     st.write("### Bloom’s Verbs (ADI Policy)")
     focus = bloom_focus_for_week(st.session_state.week)
-
     def bloom_row(label, verbs):
         cls  = "low" if label=="Low" else "med" if label=="Medium" else "high"
         hl   = " hl" if label==focus else ""
-        chips = " ".join([f"<span class='chip {cls}{hl}'>{v}</span>" for v in verbs])
         weeks = "1–4" if label=="Low" else "5–9" if label=="Medium" else "10–14"
+        chips = " ".join([f"<span class='chip {cls}{hl}'>{v}</span>" for v in verbs])
         st.markdown(f"**{label} (Weeks {weeks})**", unsafe_allow_html=True)
         st.markdown(f"<div class='bloom-row'>{chips}</div>", unsafe_allow_html=True)
-
-    bloom_row("Low", LOW_VERBS)
-    bloom_row("Medium", MED_VERBS)
-    bloom_row("High", HIGH_VERBS)
-
+    bloom_row("Low", LOW_VERBS); bloom_row("Medium", MED_VERBS); bloom_row("High", HIGH_VERBS)
     st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)  # end card
 
 # ===== ③ Generate =====
 with tab3:
@@ -477,7 +500,7 @@ with tab3:
 
     tip_needed = (not st.session_state.src_edit) or len(_sentences(st.session_state.src_edit)) < 12
     if tip_needed:
-        st.info("Tip: use a section with ~12+ full sentences. Bullets should be expanded into sentences.")
+        st.markdown("<div class='note'>Tip: use a section with ~12+ full sentences. Bullets should be expanded into sentences.</div>", unsafe_allow_html=True)
 
     colQ, colA = st.columns([1,1])
     with colQ:
@@ -551,7 +574,7 @@ with tab4:
         else:
             st.caption("Install python-docx for Word export.")
     else:
-        st.info("Generate MCQs in ③ Generate to enable downloads.")
+        st.markdown("<div class='note'>Generate MCQs in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # Activities card
@@ -572,9 +595,8 @@ with tab4:
         else:
             st.caption("Install python-docx for Word export.")
     else:
-        st.info("Generate Activities in ③ Generate to enable downloads.")
+        st.markdown("<div class='note'>Generate Activities in <b>③ Generate</b> to enable downloads.</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)  # grid
     st.markdown("</div>", unsafe_allow_html=True)  # card
-
