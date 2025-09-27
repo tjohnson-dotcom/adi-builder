@@ -320,7 +320,6 @@ def generate_activities(count: int, duration: int, tier: str, topic: str,
     return pd.DataFrame(rows)
 
 # ----------------------------- Word exports -----------------------------
-
 def _docx_heading(doc, text, level=0):
     p = doc.add_paragraph()
     run = p.add_run(text)
@@ -439,8 +438,8 @@ with mcq_tab:
 
     def _row(title: str, verbs: list[str], right: str, active: bool=False):
         row_cls = "row active" if active else "row"
-        st.markdown(f"<div class='{row_cls}'>" \
-                    f"<div class='row-head'><div><strong>{title}</strong></div>" \
+        st.markdown(f"<div class='{row_cls}'>" 
+                    f"<div class='row-head'><div><strong>{title}</strong></div>"
                     f"<div class='row-cap'>{right}</div></div>", unsafe_allow_html=True)
         # Render chips
         cls = 'low' if title.startswith('Low') else 'med' if title.startswith('Medium') else 'high'
