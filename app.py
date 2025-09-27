@@ -1,150 +1,123 @@
 import streamlit as st
-import base64
+import fitz  # PyMuPDF
+import docx
+import pptx
 import io
 from docx import Document
-from PyPDF2 import PdfReader
-from pptx import Presentation
-import fitz  # PyMuPDF
+from docx.shared import Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
-# ADI Branding Colors (no red)
-ADI_COLORS = {
-    "Low": "#0072C6",     # Blue
-    "Medium": "#F6A623",  # Orange
-    "High": "#7ED321"     # Green
+# ADI Branding
+st.set_page_config(page_title="ADI Learning Tracker", layout="wide")
+st.title("ADI Learning Tracker Question Generator")
+st.markdown("##### *Transforming Lessons into Measurable Learning*")
+
+# Sidebar Inputs
+st.sidebar.header("Setup")
+lesson = st.sidebar.selectbox("Lesson", ["Lesson 1", "Lesson 2", "Lesson 3", "Lesson 4"])
+activity = st.sidebar.selectbox("Activity", ["Activity A", "Activity B", "Activity C"])
+week = st.sidebar.selectbox("Week", [f"Week {i}" for i in range(1, 15)])
+bloom_level = st.sidebar.selectbox("Bloom’s Verb Level", ["Low", "Medium", "High"])
+time_allocated = st.sidebar.slider("Time (minutes)", 10, 60, 30)
+
+# Upload Section
+st.subheader("Upload Lesson Material")
+uploaded_file = st.file_uploader("Upload PPTX, PDF, EPUB, or DOCX", type=["pptx", "pdf", "epub", "docx"])
+
+# Editable Learning Objectives
+st.subheader("Learning Objectives")
+learning_objectives = st.text_area("Enter or edit learning objectives here:", height=150)
+
+# Bloom’s Verbs Dictionary
+blooms_verbs = {
+    "Low": ["define", "list", "recall", "identify"],
+    "Medium": ["explain", "summarize", "compare", "interpret"],
+    "High": ["evaluate", "design", "create", "formulate"]
 }
 
-# Page config
-st.set_page_config(page_title="ADI Builder", layout="wide")
+# Function to extract text from uploaded file
+def extract_text(file, file_type):
+    text = ""
+    if file_type == "pdf":
+        doc = fitz.open(stream=file.read(), filetype="pdf")
+        for page in doc:
+            text += page.get_text() + "\n"
+    elif file_type == "docx":
+        doc = docx.Document(file)
+        for para in doc.paragraphs:
+            text += para.text + "\n"
+    elif file_type == "pptx":
+        prs = pptx.Presentation(file)
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
+    elif file_type == "epub":
+        text = "EPUB parsing not supported in this version."
+    return text
 
-# Branding
-st.markdown("<h1 style='text-align: center; color: #0072C6;'>Academy of Defense Industries</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align: center;'>Transforming Lessons into Measurable Learning</h3>", unsafe_allow_html=True)
+# Question Generation
+def generate_questions(text, bloom_level):
+    questions = []
+    verbs = blooms_verbs[bloom_level]
+    sentences = text.split(".")
+    for i, sentence in enumerate(sentences):
+        if len(sentence.strip()) > 20:
+            verb = verbs[i % len(verbs)]
+            question = f"**{verb.capitalize()}**: Based on the content, {verb} {sentence.strip()}?"
+            questions.append(question)
+    return questions
 
-# Welcome screen
-if "started" not in st.session_state:
-    st.session_state.started = False
+# Display and Generate Questions
+if uploaded_file:
+    file_type = uploaded_file.name.split(".")[-1].lower()
+    content = extract_text(uploaded_file, file_type)
+    st.subheader("Generated Questions")
+    questions = generate_questions(content, bloom_level)
+    for q in questions:
+        st.markdown(f"- {q}")
 
-if not st.session_state.started:
-    if st.button("Begin Tracking Learning", use_container_width=True):
-        st.session_state.started = True
-    st.stop()
+    # Export Options
+    st.subheader("Export Options")
 
-# Tabs
-tabs = st.tabs(["Upload", "Setup", "Generate", "Edit", "Export"])
-
-# Upload Tab
-with tabs[0]:
-    st.header("Upload Learning Material")
-    uploaded_file = st.file_uploader("Upload a file (pptx, pdf, epub, docx)", type=["pptx", "pdf", "epub", "docx"])
-    file_text = ""
-
-    if uploaded_file:
-        file_type = uploaded_file.name.split(".")[-1].lower()
-        if file_type == "pdf":
-            reader = PdfReader(uploaded_file)
-            file_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
-        elif file_type == "docx":
-            doc = Document(uploaded_file)
-            file_text = "\n".join([para.text for para in doc.paragraphs])
-        elif file_type == "pptx":
-            prs = Presentation(uploaded_file)
-            for slide in prs.slides:
-                for shape in slide.shapes:
-                    if hasattr(shape, "text"):
-                        file_text += shape.text + "\n"
-        elif file_type == "epub":
-            file_text = "EPUB parsing not supported in this version."
-        st.success("File uploaded and processed.")
-
-# Setup Tab
-with tabs[1]:
-    st.header("Setup Lesson Parameters")
-    lesson = st.selectbox("Select Lesson", ["Lesson 1", "Lesson 2", "Lesson 3", "Lesson 4"])
-    activity = st.selectbox("Select Activity", [f"Week {i}" for i in range(1, 15)])
-    bloom_level = st.selectbox("Select Bloom’s Verb Level", ["Low", "Medium", "High"])
-    time_allocated = st.slider("Time Allocation (minutes)", 10, 60, 30)
-    learning_objective = st.text_input("Learning Objective", "Identify key-themes and arguments in the text.")
-
-# Generate Tab
-with tabs[2]:
-    st.header("Generate Questions")
-    if file_text:
-        if st.button("Create Questions"):
-            questions = []
-            if bloom_level == "Low":
-                questions = [
-                    "What are the main arguments presented in the text?",
-                    "List the key themes discussed.",
-                    "Define the central concept of the lesson."
-                ]
-            elif bloom_level == "Medium":
-                questions = [
-                    "Explain the significance of the key themes in the text.",
-                    "Summarize the author's perspective.",
-                    "Interpret the meaning of the main argument."
-                ]
-            elif bloom_level == "High":
-                questions = [
-                    "Analyze the relationship between themes and arguments.",
-                    "Evaluate strengths and weaknesses of the author’s arguments.",
-                    "Propose an alternative viewpoint based on the text."
-                ]
-            st.session_state.generated_questions = questions
-            st.success("Questions generated successfully.")
-    else:
-        st.warning("Please upload a file in the Upload tab.")
-
-    if "generated_questions" in st.session_state:
-        st.markdown(f"### Learning Objective: *{learning_objective}*")
-        for i, q in enumerate(st.session_state.generated_questions, 1):
-            color = ADI_COLORS[bloom_level]
-            st.markdown(f"<div style='background-color:{color}; padding:10px; border-radius:5px; margin-bottom:5px;'>Q{i}: {q}</div>", unsafe_allow_html=True)
-
-# Edit Tab
-with tabs[3]:
-    st.header("Edit Questions")
-    if "generated_questions" in st.session_state:
-        edited_questions = []
-        for i, q in enumerate(st.session_state.generated_questions, 1):
-            edited = st.text_area(f"Edit Question {i}", value=q)
-            edited_questions.append(edited)
-        st.session_state.edited_questions = edited_questions
-    else:
-        st.info("No questions to edit. Generate them first.")
-
-# Export Tab
-with tabs[4]:
-    st.header("Export Options")
-    if "edited_questions" in st.session_state:
-        export_text = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(st.session_state.edited_questions)])
-
-        # Export as Word
-        docx_buffer = io.BytesIO()
+    # Export to Word
+    def export_to_word(questions):
         doc = Document()
-        doc.add_heading("ADI Builder - Generated Questions", 0)
-        doc.add_paragraph(f"Lesson: {lesson}, Activity: {activity}, Time: {time_allocated} mins")
-        doc.add_paragraph(f"Learning Objective: {learning_objective}")
-        for i, q in enumerate(st.session_state.edited_questions, 1):
-            doc.add_paragraph(f"Q{i}: {q}")
-        doc.save(docx_buffer)
-        docx_buffer.seek(0)
-        st.download_button("Download as Word", docx_buffer, file_name="ADI_Questions.docx")
+        doc.add_heading("ADI Learning Tracker Questions", 0)
+        doc.add_paragraph(f"{lesson} | {activity} | {week} | {bloom_level} | {time_allocated} mins")
+        doc.add_paragraph("Learning Objectives:")
+        doc.add_paragraph(learning_objectives)
+        doc.add_paragraph("Generated Questions:")
+        for q in questions:
+            doc.add_paragraph(q, style='List Bullet')
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
 
-        # Export as PDF
-        pdf_buffer = io.BytesIO()
+    word_buffer = export_to_word(questions)
+    st.download_button("Download as Word", data=word_buffer.getvalue(), file_name="ADI_Questions.docx")
+
+    # Export to PDF using fitz
+    def export_to_pdf(questions):
         pdf_doc = fitz.open()
         page = pdf_doc.new_page()
-        text = f"ADI Builder - Generated Questions\nLesson: {lesson}, Activity: {activity}, Time: {time_allocated} mins\nLearning Objective: {learning_objective}\n\n"
-        for i, q in enumerate(st.session_state.edited_questions, 1):
-            text += f"Q{i}: {q}\n"
-        page.insert_text((72, 72), text, fontsize=12)
-        pdf_doc.save(pdf_buffer)
-        pdf_doc.close()
-        pdf_buffer.seek(0)
-        st.download_button("Download as PDF", pdf_buffer, file_name="ADI_Questions.pdf")
+        text = f"{lesson} | {activity} | {week} | {bloom_level} | {time_allocated} mins\n\n"
+        text += "Learning Objectives:\n" + learning_objectives + "\n\nGenerated Questions:\n"
+        for q in questions:
+            text += q + "\n"
+        rect = fitz.Rect(50, 50, 550, 800)
+        page.insert_textbox(rect, text, fontsize=12)
+        buffer = io.BytesIO()
+        pdf_doc.save(buffer)
+        buffer.seek(0)
+        return buffer
 
-        # Copy Link (simulated)
-        st.code(export_text, language="markdown")
-        st.success("Copy the questions above or download as needed.")
-    else:
-        st.info("No questions to export.")
+    pdf_buffer = export_to_pdf(questions)
+    st.download_button("Download as PDF", data=pdf_buffer.getvalue(), file_name="ADI_Questions.pdf")
+
+    # Copy to Clipboard (simulated)
+    st.text_area("Copy Questions", value="\n".join(questions), height=200)
+
+else:
+    st.info("Please upload a lesson file to begin generating questions.")
