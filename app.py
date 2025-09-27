@@ -43,48 +43,68 @@ CSS = """
 <style>
 :root{
   --card:#ffffff; --ink:#141414; --muted:#6b7280; --border:#e7e7ea; --bg:#f6f7fb;
-  --accent:#3865ff; --accent-600:#2a4ed6; --chip:#eef2ff; --adi:#245a34;
+  --accent:#3865ff; --accent-600:#2a4ed6; --adi:#245a34;
 }
 html, body { background: var(--bg); }
-main .block-container { padding-top: 1.2rem; max-width: 860px; }
+main .block-container { padding-top: 1.2rem; max-width: 760px; }
 .modal {
-  background: var(--card); border-radius: 22px; border: 1px solid var(--border);
-  box-shadow: 0 24px 60px rgba(0,0,0,.1); padding: 24px 26px; position: relative;
+  background: var(--card);
+  border-radius: 28px;
+  border: 1px solid var(--border);
+  box-shadow: 0 30px 80px rgba(0,0,0,.12);
+  padding: 28px 30px;
 }
 .logo-row { display:flex; align-items:center; gap:16px; justify-content:center; margin-bottom:10px; }
-.logo-img { height:64px; width:auto; border-radius:10px; }
-.brand-title { text-align:center; font-size:28px; font-weight:800; letter-spacing:.0em; margin:2px 0 0 0;}
-.brand-sub { text-align:center; color:var(--muted); margin-top:2px; }
-.big-cta { display:block; width:100%; background:var(--accent); color:#fff; border:none; padding:14px 16px;
-  border-radius:12px; font-weight:700; font-size:16px; box-shadow:0 8px 20px rgba(56,101,255,.25); }
-.big-cta:hover { background: var(--accent-600); }
-.tabs-row { display:flex; gap:26px; margin:18px 0 8px 0; padding-bottom:8px; border-bottom:1px solid var(--border); }
-.tab { font-weight:700; color:var(--muted); }
-.help-box { border:1px dashed var(--border); background:#fafbff; padding:16px; border-radius:16px; }
-.pill { display:inline-flex; align-items:center; gap:8px; border-radius:12px; padding:8px 12px; border:1px solid var(--border); background:#fff; }
-.small { font-size:12px; color:var(--muted); }
+.logo-img { height:76px; width:auto; border-radius:10px; }
+.brand-title { text-align:center; font-size:32px; font-weight:800; margin:6px 0 0 0;}
+.brand-sub { text-align:center; color:var(--muted); margin-top:6px; font-size:16px; }
+
+.big-cta {
+  display:block; width:100%;
+  background: linear-gradient(180deg, #3B69FF, #3055E8);
+  color:#fff; border:none; padding:16px 18px;
+  border-radius:14px; font-weight:800; font-size:18px;
+  box-shadow:0 10px 26px rgba(56,101,255,.28);
+}
+.big-cta:hover { filter: brightness(.96); }
+
+.stTabs [data-baseweb="tab-list"] { border-bottom:1px solid var(--border); }
+.stTabs [data-baseweb="tab"] { font-weight:800; font-size:16px; color:#222; padding:10px 2px; }
+.stTabs [aria-selected="true"] { box-shadow: inset 0 -3px 0 0 #222 !important; }
+
+.help-box { border:1px dashed var(--border); background:#fafbff; padding:22px; border-radius:18px; }
+
+.dashbox { border:2px dashed #e3e6ef; background:#fff; border-radius:18px; padding:22px; }
+.dash-icons { display:flex; gap:14px; justify-content:center; align-items:center; margin-bottom:8px; }
+.dash-icons .ico { width:40px; height:40px; border-radius:10px; background:#f2f5ff; display:flex; align-items:center; justify-content:center; font-weight:800; color:#445; }
+
 .row { display:flex; gap:12px; }
-.col { flex:1; }
-.chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-.chip { border:1px solid var(--border); padding:4px 10px; border-radius:999px; font-size:12px; background:#fff; }
-.chip.low { background:#eaf5ec; }
-.chip.med { background:#fbf6ec; }
-.chip.high{ background:#f3f1ee; }
 .row-head { display:flex; justify-content:space-between; align-items:center; margin-top:12px; }
 .row-cap { font-size:11px; color:var(--muted); }
+.chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+.chip { border:1px solid #E6E8EF; padding:4px 10px; border-radius:999px; font-size:12px; background:#fff; }
+.chip.low  { background:#eaf5ec; }
+.chip.med  { background:#fbf6ec; }
+.chip.high { background:#f3f1ee; }
 .row.active .chip { border-color: var(--adi); box-shadow:0 4px 10px rgba(36,90,52,.12); }
-.section-title { font-weight:800; font-size:16px; margin-top:16px; }
-.download-row { display:flex; gap:10px; flex-wrap:wrap; }
-hr.soft { height:1px; background:var(--border); border:0; margin:18px 0; }
-.badge { background:#eef1f7; color:#475569; border:1px solid var(--border); font-size:12px; border-radius:999px; padding:2px 8px; }
+
+.badge { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px;
+         border-radius:999px; font-weight:800; font-size:12px; color:#fff; margin-right:10px; }
+.badge.g { background:#23a559; }
+.badge.o { background:#f59e0b; }
+.badge.r { background:#ef4444; }
+
+.qcard { border:1px solid var(--border); border-radius:14px; padding:14px 16px; background:#fff; }
+.qitem { display:flex; gap:8px; align-items:flex-start; padding:8px 0; }
+.qtext { line-height:1.5; font-size:16px; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ---------- Base64 logo (fallback if Logo.png missing) ----------
 _FALLBACK_LOGO_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAKAAAABACAYAAAB8m9ySAAAACXBIWXMAAAsSAAALEgHS3X78AAAB"
-    "..."  # (shortened) – safe placeholder; will show a neutral tile if Logo.png not found
+    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAA"
+    "B3RJTUUH5AgZFDY0xQnZ7AAAAAtJREFUGNNjYGBg+M8ABhQDAzq7Jq0AAAAASUVORK5CYII="
 )
 
 def _load_logo_bytes() -> bytes:
@@ -341,11 +361,29 @@ def export_acts_docx(df, lesson:int, week:int, topic:str="")->bytes:
     doc.add_paragraph()
     for i,r in df.iterrows():
         _docx_heading(doc, r.get("Title", f"Activity {i+1}"), 1)
-        doc.add_paragraph(f"Policy focus: {r['Policy focus']}"); doc.add_paragraph(f"Objective: {r['Objective']}")
-        doc.add_paragraph(f"Steps: {r['Steps']}"); doc.add_paragraph(f"Materials: {r['Materials']}")
-        doc.add_paragraph(f"Assessment: {r['Assessment']}"); doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
+        doc.add_paragraph(f"Policy focus: {r['Policy focus']}")
+        doc.add_paragraph(f"Objective: {r['Objective']}")
+        doc.add_paragraph(f"Steps: {r['Steps']}")
+        doc.add_paragraph(f"Materials: {r['Materials']}")
+        doc.add_paragraph(f"Assessment: {r['Assessment']}")
+        doc.add_paragraph(f"Duration: {r['Duration (mins)']} mins")
         doc.add_paragraph()
     bio=BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+
+# ---------- Pretty MCQ list ----------
+def render_mcq_list(df: pd.DataFrame):
+    st.markdown("<div class='qcard'>", unsafe_allow_html=True)
+    colors = ["g","o","r","r"]  # 1 green, 2 amber, rest red (like the mock sequence)
+    idx = 0
+    for _, row in df.sort_values(["Block","Order"]).iterrows():
+        idx += 1
+        c = colors[min(idx-1, 3)]
+        st.markdown(
+            f"<div class='qitem'><span class='badge {c}'>{idx}</span>"
+            f"<div class='qtext'><strong>{row['Question']}</strong></div></div>",
+            unsafe_allow_html=True
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------- State defaults ----------
 st.session_state.setdefault("lesson", 1)
@@ -380,14 +418,27 @@ with st.container():
     # --- Upload tab ---
     with t1:
         st.write("#### Drag and drop a **PowerPoint** or **e-book** file here, or click to browse")
+
+        st.markdown("<div class='dashbox'>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class='dash-icons'>
+          <div class='ico'>pptx</div><div class='ico'>pdf</div><div class='ico'>docx</div>
+        </div>
+        """, unsafe_allow_html=True)
         logo = st.file_uploader("Optional: upload ADI/School logo (PNG/JPG)", type=["png","jpg","jpeg"], accept_multiple_files=False, key="logo_up")
         if logo is not None:
             st.session_state.logo_bytes = logo.read()
             st.success("Logo added.")
-        up = st.file_uploader("Upload PPTX/PDF/DOCX", type=["pptx","pdf","docx"], accept_multiple_files=False, key="source_up")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        st.write("Upload PPTX/PDF/DOCX")
+        st.markdown("<div class='dashbox'>", unsafe_allow_html=True)
+        up = st.file_uploader(" ", type=["pptx","pdf","docx"], accept_multiple_files=False, key="source_up")
         if up:
             st.session_state.src_text = extract_text_from_upload(up)
             st.info("Source parsed. Switch to **Setup** or **Generate** when ready.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
         st.markdown("<div class='help-box small'>Supported: <b>pptx, pdf, docx</b>. If a PDF fails to parse, add <code>pdfplumber</code> in requirements.</div>", unsafe_allow_html=True)
 
     # --- Setup tab ---
@@ -434,7 +485,7 @@ with st.container():
         with g3:
             st.session_state.act_dur = st.number_input("Activity duration (mins)", min_value=5, value=st.session_state.act_dur, step=5)
 
-        bloom = bloom_focus_for_week(st.session_state.week)
+        bloom_now = bloom_focus_for_week(st.session_state.week)
 
         cL, cR = st.columns(2)
         with cL:
@@ -446,7 +497,7 @@ with st.container():
         with cR:
             if st.button("Create Activities"):
                 st.session_state.act_df = generate_activities(
-                    int(st.session_state.act_n), int(st.session_state.act_dur), bloom,
+                    int(st.session_state.act_n), int(st.session_state.act_dur), bloom_now,
                     st.session_state.topic, st.session_state.lesson, st.session_state.week, st.session_state.src_edit
                 )
                 st.success("Activities generated.")
@@ -454,10 +505,24 @@ with st.container():
         st.write("")
         if "mcq_df" in st.session_state:
             st.markdown("**Preview — MCQs**")
-            st.dataframe(st.session_state.mcq_df, use_container_width=True, height=260)
+            render_mcq_list(st.session_state.mcq_df)
         if "act_df" in st.session_state:
             st.markdown("**Preview — Activities**")
             st.dataframe(st.session_state.act_df, use_container_width=True, height=220)
+
+        # Optional: show verbs here too (visual cue)
+        st.caption("Bloom’s verbs for this week")
+        def _row_g(title, verbs, right, active=False):
+            row_cls = "row active" if active else "row"
+            st.markdown(f"<div class='{row_cls}'>", unsafe_allow_html=True)
+            st.markdown(f"<div class='row-head'><div><strong>{title}</strong></div><div class='row-cap'>{right}</div></div>", unsafe_allow_html=True)
+            cls = 'low' if title.startswith('Low') else 'med' if title.startswith('Medium') else 'high'
+            chips = " ".join([f"<span class='chip {cls}'>{v}</span>" for v in verbs])
+            st.markdown(f"<div class='chips'>{chips}</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        _row_g("Low (Weeks 1–4)", LOW_VERBS, "Remember / Understand", active=(bloom_now=="Low"))
+        _row_g("Medium (Weeks 5–9)", MED_VERBS, "Apply / Analyze", active=(bloom_now=="Medium"))
+        _row_g("High (Weeks 10–14)", HIGH_VERBS, "Evaluate / Create", active=(bloom_now=="High"))
 
     # --- Edit tab ---
     with t4:
