@@ -36,6 +36,44 @@ html, body {{ background: var(--adi-stone) !important; }}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+# --- ADI COLOR OVERRIDES (no layout changes) ---
+adi_color_css = """
+<style>
+:root{
+  --adi-green:#245a34;      /* ADI Green */
+  --adi-gold:#C8A85A;       /* ADI Gold */
+  --primary-color:#245a34;  /* Streamlit primary */
+}
+/* Radios & sliders use accent-color where supported */
+input[type="radio"], input[type="checkbox"], input[type="range"]{ accent-color: var(--adi-green); }
+
+/* Multiselect tags (verbs) */
+[data-testid="stMultiSelect"] [data-baseweb="tag"]{
+  background:#e8f5ee !important;      /* light green background */
+  color:#1a3d2f !important;
+  border:2px solid var(--adi-green) !important;
+  border-radius:999px !important;
+  font-weight:700 !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] svg{
+  fill: var(--adi-green) !important;
+  color: var(--adi-green) !important;
+}
+
+/* Slider knob subtle ADI glow */
+[data-testid="stSlider"] [role="slider"]{
+  box-shadow: 0 0 0 3px rgba(36,90,52,.18) !important;
+}
+/* Ensure policy pills use gold ring */
+.pill.current{ border-color: var(--adi-gold) !important; box-shadow: inset 0 0 0 3px var(--adi-gold) !important; }
+.badge-ok{ background:#e8f5ee !important; color:#14532d !important; border-color:#86efac !important; }
+.badge-warn{ background:#fff7ed !important; color:#7c2d12 !important; border-color:#fdba74 !important; }
+</style>
+"""
+st.markdown(adi_color_css, unsafe_allow_html=True)
+
+
 st.markdown("<div class='adi-ribbon'></div>", unsafe_allow_html=True)
 
 # --- Header
