@@ -119,6 +119,29 @@ pg3_css = """
 """
 st.markdown(pg3_css, unsafe_allow_html=True)
 
+# --- PAGE 3 MICRO-TWEAKS (value bubble + radio dot + button spacing) ---
+pg3_micro_css = """
+<style>
+:root{ --adi-green:#245a34; }
+/* Slider numeric bubble (varies by Streamlit/BaseWeb versions) */
+[data-testid="stSlider"] div[data-baseweb="slider"] span{ color: var(--adi-green) !important; }
+[data-testid="stSlider"] div[data-baseweb="slider"] [role="slider"] + div{ color: var(--adi-green) !important; }
+
+/* BaseWeb radio (selected dot) */
+[data-baseweb="radio"] input:checked + label:before{ background-color: var(--adi-green) !important; border-color: var(--adi-green) !important; }
+[data-baseweb="radio"] input:checked + label:after{ background-color: var(--adi-green) !important; border-color: var(--adi-green) !important; }
+/* Aria radio fallback */
+div[role="radio"][aria-checked="true"]{ border-color: var(--adi-green) !important; }
+div[role="radio"][aria-checked="true"]::before{ background-color: var(--adi-green) !important; }
+
+/* Tighten gap between Duration and the Generate buttons */
+.stButton > button{ margin-top: 6px !important; }
+</style>
+"""
+st.markdown(pg3_micro_css, unsafe_allow_html=True)
+
+
+
 
 
 
@@ -473,4 +496,3 @@ def download_buttons():
             st.download_button("Export · Activities DOCX", activities_docx(st.session_state.activities), file_name="activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
         elif st.session_state.activities:
             st.caption("Install python-docx to enable Activities DOCX.")
-
