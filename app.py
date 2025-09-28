@@ -193,7 +193,7 @@ with tabs[0]:
     st.caption(f"Characters loaded: {len(text)}")
     if text:
         st.markdown(f"<span class='badge-ok'>✓ Processed: {len(text):,} chars</span>", unsafe_allow_html=True)
-        st.markdown("<style>[data-testid='stFileUploaderDropzone']{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}.seq-row{margin-top:4px;margin-bottom:6px;}
+st.markdown("""<style>[data-testid=\"stFileUploaderDropzone\"]{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}</style>""", unsafe_allow_html=True)
 .chip{margin:2px 6px;padding:6px 12px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
 </style>", unsafe_allow_html=True)
     elif up is not None:
