@@ -213,40 +213,54 @@ with tabs[0]:
 # Setup
 
 with tabs[1]:
-    # --- CLEAN SETUP (no functional regressions; compact layout)
+    # --- SPACIOUS SETUP (two rows, generous spacing; Page 1 untouched)
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("⚙️ Setup")
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
 
-    # Left = Lesson/Week pills; Middle = Bloom+Verbs; Right = Sequence+Preview+Policy
-    left, mid, right = st.columns([1.1, 1.6, 2.1])
+    # =============== ROW A ===============
+    # Left: Lesson & Week (pill radios)
+    # Right: Bloom's Level (pill radios)
+    rowA_left, rowA_right = st.columns([1.2, 2.2])
 
-    with left:
-        st.caption("Lesson")
+    with rowA_left:
+        st.markdown("#### Lesson & Week")
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
         st.session_state.lesson = st.radio(
-            " ", [1,2,3,4,5],
+            "Lesson", [1,2,3,4,5],
             index=st.session_state.get("lesson",1)-1,
-            horizontal=True, label_visibility="collapsed", key="lesson_radio_clean"
+            horizontal=True, key="lesson_radio_spacious"
         )
-
-        st.caption("Week  •  ADI policy: 1–4 Low, 5–9 Medium, 10–14 High")
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
         st.session_state.week = st.radio(
-            "  ", list(range(1,15)),
+            "Week", list(range(1,15)),
             index=st.session_state.get("week",1)-1,
-            horizontal=True, label_visibility="collapsed", key="week_radio_clean"
+            horizontal=True, key="week_radio_spacious",
+            help="ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High"
         )
 
-    with mid:
-        st.caption("Bloom’s Level")
-        # Keep the same default/focus as before
+    with rowA_right:
+        st.markdown("#### Bloom’s Level")
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
+        BLOOM_TIER = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
         current_level = st.session_state.get("level", "Understand")
         st.session_state.level = st.radio(
-            "   ", ["Remember","Understand","Apply","Analyze","Evaluate","Create"],
-            index=["Remember","Understand","Apply","Analyze","Evaluate","Create"].index(current_level),
-            horizontal=True, label_visibility="collapsed", key="level_radio_clean"
+            "Choose the focal level", BLOOM_LEVELS,
+            index=BLOOM_LEVELS.index(current_level),
+            horizontal=True, key="level_radio_spacious"
         )
+        st.caption("Tip: you can still generate a mixed sequence below. This sets the *focus* for verbs and weighting.")
 
-        # Level-aware verbs picker (5–10)
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)  # vertical gap
+
+    # =============== ROW B ===============
+    # Left: Verbs picker (5–10)
+    # Right: Sequence controls + preview + policy pills
+    rowB_left, rowB_right = st.columns([1.8, 2.2])
+
+    with rowB_left:
+        st.markdown("#### Choose 5–10 verbs")
         BLOOM_VERBS = {
             "Remember": ["define","list","recall","identify","label","name","state","match","recognize","outline","select","repeat"],
             "Understand": ["explain","summarize","classify","describe","discuss","interpret","paraphrase","compare","illustrate","infer"],
@@ -256,29 +270,35 @@ with tabs[1]:
             "Create": ["create","design","compose","construct","develop","plan","produce","propose","assemble","formulate"],
         }
         verbs_all = BLOOM_VERBS.get(st.session_state.level, [])
+        # initialize default once
         if "verbs" not in st.session_state or not st.session_state.verbs:
             st.session_state.verbs = verbs_all[:5]
         st.session_state.verbs = st.multiselect(
-            "Choose 5–10 verbs", options=verbs_all, default=st.session_state.verbs, key="verbs_select_clean"
+            "Pick verbs that fit your outcomes",
+            options=verbs_all,
+            default=st.session_state.verbs,
+            key="verbs_select_spacious",
+            help="Exactly 5–10 verbs recommended by ADI policy."
         )
         if 5 <= len(st.session_state.verbs) <= 10:
             st.success("Verb count looks good ✅")
         else:
             st.warning(f"Select between 5 and 10 verbs. Currently: {len(st.session_state.verbs)}")
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.caption("These verbs drive the MCQ stems and activity prompts.")
 
-    with right:
-        # Sequence controls
-        st.caption("Sequence")
-        seq_col1, seq_col2 = st.columns([1.2,1])
-        with seq_col1:
-            mode = st.radio("Sequence mode", ["Auto by Focus","Target level(s)"], horizontal=True, label_visibility="collapsed", key="seq_mode_clean")
-        with seq_col2:
-            count = st.slider("How many MCQs?", 4, 30, st.session_state.get("count_auto", 10), 1, key="count_slider_clean")
+    with rowB_right:
+        st.markdown("#### Sequence & Policy")
+        # Controls
+        c1, c2 = st.columns([1.1, 1])
+        with c1:
+            mode = st.radio("Sequence mode", ["Auto by Focus","Target level(s)"], horizontal=True, key="seq_mode_spacious")
+        with c2:
+            count = st.slider("How many MCQs?", 4, 30, st.session_state.get("count_auto", 10), 1, key="count_slider_spacious")
 
-        BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
-        BLOOM_TIER = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
-
-        def weighted_bloom_sequence(selected:str, n:int, rng:random.Random):
+        # Helper: generate sequence
+        import random as _rnd
+        def _weighted(selected:str, n:int, rng:_rnd.Random):
             idx=BLOOM_LEVELS.index(selected); weights=[]
             for i in range(len(BLOOM_LEVELS)):
                 dist=abs(i-idx); weights.append({0:5,1:3,2:2,3:1}[min(dist,3)])
@@ -291,37 +311,37 @@ with tabs[1]:
             return seq
 
         if mode == "Auto by Focus":
-            rng = random.Random(int(st.session_state.week)*100 + int(st.session_state.lesson))
-            blooms = weighted_bloom_sequence(st.session_state.level, count, rng)
+            rng = _rnd.Random(int(st.session_state.week)*100 + int(st.session_state.lesson))
+            blooms = _weighted(st.session_state.level, count, rng)
         else:
-            sel = st.multiselect("Target level(s)", BLOOM_LEVELS, default=["Understand","Apply","Analyze"], key="seq_target_levels_clean")
+            sel = st.multiselect("Target level(s)", BLOOM_LEVELS, default=["Understand","Apply","Analyze"], key="seq_targets_spacious")
             sel = sel or ["Understand"]
             blooms = (sel * ((count // len(sel)) + 1))[:count]
 
-        # Compact preview (chips + summary)
+        # Compact counts display
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        chip_counts = {lv: blooms.count(lv) for lv in BLOOM_LEVELS}
-        chips = " ".join([f"<span class='pill'>{lv}×{chip_counts[lv]}</span>" for lv in BLOOM_LEVELS if chip_counts[lv]>0])
+        counts = {lv: blooms.count(lv) for lv in BLOOM_LEVELS}
+        chips = " ".join([f"<span class='pill'>{lv} × {counts[lv]}</span>" for lv in BLOOM_LEVELS if counts[lv]>0])
         st.markdown(f"**Sequence preview:** {chips}", unsafe_allow_html=True)
 
-        # Policy pills (clean, single line)
-        def policy_tier(week:int)->str:
+        # Policy pills (single line)
+        def _policy_tier(week:int)->str:
             if 1<=week<=4: return "Low"
             if 5<=week<=9: return "Medium"
             return "High"
-        required = policy_tier(int(st.session_state.week))
+        required = _policy_tier(int(st.session_state.week))
         selected_tier = BLOOM_TIER[st.session_state.level]
-        p = {'Low':'pill','Medium':'pill','High':'pill'}
-        p[required] += ' current'
-        badge = "<div class='badge-ok'>✓ ADI policy matched</div>" if selected_tier==required else f"<div class='badge-warn'>Week requires {required}. Selected is {selected_tier}.</div>"
+        pp = {'Low':'pill','Medium':'pill','High':'pill'}
+        pp[required] += ' current'
         if selected_tier==required:
-            p[selected_tier] += ' match'
+            pp[selected_tier] += ' match'
+            badge = "<div class='badge-ok'>✓ ADI policy matched</div>"
         else:
-            p[selected_tier] += ' mismatch'
-        pills_html = f"<div class='pills'><span class='{p['Low']}'>Low</span><span class='{p['Medium']}'>Medium</span><span class='{p['High']}'>High</span></div>{badge}"
-        st.markdown(pills_html, unsafe_allow_html=True)
+            pp[selected_tier] += ' mismatch'
+            badge = f"<div class='badge-warn'>Week requires {required}. Selected is {selected_tier}.</div>"
+        st.markdown(f"<div class='pills'><span class='{pp['Low']}'>Low</span><span class='{pp['Medium']}'>Medium</span><span class='{pp['High']}'>High</span></div>{badge}", unsafe_allow_html=True)
 
-        # Persist for Generate tab
+        # Persist
         st.session_state.blooms = blooms
         st.session_state.count_auto = count
 
@@ -383,11 +403,3 @@ def download_buttons():
             st.download_button("Export · Activities DOCX", activities_docx(st.session_state.activities), file_name="activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
         elif st.session_state.activities:
             st.caption("Install python-docx to enable Activities DOCX.")
-
-with st.tabs(["④ Export"])[0]:
-    st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
-    st.subheader("📦 Export"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
-    download_buttons()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.caption("Security: API keys (if used) stay server-side (env or .streamlit/secrets). Never accept keys via UI.")
