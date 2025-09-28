@@ -47,6 +47,15 @@ html, body {{ background: var(--adi-stone) !important; }}
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+# --- HEADER TAGLINE ALIGNMENT OVERRIDE ---
+_header_css = """
+<style>
+.adi-sub{ display:block !important; text-align:left !important; float:none !important; margin:.25rem 0 0 0 !important; }
+</style>
+"""
+st.markdown(_header_css, unsafe_allow_html=True)
+
+
 # --- ADI COLOR OVERRIDES (no layout changes) ---
 adi_color_css = """
 <style>
@@ -506,6 +515,7 @@ def download_buttons():
 # ------------------------------
 # Page 4 — Export (appended)
 # ------------------------------
+
 with tabs[3]:
     import datetime as dt
     st.subheader("📦 Export")
@@ -516,11 +526,16 @@ with tabs[3]:
     lesson = st.session_state.get("lesson", 1)
     week = st.session_state.get("week", 1)
 
-    def _export_docx(df, activities):
-        try:
-            from docx import Document
-        except Exception:
-            return None
+    # Check docx availability
+    try:
+        from docx import Document  # noqa: F401
+        docx_available = True
+    except Exception:
+        docx_available = False
+
+    def build_docx(df, acts, lesson, week):
+        if not docx_available: return None
+        from docx import Document
         doc = Document()
         doc.add_heading("ADI Builder Export", level=1)
         doc.add_paragraph(f"Lesson {lesson} · Week {week}")
@@ -535,33 +550,34 @@ with tabs[3]:
                         r.get("Option A",""), r.get("Option B",""), r.get("Option C",""), r.get("Option D",""),
                         r.get("Answer","")]
                 for i,v in enumerate(vals): row[i].text = str(v)
-        if activities:
+        if acts:
             doc.add_heading("Activities", level=2)
-            for i,a in enumerate(activities, start=1):
-                doc.add_paragraph(f"{i}. {a}")
+            for i,a in enumerate(acts, start=1): doc.add_paragraph(f"{i}. {a}")
         bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
-    gift_payload = ""
-    if df is not None and not df.empty:
-        gift_payload = to_gift(df)
+    # Build payloads
+    gift_payload = to_gift(df) if (df is not None and not df.empty) else ""
+    docx_bytes = build_docx(df, acts, lesson, week) if docx_available else None
 
-    docx_bytes = _export_docx(df, acts)
-
+    # Filenames
     today = dt.date.today().strftime("%Y-%m-%d")
     base = f"ADI_Lesson{lesson}_Week{week}_{today}"
-    docx_name = base + ".docx"
-    gift_name = base + ".gift"
+    docx_name = base + ".docx"; gift_name = base + ".gift"
 
+    # Always-visible buttons (use disabled when not ready)
     c1, c2 = st.columns(2)
     with c1:
-        if docx_bytes is not None and ((df is not None and not df.empty) or acts):
-            st.download_button("⬇️ Download Word (.docx)", docx_bytes, file_name=docx_name,
-                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        else:
-            st.caption("Install python-docx and/or generate MCQs or Activities.")
+        disabled_docx = not docx_available or ((df is None or df.empty) and not acts)
+        st.download_button("⬇️ Download Word (.docx)",
+                           data=(docx_bytes or b"placeholder"),
+                           file_name=docx_name,
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           disabled=disabled_docx,
+                           help=("Install python-docx" if not docx_available else "Generate MCQs or Activities to enable"))
     with c2:
-        if gift_payload:
-            st.download_button("⬇️ Download Moodle GIFT (.gift)", gift_payload.encode("utf-8"),
-                               file_name=gift_name, mime="text/plain")
-        else:
-            st.caption("Generate MCQs to enable Moodle GIFT export.")
+        disabled_gift = not bool(gift_payload)
+        st.download_button("⬇️ Download Moodle GIFT (.gift)",
+                           data=(gift_payload or "").encode("utf-8"),
+                           file_name=gift_name, mime="text/plain",
+                           disabled=disabled_gift,
+                           help="Generate MCQs to enable")
