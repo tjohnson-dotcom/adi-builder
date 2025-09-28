@@ -58,7 +58,6 @@ st.markdown("""<style>
 .chip.warn{background:#fff7ed!important;border-color:#f59e0b!important;color:#7c2d12!important;box-shadow:0 1px 2px rgba(0,0,0,.04), inset 0 0 0 2px rgba(245,158,11,.25)!important;}
 .stNumberInput > div > div, .stTextInput > div > div, .stSelectbox > div > div{border:3px solid rgba(36,90,52,.25); border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(10,24,18,.06);}
 .stNumberInput:focus-within > div > div, .stTextInput:focus-within > div > div, .stSelectbox:focus-within > div > div{box-shadow:0 0 0 3px rgba(200,168,90,.55) inset, 0 2px 10px rgba(10,24,18,.10); border-color: #1f7a4c;}
-</style>""", unsafe_allow_html=True)
 
 st.set_page_config(page_title="ADI Builder — Clean ADI", page_icon="✅", layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
@@ -203,7 +202,6 @@ with tabs[0]:
         st.markdown(f"<span class='badge-ok'>✓ Processed: {len(text):,} chars</span>", unsafe_allow_html=True)
 st.markdown("""<style>[data-testid=\"stFileUploaderDropzone\"]{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}</style>""", unsafe_allow_html=True)
 
-</style>", unsafe_allow_html=True)
     elif up is not None:
         st.markdown("<span class='badge-warn'>Uploaded but no text detected — try a text PDF, DOCX/PPTX, or paste text below.</span>", unsafe_allow_html=True)
     else:
