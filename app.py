@@ -1,12 +1,13 @@
-# app.py — ADI Builder (Polished, Single File)
+# app.py — ADI Builder (Polished ADI+ Version, Single File)
 #
-# ✅ Strict ADI branding (green #245a34, gold #C8A85A, stone background)
-# ✅ Header with Logo.png (repo root)
-# ✅ Step tabs: ① Upload · ② Setup · ③ Generate · ④ Export
-# ✅ Bloom chips + tier colouring (Policy: 1–4 Low, 5–9 Medium, 10–14 High)
-# ✅ Duplicate guard + per-teacher variation
-# ✅ Optional AI toggle (env/secrets) with offline fallback
-# ✅ Exports (CSV, GIFT, DOCX)
+# Strong ADI styling (green/gold surfaces & accents), solid tab badges,
+# filled Bloom chips, gold section rules, and elevated buttons.
+#
+# Functionality:
+# - Upload/Paste source (PDF/PPTX/DOCX best‑effort) 
+# - Bloom controls + policy hint, per‑teacher variation, duplicate guard
+# - Generate Activities (offline), Generate MCQs (offline or optional AI with env/secrets)
+# - Edit inline; Export MCQs (CSV/GIFT) & Activities (CSV/DOCX)
 #
 # Run:
 #   pip install -r requirements.txt
@@ -34,64 +35,104 @@ except Exception:
     PyPDF2 = None
 
 # ------------------------------------------------
-# Branding
+# Branding tokens
 # ------------------------------------------------
 ADI_GREEN = "#245a34"
+ADI_GREEN_DARK = "#1a4426"
 ADI_GOLD  = "#C8A85A"
 ADI_STONE = "#f4f4f2"
+INK       = "#0f172a"
 
 CSS = f"""
 <style>
   :root {{
     --adi-green: {ADI_GREEN};
+    --adi-green-dark: {ADI_GREEN_DARK};
     --adi-gold:  {ADI_GOLD};
     --adi-stone: {ADI_STONE};
-    --ink: #0f172a;
+    --ink: {INK};
   }}
   html, body {{ background: var(--adi-stone) !important; }}
-  .adi-header {{ display:flex; align-items:center; gap:16px; margin:8px 0 16px; }}
-  .adi-logo {{ height:56px; width:auto; border-radius:10px; border:2px solid var(--adi-gold); background:white; }}
-  .adi-title {{ font-size:1.45rem; font-weight:800; color:var(--adi-green); letter-spacing:.2px; }}
-  .adi-sub {{ color:#4b5563; }}
+
+  /* Top ribbon */
+  .adi-ribbon {{
+    height: 6px;
+    background: linear-gradient(90deg, var(--adi-green) 0%, var(--adi-green-dark) 60%, var(--adi-gold) 100%);
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    margin-bottom: 8px;
+  }}
+
+  /* Header */
+  .adi-header {{ display:flex; align-items:center; gap:16px; margin:8px 0 14px; }}
+  .adi-logo {{ height:60px; width:auto; border-radius:12px; border:2px solid var(--adi-gold); background:white; }}
+  .adi-title {{ font-size:1.5rem; font-weight:900; color:var(--adi-green); letter-spacing:.2px; }}
+  .adi-sub {{ color:#3f4a54; font-weight:600; }}
+
+  /* Cards + section rules */
   .adi-card {{
-    background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:18px;
-    box-shadow:0 2px 14px rgba(0,0,0,.06);
+    background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:20px; padding:20px;
+    box-shadow:0 8px 24px rgba(10, 24, 18, .08);
   }}
-  .adi-bigbtn button {{
-    border-radius:16px !important; padding:12px 18px !important; font-weight:700 !important;
-    background: linear-gradient(135deg, var(--adi-green), #1a4426) !important; color:white !important; border:none !important;
-    box-shadow:0 3px 14px rgba(0,0,0,.12);
-  }}
+  .adi-section {{ border-top: 3px solid var(--adi-gold); margin: 8px 0 16px; }}
+
+  /* Tabs */
   .stTabs [data-baseweb="tab"] {{
-    background:#fff; color:#1f2937; padding:10px 14px; border-radius:14px;
-    border:1px solid rgba(0,0,0,.08);
+    background:#fff; color:#1f2937; padding:10px 14px; border-radius:16px;
+    border:1px solid rgba(0,0,0,.08); position: relative;
+  }}
+  .stTabs [data-baseweb="tab"]::before {{
+    content:'•'; position:absolute; left:10px; top:8px; color:var(--adi-gold);
   }}
   .stTabs [aria-selected="true"] {{
-    background:var(--adi-stone); border-color:var(--adi-green); font-weight:700; color:#0f172a;
+    background:linear-gradient(0deg, #ffffff 0%, #f7faf8 100%);
+    border-color:var(--adi-green); font-weight:800; color:#0f172a;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }}
-  .chips {{ display:flex; flex-wrap:wrap; gap:8px; }}
+
+  /* Bloom chips */
+  .chips {{ display:flex; flex-wrap:wrap; gap:10px; }}
   .chip {{
-    padding:8px 12px; border-radius:999px; border:1px solid #d1d5db; background:#fff; cursor:pointer;
-    font-weight:600;
+    padding:10px 14px; border-radius:999px; border:2px solid #d1d5db; background:#fff; cursor:pointer;
+    font-weight:700; min-width:120px; text-align:center;
   }}
-  .chip.low.on    {{ background:#ecfdf5; border-color:#10b981; }}
-  .chip.medium.on {{ background:#fff7ed; border-color:#f59e0b; }}
-  .chip.high.on   {{ background:#fef2f2; border-color:#ef4444; }}
-  .ok {{ color:#065f46; font-weight:700; }}
-  .warn {{ color:#991b1b; font-weight:700; }}
+  .chip.low    {{ border-color:#10b981; }}
+  .chip.medium {{ border-color:#f59e0b; }}
+  .chip.high   {{ border-color:#ef4444; }}
+  .chip.on.low    {{ background:#10b98122; }}
+  .chip.on.medium {{ background:#f59e0b22; }}
+  .chip.on.high   {{ background:#ef444422; }}
+
+  /* Buttons (primary/secondary) */
+  .adi-primary button {{
+    border-radius:16px !important; padding:12px 18px !important; font-weight:800 !important;
+    background: linear-gradient(135deg, var(--adi-green), var(--adi-green-dark)) !important; color:white !important; border:none !important;
+    box-shadow:0 6px 16px rgba(10,24,18,.20);
+  }}
+  .adi-secondary button {{
+    border-radius:14px !important; padding:10px 16px !important; font-weight:700 !important;
+    background:#ffffff !important; color:var(--adi-green) !important; border:2px solid var(--adi-green) !important;
+  }}
+
+  /* Table header tint */
+  .stDataFrame thead {{ background: #f3faf5 !important; }}
+
+  .ok {{ color:#065f46; font-weight:800; }}
+  .warn {{ color:#991b1b; font-weight:800; }}
 </style>
 """
 
-st.set_page_config(page_title="ADI Builder — Polished", page_icon="✅", layout="wide")
+st.set_page_config(page_title="ADI Builder — Polished ADI+", page_icon="✅", layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
+st.markdown("<div class='adi-ribbon'></div>", unsafe_allow_html=True)
 
 # Header
 c1, c2 = st.columns([1,6], vertical_alignment="center")
 with c1:
     if os.path.exists("Logo.png"):
-        st.image("Logo.png", width=72)
+        st.image("Logo.png", width=78)
     else:
-        st.markdown(f"<div class='chip on' style='border-color:{ADI_GOLD}'>ADI</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='chip on low'>ADI</div>", unsafe_allow_html=True)
 with c2:
     st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
     st.markdown("<div class='adi-sub'>Clean, polished ADI look · Strict colors · Logo required</div>", unsafe_allow_html=True)
@@ -127,7 +168,7 @@ def call_llm(messages: List[Dict], model="gpt-4o-mini", temperature=0.6, base_ur
     return r.json()["choices"][0]["message"]["content"]
 
 # ------------------------------------------------
-# Bloom
+# Bloom helpers
 # ------------------------------------------------
 BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 BLOOM_TIER   = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
@@ -271,6 +312,7 @@ tabs = st.tabs(["① Upload", "② Setup", "③ Generate", "④ Export"])
 with tabs[0]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("Upload source")
+    st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     up = st.file_uploader("PDF / PPTX / DOCX (optional — you can also paste text below)",
                           type=["pdf","pptx","docx"])
     pasted = st.text_area("Or paste source text manually", height=180, placeholder="Paste any relevant lesson/topic text here…")
@@ -289,6 +331,7 @@ with tabs[0]:
 with tabs[1]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("Setup")
+    st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
 
     cA, cB, cC, cD = st.columns(4)
     lesson = cA.number_input("Lesson", min_value=1, max_value=20, value=1, step=1)
@@ -296,13 +339,12 @@ with tabs[1]:
     teacher_id = cC.text_input("Teacher ID", value="teacher_001")
     klass      = cD.text_input("Class/Section", value="class_A")
 
-    # Bloom chips with policy hint
     st.write("")
     st.markdown("**Bloom’s taxonomy**")
     current_policy = policy_tier(int(week))
     chip_classes = {"Low":"chip low", "Medium":"chip medium", "High":"chip high"}
     cols = st.columns(6)
-    chosen_idx = st.session_state.get("chosen_bloom_idx", 1)  # default to Understand
+    chosen_idx = st.session_state.get("chosen_bloom_idx", 1)
     for i, level in enumerate(BLOOM_LEVELS):
         tier = BLOOM_TIER[level]
         klasses = chip_classes[tier] + (" on" if i==chosen_idx else "")
@@ -313,7 +355,6 @@ with tabs[1]:
             st.markdown(f"<div class='{klasses}'>{level}</div>", unsafe_allow_html=True)
     bloom_level = BLOOM_LEVELS[chosen_idx]
 
-    # Sequence
     mode = st.radio("Sequence mode", ["Auto by Focus", "Target level(s)"], horizontal=True)
     if mode == "Auto by Focus":
         count = st.slider("How many MCQs?", 4, 30, 10, 1)
@@ -326,14 +367,12 @@ with tabs[1]:
         blooms = (sel * ((count // len(sel)) + 1))[:count]
     st.write("Sequence preview:", ", ".join(blooms))
 
-    # Policy hint
     selected_tier = BLOOM_TIER[bloom_level]
     if selected_tier == current_policy:
         st.markdown(f"Policy: **{current_policy}** · Selected: **<span class='ok'>{selected_tier}</span>** ✓", unsafe_allow_html=True)
     else:
         st.markdown(f"Policy: **{current_policy}** · Selected: **<span class='warn'>{selected_tier}</span>** (mismatch)", unsafe_allow_html=True)
 
-    # AI toggle
     st.write("---")
     ai_possible = have_api()
     use_ai = st.checkbox("Use AI generator (if key available)", value=ai_possible)
@@ -345,11 +384,19 @@ with tabs[1]:
 with tabs[2]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("Generate MCQs & Activities")
+    st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     src_text = st.session_state.get("src_text","")
 
-    left, right = st.columns(2)
-    with left:
-        if st.button("Generate MCQs", type="primary"):
+    # Activities first (primary, left) so it's obvious
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("Generate Activities", type="primary", key="btn_acts"):
+            rng = random.Random(stable_seed(teacher_id, klass, lesson, week, src_text))
+            stems = ["Pair-share on", "Mini-poster:", "Role-play:", "Think–Pair–Share:", "Quick debate:", "Case critique:"]
+            base = [s.strip() for s in re.split(r'[.\n]', src_text) if s.strip()] or ["today's topic"]
+            st.session_state.activities = [f"{stems[i%len(stems)]} {base[i%len(base)]}" for i in range(10)]
+    with colB:
+        if st.button("Generate MCQs", type="primary", key="btn_mcq"):
             if use_ai and have_api():
                 with st.spinner("Generating with AI…"):
                     df = ai_generate_mcqs(src_text, lesson, week, blooms, teacher_id, n=len(blooms))
@@ -357,12 +404,18 @@ with tabs[2]:
                 with st.spinner("Generating (offline)…"):
                     df = offline_generate_mcqs(src_text, lesson, week, blooms, teacher_id, n=len(blooms))
             st.session_state.mcq_df = df
-    with right:
-        if st.button("Generate Activities"):
-            rng = random.Random(stable_seed(teacher_id, klass, lesson, week, src_text))
-            stems = ["Pair-share on", "Mini-poster:", "Role-play:", "Think–Pair–Share:", "Quick debate:", "Case critique:"]
-            base = [s.strip() for s in re.split(r'[.\n]', src_text) if s.strip()] or ["today's topic"]
-            st.session_state.activities = [f"{stems[i%len(stems)]} {base[i%len(base)]}" for i in range(10)]
+
+    # Style the two buttons (left primary, right outlined)
+    st.markdown("""
+    <script>
+      const doc = window.parent.document;
+      const btns = Array.from(doc.querySelectorAll('button'));
+      if (btns.length >= 2){
+        btns[0].closest('div').classList.add('adi-primary');   // Activities
+        btns[1].closest('div').classList.add('adi-secondary'); // MCQs
+      }
+    </script>
+    """, unsafe_allow_html=True)
 
     st.write("")
     st.markdown("**Quick Editor**")
@@ -406,6 +459,7 @@ def activities_docx(activities: List[str]) -> bytes:
 with tabs[3]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("Export")
+    st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     df = st.session_state.mcq_df.copy()
 
     c1, c2, c3, c4 = st.columns(4)
