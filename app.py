@@ -209,7 +209,7 @@ with tabs[1]:
     a,b,c,d=st.columns(4)
     lesson=a.number_input("Lesson",1,20,1,1); week=b.number_input("Week",1,20,1,1)
     teacher_id=c.text_input("Teacher ID","teacher_001"); klass=d.text_input("Class/Section","class_A")
-    st.markdown("**🧠 Bloom’s taxonomy**")
+    st.markdown("**🧠 Bloom's taxonomy**")
     focus=st.radio("Pick focus level", BLOOM_LEVELS, index=1, horizontal=True, label_visibility="collapsed")
     mode=st.radio("🎛️ Sequence mode", ["Auto by Focus","Target level(s)"], horizontal=True)
     if mode=="Auto by Focus":
