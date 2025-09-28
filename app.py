@@ -114,6 +114,28 @@ CSS = f"""
     background:#ffffff !important; color:var(--adi-green) !important; border:2px solid var(--adi-green) !important;
   }}
 
+  
+  /* Force all Streamlit primary buttons to ADI green */
+  .stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, var(--adi-green), var(--adi-green-dark)) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 16px !important;
+    font-weight: 800 !important;
+    box-shadow: 0 6px 16px rgba(10,24,18,.20);
+  }
+  .stButton > button[kind="primary"]:hover {
+    filter: brightness(0.95);
+  }
+  /* Non-primary buttons = green outline */
+  .stButton > button:not([kind="primary"]) {
+    background: #ffffff !important;
+    color: var(--adi-green) !important;
+    border: 2px solid var(--adi-green) !important;
+    border-radius: 14px !important;
+    font-weight: 700 !important;
+  }
+
   /* Table header tint */
   .stDataFrame thead {{ background: #f3faf5 !important; }}
 
