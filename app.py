@@ -90,20 +90,33 @@ CSS = f"""
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }}
 
+  
   /* Bloom chips */
-  .chips {{ display:flex; flex-wrap:wrap; gap:10px; }}
-  .chip {{
+  .chips { display:flex; flex-wrap:wrap; gap:10px; }
+  .chip {
     padding:10px 14px; border-radius:999px; border:2px solid #d1d5db; background:#fff; cursor:pointer;
-    font-weight:700; min-width:120px; text-align:center;
-  }}
-  .chip.low    {{ border-color:#10b981; }}
-  .chip.medium {{ border-color:#f59e0b; }}
-  .chip.high   {{ border-color:#ef4444; }}
-  .chip.on.low    {{ background:#10b98122; }}
-  .chip.on.medium {{ background:#f59e0b22; }}
-  .chip.on.high   {{ background:#ef444422; }}
+    font-weight:700; min-width:120px; text-align:center; transition: all .15s ease;
+  }
+  /* Base (non-selected) tints by tier */
+  .chip.low    { border-color:#10b981; background:#ecfdf5;   color:#0f4b3a; }
+  .chip.medium { border-color:#f59e0b; background:#fff7ed;   color:#744210; }
+  .chip.high   { border-color:#ef4444; background:#fef2f2;   color:#7f1d1d; }
+
+  /* Selected state: stronger fill + gold outline */
+  .chip.on      { box-shadow: 0 0 0 3px var(--adi-gold) inset; }
+  .chip.on.low    { background:#10b98126; }
+  .chip.on.medium { background:#f59e0b26; }
+  .chip.on.high   { background:#ef444426; }
+
+  /* Mouse feedback */
+  .chip:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(0,0,0,.06); }
+
+  /* Put an outline around the top chip row container */
+  #chipbar { padding:10px 12px; border:2px dashed var(--adi-gold); border-radius:16px; background:#fffdf6; }
+  /* End chips */
 
   /* Buttons (primary/secondary) */
+
   .adi-primary button {{
     border-radius:16px !important; padding:12px 18px !important; font-weight:800 !important;
     background: linear-gradient(135deg, var(--adi-green), var(--adi-green-dark)) !important; color:white !important; border:none !important;
@@ -363,6 +376,7 @@ with tabs[1]:
 
     st.write("")
     st.markdown("**Bloom’s taxonomy**")
+    st.markdown("<div id='chipbar'>", unsafe_allow_html=True)
     current_policy = policy_tier(int(week))
     chip_classes = {"Low":"chip low", "Medium":"chip medium", "High":"chip high"}
     cols = st.columns(6)
@@ -376,6 +390,8 @@ with tabs[1]:
                 st.session_state["chosen_bloom_idx"] = i
             st.markdown(f"<div class='{klasses}'>{level}</div>", unsafe_allow_html=True)
     bloom_level = BLOOM_LEVELS[chosen_idx]
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     mode = st.radio("Sequence mode", ["Auto by Focus", "Target level(s)"], horizontal=True)
     if mode == "Auto by Focus":
