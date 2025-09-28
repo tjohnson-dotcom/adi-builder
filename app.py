@@ -502,3 +502,66 @@ def download_buttons():
         elif st.session_state.activities:
             st.caption("Install python-docx to enable Activities DOCX.")
 
+
+# ------------------------------
+# Page 4 — Export (appended)
+# ------------------------------
+with tabs[3]:
+    import datetime as dt
+    st.subheader("📦 Export")
+    st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
+
+    df = st.session_state.get("mcq_df")
+    acts = st.session_state.get("activities", [])
+    lesson = st.session_state.get("lesson", 1)
+    week = st.session_state.get("week", 1)
+
+    def _export_docx(df, activities):
+        try:
+            from docx import Document
+        except Exception:
+            return None
+        doc = Document()
+        doc.add_heading("ADI Builder Export", level=1)
+        doc.add_paragraph(f"Lesson {lesson} · Week {week}")
+        if df is not None and not df.empty:
+            doc.add_heading("MCQs", level=2)
+            tbl = doc.add_table(rows=1, cols=9)
+            hdr = ["Bloom","Tier","Q#","Question","Option A","Option B","Option C","Option D","Answer"]
+            for i,h in enumerate(hdr): tbl.rows[0].cells[i].text = h
+            for _,r in df.iterrows():
+                row = tbl.add_row().cells
+                vals = [r.get("Bloom",""), r.get("Tier",""), str(r.get("Q#","")), r.get("Question",""),
+                        r.get("Option A",""), r.get("Option B",""), r.get("Option C",""), r.get("Option D",""),
+                        r.get("Answer","")]
+                for i,v in enumerate(vals): row[i].text = str(v)
+        if activities:
+            doc.add_heading("Activities", level=2)
+            for i,a in enumerate(activities, start=1):
+                doc.add_paragraph(f"{i}. {a}")
+        bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+    gift_payload = ""
+    if df is not None and not df.empty:
+        gift_payload = to_gift(df)
+
+    docx_bytes = _export_docx(df, acts)
+
+    today = dt.date.today().strftime("%Y-%m-%d")
+    base = f"ADI_Lesson{lesson}_Week{week}_{today}"
+    docx_name = base + ".docx"
+    gift_name = base + ".gift"
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if docx_bytes is not None and ((df is not None and not df.empty) or acts):
+            st.download_button("⬇️ Download Word (.docx)", docx_bytes, file_name=docx_name,
+                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        else:
+            st.caption("Install python-docx and/or generate MCQs or Activities.")
+    with c2:
+        if gift_payload:
+            st.download_button("⬇️ Download Moodle GIFT (.gift)", gift_payload.encode("utf-8"),
+                               file_name=gift_name, mime="text/plain")
+        else:
+            st.caption("Generate MCQs to enable Moodle GIFT export.")
