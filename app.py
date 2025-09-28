@@ -1,3 +1,8 @@
+# adi_builder_locked_all.py
+# Status: LOCKED PAGES (1: Upload, 2: Setup, 3: Generate). Do not modify unless Tom requests.
+# Only Page 4 (Export) should be changed in future iterations.
+LOCKED_PAGES = (1, 2, 3)  # informational only
+
 # adi_builder_locked.py
 # Status: LOCKED PAGES (1: Upload, 2: Setup). Do not modify unless Tom requests.
 # Any future changes should only affect Page 3 (Generate) and Page 4 (Export).
@@ -496,3 +501,4 @@ def download_buttons():
             st.download_button("Export · Activities DOCX", activities_docx(st.session_state.activities), file_name="activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
         elif st.session_state.activities:
             st.caption("Install python-docx to enable Activities DOCX.")
+
