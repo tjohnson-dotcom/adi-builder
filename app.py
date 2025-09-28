@@ -297,7 +297,10 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 if "mcq_df" not in st.session_state:
     st.session_state.mcq_df = pd.DataFrame(columns=MCQ_COLS)
 if "activities" not in st.session_state:
-    st.session_state.activities = []
+    
+        num_acts = st.session_state.get("num_activities", 2)
+        duration = st.session_state.get("activity_duration", 20)
+        st.session_state.activities = [f"{stems[i % len(stems)]} {base[i % len(base)]} — {duration} mins" for i in range(num_acts)]
 
 tabs = st.tabs(["① Upload", "② Setup", "③ Generate", "④ Export"])
 
@@ -381,6 +384,11 @@ with tabs[1]:
 with tabs[2]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("Generate MCQs & Activities")
+
+    st.markdown("**Activity Setup**")
+    st.session_state["num_activities"] = st.radio("Number of activities per lesson", [1, 2, 3, 4], index=1, horizontal=True)
+    st.session_state["activity_duration"] = st.slider("Time per activity (minutes)", 10, 60, 20, step=5)
+
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     src_text = st.session_state.get("src_text","")
 
@@ -390,7 +398,10 @@ with tabs[2]:
             rng = random.Random(stable_seed(teacher_id, klass, lesson, week, src_text))
             stems = ["Pair-share on", "Mini-poster:", "Role-play:", "Think–Pair–Share:", "Quick debate:", "Case critique:"]
             base = [s.strip() for s in re.split(r'[.\n]', src_text) if s.strip()] or ["today's topic"]
-            st.session_state.activities = [f"{stems[i%len(stems)]} {base[i%len(base)]}" for i in range(10)]
+            
+        num_acts = st.session_state.get("num_activities", 2)
+        duration = st.session_state.get("activity_duration", 20)
+        st.session_state.activities = [f"{stems[i % len(stems)]} {base[i % len(base)]} — {duration} mins" for i in range(num_acts)]
     with colB:
         if st.button("Generate MCQs", type="primary", key="btn_mcq"):
             if use_ai and have_api():
@@ -412,7 +423,10 @@ with tabs[2]:
     st.markdown("**Activities (editable)**")
     acts_text = "\n".join(st.session_state.get("activities", []))
     acts_text = st.text_area("One per line", value=acts_text, height=140, key="acts_text")
-    st.session_state.activities = [a.strip() for a in acts_text.split("\n") if a.strip()]
+    
+        num_acts = st.session_state.get("num_activities", 2)
+        duration = st.session_state.get("activity_duration", 20)
+        st.session_state.activities = [f"{stems[i % len(stems)]} {base[i % len(base)]} — {duration} mins" for i in range(num_acts)]
 
     st.markdown("</div>", unsafe_allow_html=True)
 
