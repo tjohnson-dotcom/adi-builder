@@ -61,6 +61,10 @@ html, body { background: var(--adi-stone) !important; }
 .stRadio > div { gap:12px; flex-wrap:wrap; }
 .stRadio [role="radiogroup"] > div label { border:2px solid var(--adi-green); border-radius:999px; padding:10px 16px; background:#fff; color:#1f2937; font-weight:700; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.04); }
 .stRadio [role="radiogroup"] > div [aria-checked="true"] label { background:#f7faf8; box-shadow:inset 0 0 0 3px var(--adi-gold); }
+/* Uploader styling */
+[data-testid="stFileUploaderDropzone"]{border:2px dashed var(--adi-green)!important;background:#f7faf8;border-radius:14px;transition:box-shadow .15s ease, background .15s ease;}
+[data-testid="stFileUploaderDropzone"]:hover{background:#eef7f1;box-shadow:0 0 0 3px rgba(36,90,52,.15) inset;}
+
 /* Dataframe */
 .stDataFrame thead { background:#f3faf5!important; }
 /* Status text */
@@ -225,9 +229,18 @@ with tabs[0]:
 
     st.session_state["src_text"] = src_text
     st.caption(f"Characters loaded: {len(src_text)}")
-    if src_text:
-        st.markdown(f"<span class='badge-ok'>✓ Processed: {len(src_text):,} chars</span>", unsafe_allow_html=True)
-    elif up is not None:
+if src_text:
+    st.markdown(f"<span class='badge-ok'>✓ Processed: {len(src_text):,} chars</span>", unsafe_allow_html=True)
+    # Turn the dropzone green to confirm success
+    st.markdown("""
+    <style>
+    [data-testid='stFileUploaderDropzone']{
+        border-color:#1f7a4c !important; background:#e8f5ee !important;
+        box-shadow:0 0 0 3px rgba(36,90,52,.25) inset !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+elif up is not None:
         st.markdown("<span class='badge-warn'>Uploaded but no text detected — try a text PDF, DOCX/PPTX, or paste text below.</span>", unsafe_allow_html=True)
     else:
         st.info("Upload a PDF/PPTX/DOCX or paste text to continue.")
@@ -342,6 +355,23 @@ def to_gift(df: pd.DataFrame)->str:
         lines.append("{"+q+"}{"+" ".join(gift)+"}")
     return "\\n\\n".join(lines)
 
+
+def mcqs_docx(df: pd.DataFrame) -> bytes:
+    if not Document: 
+        return b""
+    doc = Document()
+    doc.add_heading("MCQs", level=1)
+    table = doc.add_table(rows=1, cols=9)
+    hdr = table.rows[0].cells
+    for i,col in enumerate(["Bloom","Tier","Q#","Question","Option A","Option B","Option C","Option D","Answer"]):
+        hdr[i].text = str(col)
+    for _,r in df.iterrows():
+        row = table.add_row().cells
+        vals = [r.get("Bloom",""), r.get("Tier",""), str(r.get("Q#","")), r.get("Question",""), 
+                r.get("Option A",""), r.get("Option B",""), r.get("Option C",""), r.get("Option D",""), r.get("Answer","")]
+        for i,v in enumerate(vals):
+            row[i].text = str(v)
+    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 def activities_docx(acts:List[str])->bytes:
     if not Document: return b""
     doc=Document(); doc.add_heading("Activities", level=1)
@@ -355,7 +385,7 @@ with tabs[3]:
     st.markdown("<div class='adi-banner'>Export</div>", unsafe_allow_html=True)
 
     df = st.session_state.mcq_df.copy()
-    c1,c2,c3,c4 = st.columns(4)
+    c1,c2,c3,c4,c5 = st.columns(5)
     with c1:
         if not df.empty:
             st.download_button("Export · MCQs CSV", data=df.to_csv(index=False).encode("utf-8"),
@@ -364,6 +394,13 @@ with tabs[3]:
         if not df.empty:
             st.download_button("Export · MCQs GIFT", data=to_gift(df).encode("utf-8"),
                                file_name="mcqs.gift.txt", mime="text/plain", use_container_width=True)
+    with c5:
+        if not df.empty and Document:
+            st.download_button("Export · MCQs DOCX", data=mcqs_docx(df),
+                               file_name="mcqs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                               use_container_width=True)
+        elif not df.empty:
+            st.info("Install python-docx to enable MCQs DOCX export.")
     with c3:
         if st.session_state.get("activities"):
             st.download_button("Export · Activities CSV", data=("\n".join(st.session_state["activities"])).encode("utf-8"),
