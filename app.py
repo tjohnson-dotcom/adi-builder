@@ -1,17 +1,9 @@
-# app.py — ADI Builder (Polished ADI+ Version, Single File)
-#
-# Strong ADI styling (green/gold surfaces & accents), solid tab badges,
-# filled Bloom chips, gold section rules, and elevated buttons.
-#
-# Functionality:
-# - Upload/Paste source (PDF/PPTX/DOCX best‑effort) 
-# - Bloom controls + policy hint, per‑teacher variation, duplicate guard
-# - Generate Activities (offline), Generate MCQs (offline or optional AI with env/secrets)
-# - Edit inline; Export MCQs (CSV/GIFT) & Activities (CSV/DOCX)
-#
-# Run:
-#   pip install -r requirements.txt
-#   streamlit run app.py
+# app.py — ADI Builder (Polished ADI+ • FIXED CSS)
+# - Strong ADI styling (green/gold)
+# - Colored Bloom chips + outlined chip bar
+# - Activities button primary (left), MCQs primary (right)
+# - All buttons ADI green (no red)
+# - Offline by default; optional AI via env/secrets
 
 import os, io, json, hashlib, random, re
 from typing import List, Dict
@@ -34,9 +26,7 @@ try:
 except Exception:
     PyPDF2 = None
 
-# ------------------------------------------------
-# Branding tokens
-# ------------------------------------------------
+# ---------------- Branding tokens ----------------
 ADI_GREEN = "#245a34"
 ADI_GREEN_DARK = "#1a4426"
 ADI_GOLD  = "#C8A85A"
@@ -90,64 +80,42 @@ CSS = f"""
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }}
 
-  
   /* Bloom chips */
-  .chips { display:flex; flex-wrap:wrap; gap:10px; }
-  .chip {
+  .chips {{ display:flex; flex-wrap:wrap; gap:10px; }}
+  .chip {{
     padding:10px 14px; border-radius:999px; border:2px solid #d1d5db; background:#fff; cursor:pointer;
     font-weight:700; min-width:120px; text-align:center; transition: all .15s ease;
-  }
-  /* Base (non-selected) tints by tier */
-  .chip.low    { border-color:#10b981; background:#ecfdf5;   color:#0f4b3a; }
-  .chip.medium { border-color:#f59e0b; background:#fff7ed;   color:#744210; }
-  .chip.high   { border-color:#ef4444; background:#fef2f2;   color:#7f1d1d; }
-
-  /* Selected state: stronger fill + gold outline */
-  .chip.on      { box-shadow: 0 0 0 3px var(--adi-gold) inset; }
-  .chip.on.low    { background:#10b98126; }
-  .chip.on.medium { background:#f59e0b26; }
-  .chip.on.high   { background:#ef444426; }
-
-  /* Mouse feedback */
-  .chip:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(0,0,0,.06); }
-
-  /* Put an outline around the top chip row container */
-  #chipbar { padding:10px 12px; border:2px dashed var(--adi-gold); border-radius:16px; background:#fffdf6; }
-  /* End chips */
-
-  /* Buttons (primary/secondary) */
-
-  .adi-primary button {{
-    border-radius:16px !important; padding:12px 18px !important; font-weight:800 !important;
-    background: linear-gradient(135deg, var(--adi-green), var(--adi-green-dark)) !important; color:white !important; border:none !important;
-    box-shadow:0 6px 16px rgba(10,24,18,.20);
   }}
-  .adi-secondary button {{
-    border-radius:14px !important; padding:10px 16px !important; font-weight:700 !important;
-    background:#ffffff !important; color:var(--adi-green) !important; border:2px solid var(--adi-green) !important;
-  }}
+  /* Base tints by tier */
+  .chip.low    {{ border-color:#10b981; background:#ecfdf5;   color:#0f4b3a; }}
+  .chip.medium {{ border-color:#f59e0b; background:#fff7ed;   color:#744210; }}
+  .chip.high   {{ border-color:#ef4444; background:#fef2f2;   color:#7f1d1d; }}
+  /* Selected: gold inset outline + slightly stronger fill */
+  .chip.on      {{ box-shadow: 0 0 0 3px var(--adi-gold) inset; }}
+  .chip.on.low    {{ background:#10b98126; }}
+  .chip.on.medium {{ background:#f59e0b26; }}
+  .chip.on.high   {{ background:#ef444426; }}
+  .chip:hover {{ transform: translateY(-1px); box-shadow: 0 6px 14px rgba(0,0,0,.06); }}
+  /* Wrap/outline for the top chip row */
+  #chipbar {{ padding:10px 12px; border:2px dashed var(--adi-gold); border-radius:16px; background:#fffdf6; }}
 
-  
-  /* Force all Streamlit primary buttons to ADI green */
-  .stButton > button[kind="primary"] {
+  /* Buttons — force ADI green */
+  .stButton > button[kind="primary"] {{
     background: linear-gradient(135deg, var(--adi-green), var(--adi-green-dark)) !important;
     color: #ffffff !important;
     border: none !important;
     border-radius: 16px !important;
     font-weight: 800 !important;
     box-shadow: 0 6px 16px rgba(10,24,18,.20);
-  }
-  .stButton > button[kind="primary"]:hover {
-    filter: brightness(0.95);
-  }
-  /* Non-primary buttons = green outline */
-  .stButton > button:not([kind="primary"]) {
+  }}
+  .stButton > button[kind="primary"]:hover {{ filter: brightness(0.95); }}
+  .stButton > button:not([kind="primary"]) {{
     background: #ffffff !important;
     color: var(--adi-green) !important;
     border: 2px solid var(--adi-green) !important;
     border-radius: 14px !important;
     font-weight: 700 !important;
-  }
+  }}
 
   /* Table header tint */
   .stDataFrame thead {{ background: #f3faf5 !important; }}
@@ -157,11 +125,11 @@ CSS = f"""
 </style>
 """
 
-st.set_page_config(page_title="ADI Builder — Polished ADI+", page_icon="✅", layout="wide")
+st.set_page_config(page_title="ADI Builder — Polished ADI+ (Fixed)", page_icon="✅", layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown("<div class='adi-ribbon'></div>", unsafe_allow_html=True)
 
-# Header
+# ---------------- Header ----------------
 c1, c2 = st.columns([1,6], vertical_alignment="center")
 with c1:
     if os.path.exists("Logo.png"):
@@ -172,9 +140,7 @@ with c2:
     st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
     st.markdown("<div class='adi-sub'>Clean, polished ADI look · Strict colors · Logo required</div>", unsafe_allow_html=True)
 
-# ------------------------------------------------
-# Security / LLM (optional)
-# ------------------------------------------------
+# ---------------- Security / LLM (optional) ----------------
 def have_api()->bool:
     try:
         from streamlit.runtime.secrets import secrets
@@ -202,9 +168,7 @@ def call_llm(messages: List[Dict], model="gpt-4o-mini", temperature=0.6, base_ur
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
-# ------------------------------------------------
-# Bloom helpers
-# ------------------------------------------------
+# ---------------- Bloom helpers ----------------
 BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 BLOOM_TIER   = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
 BLOOM_STEMS  = {
@@ -241,9 +205,7 @@ def deduplicate_and_validate(df: pd.DataFrame) -> pd.DataFrame:
     df["Q#"] = range(1, len(df)+1)
     return df
 
-# ------------------------------------------------
-# Generators
-# ------------------------------------------------
+# ---------------- Generators ----------------
 def offline_generate_mcqs(src_text: str, lesson:int, week:int, bloom_levels: List[str], teacher_seed:str, n:int=10) -> pd.DataFrame:
     rng = random.Random(stable_seed(teacher_seed, "default", lesson, week, src_text or ""))
     rows = []
@@ -307,9 +269,7 @@ Generate {n} MCQs as JSON.
     df = pd.DataFrame(rows, columns=MCQ_COLS)
     return deduplicate_and_validate(df)
 
-# ------------------------------------------------
-# Extraction
-# ------------------------------------------------
+# ---------------- Extraction ----------------
 def extract_text_from_pptx(file_bytes: bytes) -> str:
     if not Presentation: return ""
     prs = Presentation(io.BytesIO(file_bytes))
@@ -333,9 +293,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     except Exception:
         return ""
 
-# ------------------------------------------------
-# State
-# ------------------------------------------------
+# ---------------- State ----------------
 if "mcq_df" not in st.session_state:
     st.session_state.mcq_df = pd.DataFrame(columns=MCQ_COLS)
 if "activities" not in st.session_state:
@@ -376,7 +334,9 @@ with tabs[1]:
 
     st.write("")
     st.markdown("**Bloom’s taxonomy**")
+    # Outlined top chip row container
     st.markdown("<div id='chipbar'>", unsafe_allow_html=True)
+
     current_policy = policy_tier(int(week))
     chip_classes = {"Low":"chip low", "Medium":"chip medium", "High":"chip high"}
     cols = st.columns(6)
@@ -389,9 +349,8 @@ with tabs[1]:
                 chosen_idx = i
                 st.session_state["chosen_bloom_idx"] = i
             st.markdown(f"<div class='{klasses}'>{level}</div>", unsafe_allow_html=True)
-    bloom_level = BLOOM_LEVELS[chosen_idx]
-
     st.markdown("</div>", unsafe_allow_html=True)
+    bloom_level = BLOOM_LEVELS[chosen_idx]
 
     mode = st.radio("Sequence mode", ["Auto by Focus", "Target level(s)"], horizontal=True)
     if mode == "Auto by Focus":
@@ -425,7 +384,6 @@ with tabs[2]:
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     src_text = st.session_state.get("src_text","")
 
-    # Activities first (primary, left) so it's obvious
     colA, colB = st.columns(2)
     with colA:
         if st.button("Generate Activities", type="primary", key="btn_acts"):
@@ -442,18 +400,6 @@ with tabs[2]:
                 with st.spinner("Generating (offline)…"):
                     df = offline_generate_mcqs(src_text, lesson, week, blooms, teacher_id, n=len(blooms))
             st.session_state.mcq_df = df
-
-    # Style the two buttons (left primary, right outlined)
-    st.markdown("""
-    <script>
-      const doc = window.parent.document;
-      const btns = Array.from(doc.querySelectorAll('button'));
-      if (btns.length >= 2){
-        btns[0].closest('div').classList.add('adi-primary');   // Activities
-        btns[1].closest('div').classList.add('adi-secondary'); // MCQs
-      }
-    </script>
-    """, unsafe_allow_html=True)
 
     st.write("")
     st.markdown("**Quick Editor**")
