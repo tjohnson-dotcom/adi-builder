@@ -78,6 +78,13 @@ html, body {{ background: var(--adi-stone) !important; }}
 .stRadio [role="radiogroup"] > div label{{ border:2px solid var(--adi-green); border-radius:999px; padding:10px 16px; background:#fff; color:#1f2937; font-weight:700; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
 .stRadio [role="radiogroup"] > div [aria-checked="true"] label{{ background:#f7faf8; box-shadow:inset 0 0 0 3px var(--adi-gold); }}
 
+/* Chips */
+.chip{display:inline-block;margin:4px 6px;padding:6px 10px;border-radius:999px;border:2px solid var(--adi-green);background:#fff;color:#1f2937;font-weight:700;}
+.chip.low{box-shadow:inset 0 0 0 3px rgba(36,90,52,.12);}.chip.medium{box-shadow:inset 0 0 0 3px rgba(200,168,90,.18);}.chip.high{box-shadow:inset 0 0 0 3px rgba(200,168,90,.32);}
+/* Slider (robust-ish) */
+[data-testid='stSlider'] [role='slider']{background:var(--adi-green)!important;border:2px solid var(--adi-gold)!important;}
+[data-testid='stSlider'] .stSliderTrack,.st-emotion-cache-16x3f9y{background:linear-gradient(90deg,rgba(36,90,52,.25),rgba(36,90,52,.12))!important;}
+
 /* Dataframe header */
 .stDataFrame thead{{ background:#f3faf5!important; }}
 
@@ -321,7 +328,9 @@ with tabs[1]:
     selected_tier = BLOOM_TIER[bloom_level]
     status = "ok" if selected_tier == current_policy else "warn"
     extra = " ✓" if selected_tier == current_policy else " (mismatch)"
-    st.markdown(f"Policy: <b>{current_policy}</b> · Selected: <b class='{status}'>{selected_tier}</b>{extra}", unsafe_allow_html=True)
+    badge_policy = f"<span class='badge-ok'>Policy: {current_policy}</span>" if status=='ok' else f"<span class='badge-warn'>Policy: {current_policy}</span>"
+badge_selected = f"<span class='badge-ok'>Selected: {selected_tier} ✓</span>" if status=='ok' else f"<span class='badge-warn'>Selected: {selected_tier} (mismatch)</span>"
+st.markdown(badge_policy+" &nbsp; "+badge_selected, unsafe_allow_html=True)
 
     st.write("---")
     use_ai = st.checkbox(f"{I('🤖 ')}Use AI generator (if key available)", value=have_api())
