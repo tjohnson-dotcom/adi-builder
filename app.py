@@ -20,7 +20,7 @@ CSS = """
 <style>
 :root { --adi-green:%s; --adi-green-dark:%s; --adi-gold:%s; --adi-stone:%s; }
 html, body { background: var(--adi-stone) !important; }
-.adi-ribbon { height:6px; background:linear-gradient(90deg,var(--adi-green),var(--adi-green-dark) 70%, var(--adi-gold)); border-radius:0 0 12px 12px; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:8px; }
+.adi-ribbon { height:6px; background:linear-gradient(90deg,var(--adi-green),var(--adi-green-dark) 70%%, var(--adi-gold)); border-radius:0 0 12px 12px; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:8px; }
 .adi-title { font-size:1.6rem; font-weight:900; color:var(--adi-green); }
 .adi-sub { color:#3f4a54; font-weight:600; }
 .adi-card { background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:20px; padding:20px; box-shadow:0 8px 24px rgba(10,24,18,.08); }
@@ -301,3 +301,4 @@ with tabs[3]:
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.caption("Security: API keys (if used) stay server-side (env or .streamlit/secrets). Never accept keys via UI.")
+
