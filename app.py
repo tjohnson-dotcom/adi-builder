@@ -34,7 +34,7 @@ html, body { background: var(--adi-stone) !important; }
 .stRadio > div{ gap:12px; flex-wrap:wrap; }
 .stRadio [role="radiogroup"] > div label{ border:2px solid var(--adi-green); border-radius:999px; padding:10px 16px; background:#fff; color:#1f2937; font-weight:700; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.04); }
 .stRadio [role="radiogroup"] > div [aria-checked="true"] label{ background:#f7faf8; box-shadow:inset 0 0 0 3px var(--adi-gold); }
-.chip{display:inline-block;margin:4px 6px;padding:6px 10px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
+
 .chip.low{box-shadow:inset 0 0 0 3px rgba(36,90,52,.12);}
 .chip.medium{box-shadow:inset 0 0 0 3px rgba(200,168,90,.18);}
 .chip.high{box-shadow:inset 0 0 0 3px rgba(200,168,90,.32);}
@@ -47,10 +47,18 @@ html, body { background: var(--adi-stone) !important; }
 .badge-ok{ display:inline-block; background:#e8f5ee; border:2px solid #1f7a4c; color:#14532d; padding:6px 10px; border-radius:999px; font-weight:800; margin-top:8px; }
 .badge-warn{ display:inline-block; background:#fff7ed; border:2px solid #fed7aa; color:#7c2d12; padding:6px 10px; border-radius:999px; font-weight:800; margin-top:8px; }
 .adi-banner{ display:block; background:#ffffff; border-left:6px solid var(--adi-gold); color:#1f2937; font-weight:900; letter-spacing:.04em; text-transform:uppercase; padding:8px 16px; border-radius:8px; margin:0 auto 10px auto; width:max-content; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+
+""" % (ADI_GREEN, ADI_GREEN_DARK, ADI_GOLD, ADI_STONE)
+
+
+st.markdown("""<style>
 .seq-row{margin-top:4px;margin-bottom:6px;}
 .chip{margin:2px 6px;padding:6px 12px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
-</style>
-""" % (ADI_GREEN, ADI_GREEN_DARK, ADI_GOLD, ADI_STONE)
+.chip.ok{background:#e8f5ee!important;border-color:#1f7a4c!important;color:#14532d!important;box-shadow:0 1px 2px rgba(0,0,0,.04), inset 0 0 0 2px rgba(31,122,76,.15)!important;}
+.chip.warn{background:#fff7ed!important;border-color:#f59e0b!important;color:#7c2d12!important;box-shadow:0 1px 2px rgba(0,0,0,.04), inset 0 0 0 2px rgba(245,158,11,.25)!important;}
+.stNumberInput > div > div, .stTextInput > div > div, .stSelectbox > div > div{border:3px solid rgba(36,90,52,.25); border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(10,24,18,.06);}
+.stNumberInput:focus-within > div > div, .stTextInput:focus-within > div > div, .stSelectbox:focus-within > div > div{box-shadow:0 0 0 3px rgba(200,168,90,.55) inset, 0 2px 10px rgba(10,24,18,.10); border-color: #1f7a4c;}
+</style>""", unsafe_allow_html=True)
 
 st.set_page_config(page_title="ADI Builder — Clean ADI", page_icon="✅", layout="wide")
 st.markdown(CSS, unsafe_allow_html=True)
@@ -194,7 +202,7 @@ with tabs[0]:
     if text:
         st.markdown(f"<span class='badge-ok'>✓ Processed: {len(text):,} chars</span>", unsafe_allow_html=True)
 st.markdown("""<style>[data-testid=\"stFileUploaderDropzone\"]{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}</style>""", unsafe_allow_html=True)
-.chip{margin:2px 6px;padding:6px 12px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
+
 </style>", unsafe_allow_html=True)
     elif up is not None:
         st.markdown("<span class='badge-warn'>Uploaded but no text detected — try a text PDF, DOCX/PPTX, or paste text below.</span>", unsafe_allow_html=True)
