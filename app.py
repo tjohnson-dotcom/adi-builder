@@ -38,6 +38,10 @@ html, body { background: var(--adi-stone) !important; }
 .chip.low{box-shadow:inset 0 0 0 3px rgba(36,90,52,.12);}
 .chip.medium{box-shadow:inset 0 0 0 3px rgba(200,168,90,.18);}
 .chip.high{box-shadow:inset 0 0 0 3px rgba(200,168,90,.32);}
+/* Chip state by policy match */
+.chip.ok{background:#e8f5ee;border-color:#1f7a4c;box-shadow:inset 0 0 0 2px rgba(31,122,76,.15);}.chip.warn{background:#fff;border-color:#c89a4a;box-shadow:inset 0 0 0 2px rgba(200,168,90,.25);}
+/* Make top inputs pop */
+.stNumberInput > div > div, .stTextInput > div > div, .stSelectbox > div > div{ border:2px solid rgba(36,90,52,.25); border-radius:12px; background:#fff; }.stNumberInput:focus-within > div > div, .stTextInput:focus-within > div > div, .stSelectbox:focus-within > div > div{ box-shadow:0 0 0 3px rgba(200,168,90,.35) inset; border-color: var(--adi-green); }
 [data-testid="stFileUploaderDropzone"]{ border:2px dashed var(--adi-green)!important; background:#f7faf8; border-radius:14px; transition:box-shadow .15s ease, background .15s ease; }
 [data-testid="stFileUploaderDropzone"]:hover{ background:#eef7f1; box-shadow:0 0 0 3px rgba(36,90,52,.15) inset; }
 .badge-ok{ display:inline-block; background:#e8f5ee; border:2px solid #1f7a4c; color:#14532d; padding:6px 10px; border-radius:999px; font-weight:800; margin-top:8px; }
@@ -301,5 +305,3 @@ with tabs[3]:
     st.markdown("</div>", unsafe_allow_html=True)
 
 st.caption("Security: API keys (if used) stay server-side (env or .streamlit/secrets). Never accept keys via UI.")
-
-
