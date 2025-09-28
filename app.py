@@ -381,7 +381,7 @@ with tabs[2]:
 
     colA, colB = st.columns(2)
     with colA:
-        if st.button("Generate Activities", type="primary", key="btn_acts"):
+        if st.button("🎨 Generate Activities", type="primary", key="btn_acts"):
             rng = random.Random(stable_seed(teacher_id, klass, lesson, week, src_text))
             base_stems = {
                 "Quick tasks": ["Do-now:","Exit ticket:","3-minute write:","Sketch-note:","One-sentence summary:"],
@@ -407,7 +407,7 @@ with tabs[2]:
                 acts.append(f"[{duration} min] " + prompt)
             st.session_state.activities = acts
     with colB:
-        if st.button("Generate MCQs", type="primary", key="btn_mcq"):
+        if st.button("❓ Generate MCQs", type="primary", key="btn_mcq"):
             if use_ai and have_api():
                 with st.spinner("Generating with AI…"):
                     df = ai_generate_mcqs(src_text, lesson, week, blooms, teacher_id, n=len(blooms))
