@@ -41,12 +41,14 @@ html, body { background: var(--adi-stone) !important; }
 /* Chip state by policy match */
 .chip.ok{background:#e8f5ee!important;border-color:#1f7a4c!important;color:#14532d!important;box-shadow:0 1px 2px rgba(0,0,0,.04), inset 0 0 0 2px rgba(31,122,76,.15)!important;}.chip.warn{background:#fff;border-color:#c89a4a;box-shadow:inset 0 0 0 2px rgba(200,168,90,.25);}
 /* Make top inputs pop */
-.stNumberInput > div > div, .stTextInput > div > div, .stSelectbox > div > div{ border:2px solid rgba(36,90,52,.25); border-radius:12px; background:#fff; box-shadow:0 2px 8px rgba(10,24,18,.06);}.stNumberInput:focus-within > div > div, .stTextInput:focus-within > div > div, .stSelectbox:focus-within > div > div{ box-shadow:0 0 0 3px rgba(200,168,90,.45) inset, 0 2px 10px rgba(10,24,18,.10); border-color: var(--adi-green);}
+.stNumberInput > div > div, .stTextInput > div > div, .stSelectbox > div > div{ border:3px solid rgba(36,90,52,.25); border-radius:14px; background:#fff; box-shadow:0 2px 8px rgba(10,24,18,.06);}.stNumberInput:focus-within > div > div, .stTextInput:focus-within > div > div, .stSelectbox:focus-within > div > div{ box-shadow:0 0 0 3px rgba(200,168,90,.55) inset, 0 2px 10px rgba(10,24,18,.10); border-color: var(--adi-green);}
 [data-testid="stFileUploaderDropzone"]{ border:2px dashed var(--adi-green)!important; background:#f7faf8; border-radius:14px; transition:box-shadow .15s ease, background .15s ease; }
 [data-testid="stFileUploaderDropzone"]:hover{ background:#eef7f1; box-shadow:0 0 0 3px rgba(36,90,52,.15) inset; }
 .badge-ok{ display:inline-block; background:#e8f5ee; border:2px solid #1f7a4c; color:#14532d; padding:6px 10px; border-radius:999px; font-weight:800; margin-top:8px; }
 .badge-warn{ display:inline-block; background:#fff7ed; border:2px solid #fed7aa; color:#7c2d12; padding:6px 10px; border-radius:999px; font-weight:800; margin-top:8px; }
 .adi-banner{ display:block; background:#ffffff; border-left:6px solid var(--adi-gold); color:#1f2937; font-weight:900; letter-spacing:.04em; text-transform:uppercase; padding:8px 16px; border-radius:8px; margin:0 auto 10px auto; width:max-content; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+.seq-row{margin-top:4px;margin-bottom:6px;}
+.chip{margin:2px 6px;padding:6px 12px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
 </style>
 """ % (ADI_GREEN, ADI_GREEN_DARK, ADI_GOLD, ADI_STONE)
 
@@ -191,7 +193,9 @@ with tabs[0]:
     st.caption(f"Characters loaded: {len(text)}")
     if text:
         st.markdown(f"<span class='badge-ok'>✓ Processed: {len(text):,} chars</span>", unsafe_allow_html=True)
-        st.markdown("<style>[data-testid='stFileUploaderDropzone']{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}</style>", unsafe_allow_html=True)
+        st.markdown("<style>[data-testid='stFileUploaderDropzone']{border-color:#1f7a4c!important;background:#e8f5ee!important;box-shadow:0 0 0 3px rgba(36,90,52,.25) inset!important;}.seq-row{margin-top:4px;margin-bottom:6px;}
+.chip{margin:2px 6px;padding:6px 12px;border-radius:999px;border:2px solid #d1d5db;background:#fff;color:#1f2937;font-weight:700;}
+</style>", unsafe_allow_html=True)
     elif up is not None:
         st.markdown("<span class='badge-warn'>Uploaded but no text detected — try a text PDF, DOCX/PPTX, or paste text below.</span>", unsafe_allow_html=True)
     else:
@@ -217,7 +221,7 @@ with tabs[1]:
         blooms=(sel*((count//len(sel))+1))[:count]
     chip_map={"Low":"low","Medium":"medium","High":"high"}
     chips=" ".join([f"<span class='chip {chip_map[BLOOM_TIER[b]]}'>{b}</span>" for b in blooms])
-    st.markdown("**Sequence preview:** "+chips, unsafe_allow_html=True)
+    st.markdown("<div class='seq-row'><strong>Sequence preview:</strong> "+chips+"</div>", unsafe_allow_html=True)
     current=policy_tier(int(week)); selected=BLOOM_TIER[focus]
     if current==selected:
         st.markdown(f"<span class='badge-ok'>Policy: {current}</span> &nbsp; <span class='badge-ok'>Selected: {selected} ✓</span>", unsafe_allow_html=True)
