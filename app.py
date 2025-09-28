@@ -47,6 +47,34 @@ html, body {{ background: var(--adi-stone) !important; }}
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+# --- PAGE 1 (Upload) — Scoped ADI Green for dropdowns/buttons ---
+_p1_css = """
+<style>
+:root{ --adi-green:#245a34; --adi-green-dark:#1a4426; }
+/* Scope to the Upload card only */
+#adi-upload [data-baseweb="select"] > div{
+  border-color: var(--adi-green) !important;
+}
+#adi-upload [data-baseweb="select"] svg{
+  color: var(--adi-green) !important;
+}
+/* File uploader browse button and dropzone accents */
+#adi-upload [data-testid="stFileUploader"] button{
+  background: var(--adi-green) !important;
+  border-color: var(--adi-green) !important;
+  color:#fff !important;
+}
+#adi-upload [data-testid="stFileUploaderDropzone"]{
+  border: 2px dashed rgba(36,90,52,.35) !important;
+}
+#adi-upload [data-testid="stFileUploaderDropzone"]:hover{
+  border-color: var(--adi-green) !important;
+}
+</style>
+"""
+st.markdown(_p1_css, unsafe_allow_html=True)
+
+
 # --- HEADER TAGLINE ALIGNMENT OVERRIDE ---
 _header_css = """
 <style>
@@ -317,7 +345,7 @@ tabs=st.tabs(["① Upload","② Setup","③ Generate","④ Export"])
 
 # Upload
 with tabs[0]:
-    st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='adi-card' id='adi-upload'>", unsafe_allow_html=True)
     st.subheader("📤 Upload source"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
     up=st.file_uploader("PDF / PPTX / DOCX (optional — you can also paste text below)", type=["pdf","pptx","docx"])
     pasted=st.text_area("Or paste source text manually", height=180, placeholder="Paste any relevant lesson/topic text here…")
