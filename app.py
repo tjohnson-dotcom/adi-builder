@@ -1,3 +1,8 @@
+# adi_builder_locked.py
+# Status: LOCKED PAGES (1: Upload, 2: Setup). Do not modify unless Tom requests.
+# Any future changes should only affect Page 3 (Generate) and Page 4 (Export).
+LOCKED_PAGES = (1, 2)  # informational only
+
 # app_fixed.py — ADI Builder (patched with policy pills + verbs + pill radios)
 import io, re, random, os
 from typing import List
