@@ -25,7 +25,7 @@ CSS = f"""
 html, body {{ background: var(--adi-stone) !important; }}
 .adi-ribbon {{ height:6px; background:linear-gradient(90deg,var(--adi-green),var(--adi-green-dark) 70%, var(--adi-gold)); border-radius:0 0 12px 12px; box-shadow:0 2px 8px rgba(0,0,0,.08); margin-bottom:8px; }}
 .adi-title {{ font-size:1.6rem; font-weight:900; color:var(--adi-green); }}
-.adi-sub {{ color:#3f4a54; font-weight:600; }}
+.adi-sub {{ color:#4b5563; font-weight:600; font-size:1.02rem; letter-spacing:.2px; display:block; text-align:left; margin-top:.2rem; }}
 .adi-card {{ background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:20px; padding:20px; box-shadow:0 8px 24px rgba(10,24,18,.08); }}
 .adi-section {{ border-top:3px solid var(--adi-gold); margin:8px 0 16px; box-shadow:0 -1px 0 rgba(0,0,0,.02) inset; }}
 /* Radios as pills */
@@ -164,7 +164,7 @@ st.markdown("<div class='adi-ribbon'></div>", unsafe_allow_html=True)
 # --- Header
 c1,c2 = st.columns([1,6], vertical_alignment="center")
 with c1:
-    if os.path.exists("Logo.png"): st.image("Logo.png", width=78)
+    if os.path.exists("Logo.png"): st.image("Logo.png", width=120)
     else: st.markdown("**ADI**")
 with c2:
     st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
