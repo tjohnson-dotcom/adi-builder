@@ -212,91 +212,54 @@ with tabs[0]:
 
 # Setup
 
+
 with tabs[1]:
-    # --- SPACIOUS SETUP (two rows, generous spacing; Page 1 untouched)
+    # --- REFINED, CALMER SETUP (Page 1 unchanged)
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("⚙️ Setup")
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
 
-    # =============== ROW A ===============
-    # Left: Lesson & Week (pill radios)
-    # Right: Bloom's Level (pill radios)
-    rowA_left, rowA_right = st.columns([1.2, 2.2])
+    # ROW 1 — Two columns only
+    col_left, col_right = st.columns([1.8, 1.6])
 
-    with rowA_left:
-        st.markdown("#### Lesson & Week")
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    with col_left:
+        # Lesson + Week + Bloom (stacked, generous spacing)
+        st.markdown("##### Lesson")
         st.session_state.lesson = st.radio(
             "Lesson", [1,2,3,4,5],
-            index=st.session_state.get("lesson",1)-1,
-            horizontal=True, key="lesson_radio_spacious"
+            index=st.session_state.get("lesson",1)-1, horizontal=True, key="lesson_radio_refined"
         )
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown("##### Week  <span style='font-weight:400;opacity:.75'>ADI: 1–4 Low · 5–9 Medium · 10–14 High</span>", unsafe_allow_html=True)
         st.session_state.week = st.radio(
             "Week", list(range(1,15)),
-            index=st.session_state.get("week",1)-1,
-            horizontal=True, key="week_radio_spacious",
-            help="ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High"
+            index=st.session_state.get("week",1)-1, horizontal=True, key="week_radio_refined"
         )
 
-    with rowA_right:
-        st.markdown("#### Bloom’s Level")
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown("##### Bloom’s Level")
         BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
         BLOOM_TIER = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
-        current_level = st.session_state.get("level", "Understand")
+        current_level = st.session_state.get("level","Understand")
         st.session_state.level = st.radio(
             "Choose the focal level", BLOOM_LEVELS,
-            index=BLOOM_LEVELS.index(current_level),
-            horizontal=True, key="level_radio_spacious"
+            index=BLOOM_LEVELS.index(current_level), horizontal=True, key="level_radio_refined"
         )
-        st.caption("Tip: you can still generate a mixed sequence below. This sets the *focus* for verbs and weighting.")
 
-    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)  # vertical gap
+    with col_right:
+        # Sequence + Policy only (clean)
+        st.markdown("##### Sequence")
+        mode = st.radio("Mode", ["Auto by Focus","Target level(s)"], horizontal=True, key="seq_mode_refined")
+        count = st.slider("How many MCQs?", 4, 30, st.session_state.get("count_auto", 10), 1, key="count_slider_refined")
 
-    # =============== ROW B ===============
-    # Left: Verbs picker (5–10)
-    # Right: Sequence controls + preview + policy pills
-    rowB_left, rowB_right = st.columns([1.8, 2.2])
-
-    with rowB_left:
-        st.markdown("#### Choose 5–10 verbs")
-        BLOOM_VERBS = {
-            "Remember": ["define","list","recall","identify","label","name","state","match","recognize","outline","select","repeat"],
-            "Understand": ["explain","summarize","classify","describe","discuss","interpret","paraphrase","compare","illustrate","infer"],
-            "Apply": ["apply","demonstrate","execute","implement","solve","use","calculate","perform","simulate","carry out"],
-            "Analyze": ["analyze","differentiate","organize","attribute","deconstruct","compare/contrast","examine","test","investigate"],
-            "Evaluate": ["evaluate","argue","assess","defend","judge","justify","critique","recommend","prioritize","appraise"],
-            "Create": ["create","design","compose","construct","develop","plan","produce","propose","assemble","formulate"],
-        }
-        verbs_all = BLOOM_VERBS.get(st.session_state.level, [])
-        # initialize default once
-        if "verbs" not in st.session_state or not st.session_state.verbs:
-            st.session_state.verbs = verbs_all[:5]
-        st.session_state.verbs = st.multiselect(
-            "Pick verbs that fit your outcomes",
-            options=verbs_all,
-            default=st.session_state.verbs,
-            key="verbs_select_spacious",
-            help="Exactly 5–10 verbs recommended by ADI policy."
-        )
-        if 5 <= len(st.session_state.verbs) <= 10:
-            st.success("Verb count looks good ✅")
+        if mode == "Target level(s)":
+            sel = st.multiselect("Target level(s)", BLOOM_LEVELS, default=["Understand","Apply","Analyze"], key="seq_targets_refined")
+            sel = sel or ["Understand"]
         else:
-            st.warning(f"Select between 5 and 10 verbs. Currently: {len(st.session_state.verbs)}")
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        st.caption("These verbs drive the MCQ stems and activity prompts.")
+            sel = None
 
-    with rowB_right:
-        st.markdown("#### Sequence & Policy")
-        # Controls
-        c1, c2 = st.columns([1.1, 1])
-        with c1:
-            mode = st.radio("Sequence mode", ["Auto by Focus","Target level(s)"], horizontal=True, key="seq_mode_spacious")
-        with c2:
-            count = st.slider("How many MCQs?", 4, 30, st.session_state.get("count_auto", 10), 1, key="count_slider_spacious")
-
-        # Helper: generate sequence
+        # Build sequence
         import random as _rnd
         def _weighted(selected:str, n:int, rng:_rnd.Random):
             idx=BLOOM_LEVELS.index(selected); weights=[]
@@ -310,21 +273,18 @@ with tabs[1]:
                     if x<=acc: seq.append(lv); break
             return seq
 
-        if mode == "Auto by Focus":
+        if sel is None:
             rng = _rnd.Random(int(st.session_state.week)*100 + int(st.session_state.lesson))
             blooms = _weighted(st.session_state.level, count, rng)
         else:
-            sel = st.multiselect("Target level(s)", BLOOM_LEVELS, default=["Understand","Apply","Analyze"], key="seq_targets_spacious")
-            sel = sel or ["Understand"]
             blooms = (sel * ((count // len(sel)) + 1))[:count]
 
-        # Compact counts display
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        # Preview as a quiet one-liner
         counts = {lv: blooms.count(lv) for lv in BLOOM_LEVELS}
-        chips = " ".join([f"<span class='pill'>{lv} × {counts[lv]}</span>" for lv in BLOOM_LEVELS if counts[lv]>0])
-        st.markdown(f"**Sequence preview:** {chips}", unsafe_allow_html=True)
+        summary = "  ·  ".join([f"{lv} × {counts[lv]}" for lv in BLOOM_LEVELS if counts[lv]>0])
+        st.caption("Sequence preview: " + (summary or "—"))
 
-        # Policy pills (single line)
+        # Policy pills
         def _policy_tier(week:int)->str:
             if 1<=week<=4: return "Low"
             if 5<=week<=9: return "Medium"
@@ -334,16 +294,40 @@ with tabs[1]:
         pp = {'Low':'pill','Medium':'pill','High':'pill'}
         pp[required] += ' current'
         if selected_tier==required:
-            pp[selected_tier] += ' match'
-            badge = "<div class='badge-ok'>✓ ADI policy matched</div>"
+            pp[selected_tier] += ' match'; badge = "<div class='badge-ok'>✓ ADI policy matched</div>"
         else:
-            pp[selected_tier] += ' mismatch'
-            badge = f"<div class='badge-warn'>Week requires {required}. Selected is {selected_tier}.</div>"
+            pp[selected_tier] += ' mismatch'; badge = f"<div class='badge-warn'>Week requires {required}. Selected is {selected_tier}.</div>"
         st.markdown(f"<div class='pills'><span class='{pp['Low']}'>Low</span><span class='{pp['Medium']}'>Medium</span><span class='{pp['High']}'>High</span></div>{badge}", unsafe_allow_html=True)
 
-        # Persist
+        # persist
         st.session_state.blooms = blooms
         st.session_state.count_auto = count
+
+    # ROW 2 — Verbs full-width (calmer composition)
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown("#### Choose 5–10 verbs")
+    BLOOM_VERBS = {
+        "Remember": ["define","list","recall","identify","label","name","state","match","recognize","outline","select","repeat"],
+        "Understand": ["explain","summarize","classify","describe","discuss","interpret","paraphrase","compare","illustrate","infer"],
+        "Apply": ["apply","demonstrate","execute","implement","solve","use","calculate","perform","simulate","carry out"],
+        "Analyze": ["analyze","differentiate","organize","attribute","deconstruct","compare/contrast","examine","test","investigate"],
+        "Evaluate": ["evaluate","argue","assess","defend","judge","justify","critique","recommend","prioritize","appraise"],
+        "Create": ["create","design","compose","construct","develop","plan","produce","propose","assemble","formulate"],
+    }
+    verbs_all = BLOOM_VERBS.get(st.session_state.level, [])
+    if "verbs" not in st.session_state or not st.session_state.verbs:
+        st.session_state.verbs = verbs_all[:5]
+    st.session_state.verbs = st.multiselect(
+        "Pick verbs that fit your outcomes",
+        options=verbs_all,
+        default=st.session_state.verbs,
+        key="verbs_select_refined"
+    )
+    if 5 <= len(st.session_state.verbs) <= 10:
+        st.success("Verb count looks good ✅")
+    else:
+        st.warning(f"Select between 5 and 10 verbs. Currently: {len(st.session_state.verbs)}")
+    st.caption("These verbs drive the MCQ stems and activity prompts.")
 
     st.markdown("</div>", unsafe_allow_html=True)
 with tabs[2]:
