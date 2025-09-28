@@ -43,13 +43,21 @@ html, body { background: var(--adi-stone) !important; }
 .adi-title { font-size:1.6rem; font-weight:900; color:var(--adi-green); }
 .adi-sub { color:#3f4a54; font-weight:600; }
 .adi-card { background:#fff; border:1px solid rgba(0,0,0,.06); border-radius:20px; padding:20px; box-shadow:0 8px 24px rgba(10,24,18,.08); }
-.adi-section { border-top:3px solid var(--adi-gold); margin:8px 0 16px; }
+.adi-section{border-top:3px solid var(--adi-gold);margin:8px 0 16px;box-shadow:0 -1px 0 rgba(0,0,0,.02) inset;}
 .stTabs [data-baseweb="tab"] { background:#fff; border-radius:16px; border:1px solid rgba(0,0,0,.08); }
 .stTabs [aria-selected="true"] { border-color:var(--adi-green); font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.06); }
 /* Buttons */
-.stButton > button[kind="primary"] { background:linear-gradient(135deg,var(--adi-green),var(--adi-green-dark))!important; color:#fff!important; border:none!important; border-radius:16px!important; font-weight:800!important; box-shadow:0 6px 16px rgba(10,24,18,.2); }
-.stButton > button:not([kind="primary"]) { background:#fff!important; color:var(--adi-green)!important; border:2px solid var(--adi-green)!important; border-radius:14px!important; font-weight:700!important; }
+.stButton > button[kind="primary"]{background:linear-gradient(135deg,var(--adi-green),var(--adi-green-dark))!important;color:#fff!important;border:none!important;border-radius:16px!important;font-weight:800!important;box-shadow:0 6px 16px rgba(10,24,18,.2);}
+.stButton > button:not([kind="primary"]){background:#fff!important;color:var(--adi-green)!important;border:2px solid var(--adi-green)!important;border-radius:14px!important;font-weight:700!important;}
+
+/* Tabs -> pill style (robust selectors) */
+.stTabs [role="tablist"]{gap:10px;}
+.stTabs [role="tab"]{background:#fff;border:2px solid rgba(0,0,0,.08);border-radius:999px;padding:8px 14px;font-weight:700;color:#1f2937;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.stTabs [role="tab"][aria-selected="true"]{border-color:var(--adi-green);box-shadow:inset 0 0 0 3px var(--adi-gold),0 1px 6px rgba(0,0,0,.06);}
+.stTabs [role="tab"]:focus{outline:none;}
+
 /* Radio-as-chips */
+.stRadio input[type='radio']{accent-color: var(--adi-green);}
 .stRadio > div { gap:12px; flex-wrap:wrap; }
 .stRadio [role="radiogroup"] > div label { border:2px solid var(--adi-green); border-radius:999px; padding:10px 16px; background:#fff; color:#1f2937; font-weight:700; cursor:pointer; box-shadow:0 1px 2px rgba(0,0,0,.04); }
 .stRadio [role="radiogroup"] > div [aria-checked="true"] label { background:#f7faf8; box-shadow:inset 0 0 0 3px var(--adi-gold); }
