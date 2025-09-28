@@ -31,7 +31,7 @@ html,body{{background:var(--adi-stone)!important;}}
 .adi-sub{{color:#3f4a54;font-weight:600;}}
 .adi-card{{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:20px;padding:20px;box-shadow:0 8px 24px rgba(10,24,18,.08);}}
 .adi-section{border-top:3px solid var(--adi-gold);margin:8px 0 16px;}
-.adi-banner{display:inline-block;background:#ffffff;border-left:6px solid var(--adi-gold);color:#1f2937;font-weight:900;letter-spacing:.04em;text-transform:uppercase;padding:6px 12px;border-radius:6px;margin:0 0 8px 0;}
+.adi-banner{display:block;background:#ffffff;border-left:6px solid var(--adi-gold);color:#1f2937;font-weight:900;letter-spacing:.04em;text-transform:uppercase;padding:8px 16px;border-radius:8px;margin:0 auto 10px auto;width:max-content;box-shadow:0 2px 8px rgba(0,0,0,.06);}
 /* Buttons */
 .stButton > button[kind="primary"]{{background:linear-gradient(135deg,var(--adi-green),var(--adi-green-dark))!important;color:#fff!important;border:none!important;border-radius:16px!important;font-weight:800!important;box-shadow:0 6px 16px rgba(10,24,18,.2);}}
 .stButton > button:not([kind="primary"]){{background:#fff!important;color:var(--adi-green)!important;border:2px solid var(--adi-green)!important;border-radius:14px!important;font-weight:700!important;}}
@@ -292,16 +292,16 @@ st.markdown("<div class='adi-banner'>Export</div>", unsafe_allow_html=True)
     c1,c2,c3,c4=st.columns(4)
     with c1:
         if not df.empty:
-            st.download_button(f"{I('⬇️ ')}MCQs CSV",data=df.to_csv(index=False).encode("utf-8"),file_name="mcqs.csv",mime="text/csv",use_container_width=True)
+            st.download_button(f"{I('⬇️ ')}Export · MCQs CSV",data=df.to_csv(index=False).encode("utf-8"),file_name="mcqs.csv",mime="text/csv",use_container_width=True)
     with c2:
         if not df.empty:
-            st.download_button(f"{I('⬇️ ')}MCQs GIFT",data=to_gift(df).encode("utf-8"),file_name="mcqs.gift.txt",mime="text/plain",use_container_width=True)
+            st.download_button(f"{I('⬇️ ')}Export · MCQs GIFT",data=to_gift(df).encode("utf-8"),file_name="mcqs.gift.txt",mime="text/plain",use_container_width=True)
     with c3:
         if st.session_state.get("activities"):
-            st.download_button(f"{I('⬇️ ')}Activities CSV",data=("\n".join(st.session_state["activities"])).encode("utf-8"),file_name="activities.csv",mime="text/csv",use_container_width=True)
+            st.download_button(f"{I('⬇️ ')}Export · Activities CSV",data=("\n".join(st.session_state["activities"])).encode("utf-8"),file_name="activities.csv",mime="text/csv",use_container_width=True)
     with c4:
         if st.session_state.get("activities") and Document:
-            st.download_button(f"{I('⬇️ ')}Activities DOCX",data=activities_docx(st.session_state["activities"]),file_name="activities.docx",
+            st.download_button(f"{I('⬇️ ')}Export · Activities DOCX",data=activities_docx(st.session_state["activities"]),file_name="activities.docx",
                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",use_container_width=True)
         elif st.session_state.get("activities"):
             st.info("Install python-docx to enable DOCX export.")
