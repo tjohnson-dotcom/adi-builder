@@ -30,7 +30,8 @@ html,body{{background:var(--adi-stone)!important;}}
 .adi-title{{font-size:1.6rem;font-weight:900;color:var(--adi-green);}}
 .adi-sub{{color:#3f4a54;font-weight:600;}}
 .adi-card{{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:20px;padding:20px;box-shadow:0 8px 24px rgba(10,24,18,.08);}}
-.adi-section{{border-top:3px solid var(--adi-gold);margin:8px 0 16px;}}
+.adi-section{border-top:3px solid var(--adi-gold);margin:8px 0 16px;}
+.adi-banner{display:inline-block;background:#ffffff;border-left:6px solid var(--adi-gold);color:#1f2937;font-weight:900;letter-spacing:.04em;text-transform:uppercase;padding:6px 12px;border-radius:6px;margin:0 0 8px 0;}
 /* Buttons */
 .stButton > button[kind="primary"]{{background:linear-gradient(135deg,var(--adi-green),var(--adi-green-dark))!important;color:#fff!important;border:none!important;border-radius:16px!important;font-weight:800!important;box-shadow:0 6px 16px rgba(10,24,18,.2);}}
 .stButton > button:not([kind="primary"]){{background:#fff!important;color:var(--adi-green)!important;border:2px solid var(--adi-green)!important;border-radius:14px!important;font-weight:700!important;}}
@@ -40,6 +41,9 @@ html,body{{background:var(--adi-stone)!important;}}
 .stRadio [role="radiogroup"] > div [aria-checked="true"] label{{background:#f7faf8;box-shadow:inset 0 0 0 3px var(--adi-gold);}}
 .stDataFrame thead{{background:#f3faf5!important;}}
 .ok{{color:#065f46;font-weight:800;}} .warn{{color:#991b1b;font-weight:800;}}
+.badge-ok{display:inline-block;background:#e8f5ee;border:2px solid #1f7a4c;color:#14532d;padding:6px 10px;border-radius:999px;font-weight:800;margin-top:8px;}
+.badge-warn{display:inline-block;background:#fff7ed;border:2px solid #fed7aa;color:#7c2d12;padding:6px 10px;border-radius:999px;font-weight:800;margin-top:8px;}
+.badge-ok{display:inline-block;background:#e8f5ee;border:2px solid #1f7a4c;color:#14532d;padding:6px 10px;border-radius:999px;font-weight:800;margin-top:8px;}
 </style>
 """
 st.set_page_config(page_title="ADI Builder — Clean ADI", page_icon="✅", layout="wide")
@@ -126,7 +130,33 @@ def extract_docx(b:bytes)->str:
     if not Document: return ""
     doc=Document(io.BytesIO(b)); return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 def extract_pdf(b:bytes)->str:
-    if not PyPDF2: return ""
+    # Try pdfplumber -> PyPDF2 -> pymupdf (fitz)
+    text = ""
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(b)) as pdf:
+            pages = [p.extract_text() or "" for p in pdf.pages]
+            text = "
+".join(pages)
+    except Exception:
+        pass
+    if not text:
+        try:
+            import PyPDF2 as _P2
+            reader = _P2.PdfReader(io.BytesIO(b))
+            text = "
+".join([p.extract_text() or "" for p in reader.pages])
+        except Exception:
+            text = ""
+    if not text:
+        try:
+            import fitz  # pymupdf
+            doc = fitz.open(stream=b, filetype="pdf")
+            text = "
+".join([page.get_text() or "" for page in doc])
+        except Exception:
+            text = ""
+    return text
     try:
         reader=PyPDF2.PdfReader(io.BytesIO(b)); return "\n".join([p.extract_text() or "" for p in reader.pages])
     except Exception: return ""
@@ -149,7 +179,20 @@ with tabs[0]:
         elif name.endswith(".pdf"): src_text=extract_pdf(data)
     if not src_text and pasted.strip(): src_text=pasted.strip()
     st.session_state["src_text"]=src_text
+    # Immediate feedback: file selected
+    if up is not None:
+        label = up.name
+        size = f" · {up.size/1e6:.1f} MB" if hasattr(up, "size") else ""
+        st.markdown(f"<span class='badge-ok'>✓ Selected: {label}{size}</span>", unsafe_allow_html=True)
+
+    # Characters loaded + processed badges
     st.caption(f"Characters loaded: {len(src_text)}")
+    if src_text:
+        st.markdown(f"<span class='badge-ok'>✓ Processed: {len(src_text):,} chars</span>", unsafe_allow_html=True)
+    elif up is not None:
+        st.markdown("<span class='badge-warn'>Uploaded but no text detected — try a text PDF, DOCX/PPTX, or paste text below.</span>", unsafe_allow_html=True)
+    else:
+        st.info('Upload a PDF/PPTX/DOCX or paste text to continue.')
     st.markdown("</div>", unsafe_allow_html=True)
 
 with tabs[1]:
@@ -243,7 +286,8 @@ def activities_docx(acts:List[str])->bytes:
 
 with tabs[3]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
-    st.subheader(f"{I('📦 ')}Export"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
+    st.subheader("📦 Export"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
+st.markdown("<div class='adi-banner'>Export</div>", unsafe_allow_html=True)
     df=st.session_state.mcq_df.copy()
     c1,c2,c3,c4=st.columns(4)
     with c1:
