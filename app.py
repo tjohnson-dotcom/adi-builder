@@ -78,6 +78,49 @@ input[type="radio"], input[type="checkbox"], input[type="range"]{ accent-color: 
 """
 st.markdown(adi_color_css, unsafe_allow_html=True)
 
+# --- ADI PAGE-3 COLOR OVERRIDES (buttons + slider) ---
+pg3_css = """
+<style>
+:root{
+  --adi-green:#245a34;
+  --adi-green-dark:#1a4426;
+  --adi-gold:#C8A85A;
+}
+/* Primary buttons (e.g., Generate MCQs / Activities) */
+.stButton > button,
+.stDownloadButton > button[kind="primary"],
+.stButton > button[kind="primary"]{
+  background: var(--adi-green) !important;
+  border-color: var(--adi-green) !important;
+  color: #fff !important;
+}
+.stButton > button:hover,
+.stDownloadButton > button[kind="primary"]:hover,
+.stButton > button[kind="primary"]:hover{
+  background: var(--adi-green-dark) !important;
+  border-color: var(--adi-green-dark) !important;
+}
+.stButton > button:focus{ box-shadow:0 0 0 3px rgba(36,90,52,.25) !important; }
+
+/* Slider thumb + filled track to ADI green */
+[data-testid="stSlider"] [role="slider"]{
+  background: var(--adi-green) !important;
+  border: 2px solid var(--adi-green) !important;
+}
+/* Try to color the filled track segment */
+[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(3){
+  background: var(--adi-green) !important;
+}
+/* Unfilled track subtle */
+[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2){
+  background: rgba(36,90,52,.15) !important;
+}
+</style>
+"""
+st.markdown(pg3_css, unsafe_allow_html=True)
+
+
+
 
 st.markdown("<div class='adi-ribbon'></div>", unsafe_allow_html=True)
 
@@ -430,3 +473,4 @@ def download_buttons():
             st.download_button("Export · Activities DOCX", activities_docx(st.session_state.activities), file_name="activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
         elif st.session_state.activities:
             st.caption("Install python-docx to enable Activities DOCX.")
+
