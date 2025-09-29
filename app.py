@@ -141,13 +141,12 @@ def offline_mcqs(src_text:str, blooms:List[str], verbs:List[str], n:int)->pd.Dat
               f"B) An incorrect detail about {fact}.",
               f"C) Another incorrect detail about {fact}.",
               f"D) A distractor unrelated to {fact}."]
-        answer = random.choice(["A", "B", "C", "D"])
+        answer="A"
         rows.append({"Bloom":b,"Tier":tier,"Q#":i+1,"Question":stem,"Option A":opts[0],"Option B":opts[1],"Option C":opts[2],"Option D":opts[3],"Answer":answer,"Explanation":f"Verb focus: {v} · Tier: {tier}"})
     return pd.DataFrame(rows, columns=["Bloom","Tier","Q#","Question","Option A","Option B","Option C","Option D","Answer","Explanation"])
 
 def build_activities(src_text:str, blooms:List[str], verbs:List[str], duration:int, diff:str, n:int=3)->List[str]:
-    base = [s.strip() for s in re.split(r'[.
-]', src_text or "") if s.strip()] or ["a relevant topic", "an interesting concept", "a key idea"]
+    base=[s.strip() for s in re.split(r'[.\n]', src_text or "") if s.strip()] or ["today's topic"]
     vcycle=(verbs*((n//max(1,len(verbs)))+1))[:n] if verbs else ["discuss"]*n
     acts=[]
     for i in range(n):
@@ -402,8 +401,8 @@ with tabs[2]:
     with g3: duration=st.selectbox("Duration (mins)",[15,20,25,30,35,40,45,50,55,60], index=1)
     with g4:
         st.write(" ")
-        if st.button("⚡ Auto-fill MCQs") and src.strip():
-    st.session_state.mcq_df = offline_mcqs(src,
+        if st.button("⚡ Auto-fill MCQs"):
+            st.session_state.mcq_df = offline_mcqs(src,
                 st.session_state.get('blooms', ["Understand"]*8),
                 st.session_state.verbs,
                 len(st.session_state.get('blooms', [])) or 8
@@ -683,6 +682,7 @@ with tabs[4]:
                                    file_name=base + ".gift",
                                    mime="text/plain",
                                    disabled=not bool(gift_payload))
+
 
 
 
