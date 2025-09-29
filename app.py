@@ -6,7 +6,15 @@ import io, os, re, random, datetime as dt
 from typing import List, Optional, Tuple
 import pandas as pd
 import streamlit as st
-
+st.markdown("""
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+  <img src="https://your-logo-url.com/logo.png" width="100" style="border-radius:12px;border:2px solid #245a34;box-shadow:0 2px ize:1.1rem;color:#245a34;">Transforming Lessons into Measurable Learning</p>
+    <span style="background:#e8f5ee;color:#14532d;border:2px solid #1f7a4c;border-radius:999px;padding:.35rem .7rem;font-weight:800;">
+      ✅ Version 1.0 · Live on Render
+    </span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 # ----------------
 # Page config & CSS
 # ----------------
