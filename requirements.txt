@@ -3,3 +3,9 @@ python-pptx
 python-docx
 streamlit
 gunicorn
+pip install 
+streamlit 
+pandas 
+python-docx 
+pdfplumber 
+python-pptx
