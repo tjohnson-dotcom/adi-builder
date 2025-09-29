@@ -684,4 +684,3 @@ with tabs[4]:
                                    mime="text/plain",
                                    disabled=not bool(gift_payload))
 
-
