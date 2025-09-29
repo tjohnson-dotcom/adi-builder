@@ -1,6 +1,6 @@
-# app.py — ADI Builder (stable demo build)
-# Pages 1–3 match the locked state; Export (Page 4) includes Word + Moodle GIFT.
-# Optional deps: pdfplumber, python-pptx, python-docx. App still runs without them.
+# app.py — ADI Builder (stable + Simple MCQ editor)
+# Offline-friendly: Word (.docx) + Moodle GIFT export. Optional deps:
+#   pip install streamlit pandas python-docx pdfplumber python-pptx
 import io, os, re, random, datetime as dt
 from typing import List, Optional
 import pandas as pd
@@ -38,7 +38,7 @@ html, body {{ background: var(--adi-stone) !important; }}
 .badge-ok{{background:#e8f5ee;color:#14532d;border-color:#86efac;}}
 .badge-warn{{background:#fff7ed;color:#7c2d12;border-color:#fdba74;}}
 
-/* Buttons (Page 3 primary) */
+/* Buttons */
 .stButton > button, .stDownloadButton > button[kind="primary"], .stButton > button[kind="primary"] {{
   background: var(--adi-green) !important; border-color: var(--adi-green) !important; color: #fff !important;
 }}
@@ -56,6 +56,8 @@ html, body {{ background: var(--adi-stone) !important; }}
 [data-testid="stMultiSelect"] [data-baseweb="tag"]{{ background:#e8f5ee !important; color:#1a3d2f !important; border:2px solid var(--adi-green) !important; border-radius:999px !important; font-weight:700 !important; }}
 [data-testid="stMultiSelect"] [data-baseweb="tag"] svg{{ fill: var(--adi-green) !important; color: var(--adi-green) !important; }}
 
+/* Data editor: compact input padding for options */
+[data-testid="stDataEditor"] td div[data-baseweb="input"] {{ padding: 4px 8px; }}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -110,7 +112,7 @@ def extract_pdf(b:bytes)->str:
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(b)) as pdf:
-            return "\\n".join([(p.extract_text() or "") for p in pdf.pages])
+            return "\n".join([(p.extract_text() or "") for p in pdf.pages])
     except Exception:
         return ""
 
@@ -121,7 +123,7 @@ def extract_pptx(b:bytes)->str:
         for s in prs.slides:
             for sh in s.shapes:
                 if hasattr(sh,"text"): out.append(sh.text)
-        return "\\n".join(out)
+        return "\n".join(out)
     except Exception:
         return ""
 
@@ -129,13 +131,13 @@ def extract_docx(b:bytes)->str:
     try:
         from docx import Document
         doc = Document(io.BytesIO(b))
-        return "\\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
     except Exception:
         return ""
 
 # Generators
 def offline_mcqs(src_text:str, blooms:list, verbs:List[str] , n:int):
-    base=[s.strip() for s in re.split(r'[.\\n]', src_text or "") if s.strip()] or ["This unit covers core concepts and applied practice."]
+    base=[s.strip() for s in re.split(r'[.\n]', src_text or "") if s.strip()] or ["This unit covers core concepts and applied practice."]
     if not verbs: verbs=["identify"]
     vcycle=(verbs*((n//max(1,len(verbs)))+1))[:n]
     rows=[]
@@ -154,7 +156,7 @@ def offline_mcqs(src_text:str, blooms:list, verbs:List[str] , n:int):
     return pd.DataFrame(rows, columns=["Bloom","Tier","Q#","Question","Option A","Option B","Option C","Option D","Answer","Explanation"])
 
 def build_activities(src_text:str, blooms:List[str], verbs:List[str], duration:int, diff:str, n:int=3)->List[str]:
-    base=[s.strip() for s in re.split(r'[.\\n]', src_text or "") if s.strip()] or ["today's topic"]
+    base=[s.strip() for s in re.split(r'[.\n]', src_text or "") if s.strip()] or ["today's topic"]
     vcycle=(verbs*((n//max(1,len(verbs)))+1))[:n] if verbs else ["discuss"]*n
     acts=[]
     for i in range(n):
@@ -171,7 +173,7 @@ def build_activities(src_text:str, blooms:List[str], verbs:List[str], duration:i
 def to_gift(df:pd.DataFrame)->str:
     out=[]
     for _,r in df.iterrows():
-        q=str(r.get("Question","")).replace("\\n"," ")
+        q=str(r.get("Question","")).replace("\n"," ")
         opts=[r.get("Option A",""),r.get("Option B",""),r.get("Option C",""),r.get("Option D","")]
         ans_letter = str(r.get("Answer","A")).strip().upper()
         if ans_letter not in "ABCD": ans_letter="A"
@@ -181,7 +183,7 @@ def to_gift(df:pd.DataFrame)->str:
             s=str(o).replace("}","\\}")
             parts.append(("=" if i==ans else "~")+s)
         out.append("{"+q+"}{"+" ".join(parts)+"}")
-    return "\\n\\n".join(out)
+    return "\n\n".join(out)
 
 def export_docx(df:pd.DataFrame, activities:List[str], lesson:int, week:int)->Optional[bytes]:
     try:
@@ -217,13 +219,12 @@ if "verbs" not in st.session_state: st.session_state.verbs=[]
 # ------
 tabs=st.tabs(["① Upload","② Setup","③ Generate","④ Export"])
 
-# ① Upload — material type + green uploaded chip
+# ① Upload
 with tabs[0]:
     st.markdown("<div class='adi-card' id='adi-upload'>", unsafe_allow_html=True)
     st.subheader("📤 Upload source"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
 
-    st.session_state.material_type = st.radio("Material type", ["Lesson plan","E-book","PowerPoint"],
-                                              horizontal=True, index=0, key="material_type_radio")
+    st.session_state.material_type = st.radio("Material type", ["Lesson plan","E-book","PowerPoint"], horizontal=True, index=0, key="material_type_radio")
     up=st.file_uploader("PDF / PPTX / DOCX (optional — you can also paste text below)", type=["pdf","pptx","docx"], key="upload_file")
     pasted=st.text_area("Or paste source text manually", height=180, placeholder="Paste any relevant lesson/topic text here…")
 
@@ -248,7 +249,7 @@ with tabs[0]:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ② Setup — refined, calmer layout
+# ② Setup
 with tabs[1]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("⚙️ Setup"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
@@ -256,17 +257,14 @@ with tabs[1]:
     col_left, col_right = st.columns([1.8, 1.6])
     with col_left:
         st.markdown("##### Lesson")
-        st.session_state.lesson = st.radio("Lesson", [1,2,3,4,5],
-                                           index=st.session_state.get("lesson",1)-1, horizontal=True)
+        st.session_state.lesson = st.radio("Lesson", [1,2,3,4,5], index=st.session_state.get("lesson",1)-1, horizontal=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.markdown("##### Week  <span style='font-weight:400;opacity:.75'>ADI: 1–4 Low · 5–9 Medium · 10–14 High</span>", unsafe_allow_html=True)
-        st.session_state.week = st.radio("Week", list(range(1,15)),
-                                         index=st.session_state.get("week",1)-1, horizontal=True)
+        st.session_state.week = st.radio("Week", list(range(1,15)), index=st.session_state.get("week",1)-1, horizontal=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.markdown("##### Bloom’s Level")
         current_level = st.session_state.get("level","Understand")
-        st.session_state.level = st.radio("Choose the focal level", BLOOM_LEVELS,
-                                          index=BLOOM_LEVELS.index(current_level), horizontal=True)
+        st.session_state.level = st.radio("Choose the focal level", BLOOM_LEVELS, index=BLOOM_LEVELS.index(current_level), horizontal=True)
 
     with col_right:
         st.markdown("##### Sequence")
@@ -315,7 +313,7 @@ with tabs[1]:
     st.caption("These verbs drive the MCQ stems and activity prompts.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ③ Generate — ADI-colors, same logic
+# ③ Generate — Simple/Advanced MCQ editor
 with tabs[2]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("⚡️ Generate"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
@@ -326,22 +324,67 @@ with tabs[2]:
     with g2: act_diff=st.radio("Difficulty",["Low","Medium","High"], index=1, horizontal=True)
     with g3: duration=st.selectbox("Duration (mins)",[15,20,25,30,35,40,45,50,55,60], index=1)
     with g4:
-        st.write(" ")  # spacer
+        st.write(" ")
         if st.button("❓ Generate MCQs"):
             st.session_state.mcq_df = offline_mcqs(src, st.session_state.get('blooms', ["Understand"]*8), st.session_state.verbs, len(st.session_state.get('blooms', [])) or 8)
         if st.button("📝 Generate Activities"):
             st.session_state.activities = build_activities(src, st.session_state.get('blooms', ["Understand"]*act_count), st.session_state.verbs, duration, act_diff, n=act_count)
 
     st.markdown("**MCQs (editable table)**")
-    st.session_state.mcq_df = st.data_editor(st.session_state.mcq_df, num_rows="dynamic", use_container_width=True, key="mcq_editor")
+
+    simple_mode = st.toggle("Simple mode", value=True, help="Hide advanced fields for a cleaner view.")
+
+    simple_cols   = ["Question", "Option A", "Option B", "Option C", "Option D", "Answer"]
+    advanced_cols = ["Bloom", "Tier", "Q#", "Explanation"]
+    column_order = simple_cols + ([] if simple_mode else advanced_cols)
+    disabled_cols = ["Bloom", "Tier", "Q#"]  # read-only
+
+    config = {
+        "Question":  st.column_config.TextColumn("Question", width="large", help="Write the stem here."),
+        "Option A":  st.column_config.TextColumn("A", width=220),
+        "Option B":  st.column_config.TextColumn("B", width=220),
+        "Option C":  st.column_config.TextColumn("C", width=220),
+        "Option D":  st.column_config.TextColumn("D", width=220),
+        "Answer":    st.column_config.SelectboxColumn("Correct", options=["A","B","C","D"], default="A", width=110),
+        "Explanation": st.column_config.TextColumn("Explanation (optional)", width="large"),
+        "Bloom":     st.column_config.TextColumn("Bloom (auto)"),
+        "Tier":      st.column_config.TextColumn("Tier (auto)"),
+        "Q#":        st.column_config.NumberColumn("Q#", format="%d", step=1),
+    }
+
+    st.session_state.mcq_df = st.data_editor(
+        st.session_state.mcq_df,
+        column_config=config,
+        column_order=column_order,
+        disabled=disabled_cols,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="mcq_editor_simple"
+    )
+
+    # Lightweight validation hint
+    missing = []
+    for i, r in st.session_state.mcq_df.iterrows():
+        if not str(r.get("Question","")).strip():
+            missing.append(i+1)
+        else:
+            for k in ["Option A","Option B","Option C","Option D"]:
+                if not str(r.get(k,"")).strip():
+                    missing.append(i+1); break
+
+    if missing:
+        st.caption(f"⚠️ Incomplete rows: {sorted(set(missing))}. Add a question and all options.")
+    else:
+        st.caption("✅ Table looks good.")
 
     st.markdown("**Activities (editable)**")
-    acts_text="\\n".join(st.session_state.activities)
+    acts_text="\n".join(st.session_state.activities)
     acts_text = st.text_area("One per line", value=acts_text, height=140, key="acts_text")
-    st.session_state.activities = [a.strip() for a in acts_text.split("\\n") if a.strip()]
+    st.session_state.activities = [a.strip() for a in acts_text.split("\n") if a.strip()]
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ④ Export — buttons always visible (disabled until ready)
+# ④ Export
 with tabs[3]:
     st.subheader("📦 Export")
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
