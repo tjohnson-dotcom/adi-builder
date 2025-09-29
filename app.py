@@ -1,6 +1,7 @@
-# app.py — ADI Builder (stable + Simple MCQ editor)
-# Offline-friendly: Word (.docx) + Moodle GIFT export. Optional deps:
+# app.py — ADI Builder (stable + Simple MCQ editor + UX tweaks)
+# Run:
 #   pip install streamlit pandas python-docx pdfplumber python-pptx
+#   streamlit run app.py
 import io, os, re, random, datetime as dt
 from typing import List, Optional
 import pandas as pd
@@ -58,6 +59,12 @@ html, body {{ background: var(--adi-stone) !important; }}
 
 /* Data editor: compact input padding for options */
 [data-testid="stDataEditor"] td div[data-baseweb="input"] {{ padding: 4px 8px; }}
+
+/* Sticky headers in editor */
+[data-testid="stDataEditor"] thead th {{
+  position: sticky; top: 0; background: #ffffff; z-index: 2;
+  box-shadow: 0 1px 0 rgba(0,0,0,.06);
+}}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -219,12 +226,13 @@ if "verbs" not in st.session_state: st.session_state.verbs=[]
 # ------
 tabs=st.tabs(["① Upload","② Setup","③ Generate","④ Export"])
 
-# ① Upload
+# ① Upload — material type + uploaded chip
 with tabs[0]:
     st.markdown("<div class='adi-card' id='adi-upload'>", unsafe_allow_html=True)
     st.subheader("📤 Upload source"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
 
-    st.session_state.material_type = st.radio("Material type", ["Lesson plan","E-book","PowerPoint"], horizontal=True, index=0, key="material_type_radio")
+    st.session_state.material_type = st.radio("Material type", ["Lesson plan","E-book","PowerPoint"],
+                                              horizontal=True, index=0, key="material_type_radio")
     up=st.file_uploader("PDF / PPTX / DOCX (optional — you can also paste text below)", type=["pdf","pptx","docx"], key="upload_file")
     pasted=st.text_area("Or paste source text manually", height=180, placeholder="Paste any relevant lesson/topic text here…")
 
@@ -249,7 +257,7 @@ with tabs[0]:
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ② Setup
+# ② Setup — refined layout
 with tabs[1]:
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     st.subheader("⚙️ Setup"); st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
@@ -257,14 +265,17 @@ with tabs[1]:
     col_left, col_right = st.columns([1.8, 1.6])
     with col_left:
         st.markdown("##### Lesson")
-        st.session_state.lesson = st.radio("Lesson", [1,2,3,4,5], index=st.session_state.get("lesson",1)-1, horizontal=True)
+        st.session_state.lesson = st.radio("Lesson", [1,2,3,4,5],
+                                           index=st.session_state.get("lesson",1)-1, horizontal=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.markdown("##### Week  <span style='font-weight:400;opacity:.75'>ADI: 1–4 Low · 5–9 Medium · 10–14 High</span>", unsafe_allow_html=True)
-        st.session_state.week = st.radio("Week", list(range(1,15)), index=st.session_state.get("week",1)-1, horizontal=True)
+        st.session_state.week = st.radio("Week", list(range(1,15)),
+                                         index=st.session_state.get("week",1)-1, horizontal=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         st.markdown("##### Bloom’s Level")
         current_level = st.session_state.get("level","Understand")
-        st.session_state.level = st.radio("Choose the focal level", BLOOM_LEVELS, index=BLOOM_LEVELS.index(current_level), horizontal=True)
+        st.session_state.level = st.radio("Choose the focal level", BLOOM_LEVELS,
+                                          index=BLOOM_LEVELS.index(current_level), horizontal=True)
 
     with col_right:
         st.markdown("##### Sequence")
@@ -325,14 +336,46 @@ with tabs[2]:
     with g3: duration=st.selectbox("Duration (mins)",[15,20,25,30,35,40,45,50,55,60], index=1)
     with g4:
         st.write(" ")
-        if st.button("❓ Generate MCQs"):
-            st.session_state.mcq_df = offline_mcqs(src, st.session_state.get('blooms', ["Understand"]*8), st.session_state.verbs, len(st.session_state.get('blooms', [])) or 8)
-        if st.button("📝 Generate Activities"):
-            st.session_state.activities = build_activities(src, st.session_state.get('blooms', ["Understand"]*act_count), st.session_state.verbs, duration, act_diff, n=act_count)
+        # Renamed buttons (behavior unchanged)
+        if st.button("⚡ Auto-fill MCQs"):
+            st.session_state.mcq_df = offline_mcqs(src,
+                st.session_state.get('blooms', ["Understand"]*8),
+                st.session_state.verbs,
+                len(st.session_state.get('blooms', [])) or 8
+            )
+        if st.button("🧩 Auto-fill Activities"):
+            st.session_state.activities = build_activities(src,
+                st.session_state.get('blooms', ["Understand"]*act_count),
+                st.session_state.verbs,
+                duration,
+                act_diff,
+                n=act_count
+            )
 
     st.markdown("**MCQs (editable table)**")
 
     simple_mode = st.toggle("Simple mode", value=True, help="Hide advanced fields for a cleaner view.")
+    st.caption("Simple mode — edit just **Question**, **A–D**, and **Correct**. Toggle off to see advanced fields.")
+
+    # Ensure at least one editable row exists
+    if st.session_state.mcq_df is None or st.session_state.mcq_df.empty:
+        st.session_state.mcq_df = pd.DataFrame([{
+            "Bloom":"", "Tier":"", "Q#": 1,
+            "Question":"", "Option A":"", "Option B":"", "Option C":"", "Option D":"",
+            "Answer":"A", "Explanation":""
+        }])
+
+    # Quick add-row button
+    cols_add = st.columns([1,5])
+    with cols_add[0]:
+        if st.button("＋ Add MCQ", help="Insert an empty row at the end"):
+            next_q = (int(st.session_state.mcq_df["Q#"].max()) + 1) if "Q#" in st.session_state.mcq_df and st.session_state.mcq_df["Q#"].notna().any() else 1
+            new_row = pd.DataFrame([{
+                "Bloom":"", "Tier":"", "Q#": next_q,
+                "Question":"", "Option A":"", "Option B":"", "Option C":"", "Option D":"",
+                "Answer":"A", "Explanation":""
+            }])
+            st.session_state.mcq_df = pd.concat([st.session_state.mcq_df, new_row], ignore_index=True)
 
     simple_cols   = ["Question", "Option A", "Option B", "Option C", "Option D", "Answer"]
     advanced_cols = ["Bloom", "Tier", "Q#", "Explanation"]
@@ -384,7 +427,7 @@ with tabs[2]:
     st.session_state.activities = [a.strip() for a in acts_text.split("\n") if a.strip()]
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ④ Export
+# ④ Export — Word + GIFT
 with tabs[3]:
     st.subheader("📦 Export")
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
