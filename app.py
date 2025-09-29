@@ -1,6 +1,3 @@
-git add app.py requirements.txt
-git commit -m "Switching to Flask-based ADI MCQ Generator"
-git push
 
 from flask import Flask, render_template_string, request, send_file
 from werkzeug.utils import secure_filename
