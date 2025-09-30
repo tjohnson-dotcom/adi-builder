@@ -14,7 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from docx import Document
 from pptx import Presentation
-from pypdf import PdfReader
+
 
 APP_NAME = "ADI Builder — Lesson Activities & Questions"
 STRAPLINE = "Professional, branded, editable and export-ready."
