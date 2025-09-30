@@ -64,6 +64,21 @@ div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef
 """
 CSS_REPL = CSS_REPL.replace("__ADI_GREEN__", ADI_GREEN)
 st.markdown(CSS_REPL, unsafe_allow_html=True)
+st.markdown('''
+<script>
+(function(){
+  const applyADI = () => {
+    document.querySelectorAll('div[data-baseweb="tag"]').forEach(el => {
+      el.style.setProperty('background', '#e7f2ea', 'important');
+      el.style.setProperty('border', '1px solid #c6e0cf', 'important');
+      el.style.setProperty('color', '#143a28', 'important');
+    });
+  };
+  applyADI();
+  new MutationObserver(applyADI).observe(document.body, {subtree:true, childList:true});
+})();
+</script>
+''' , unsafe_allow_html=True)
 
 ROOT = Path(__file__).parent
 LOGO = ROOT / "Logo.png"
