@@ -1,4 +1,3 @@
-
 # ADI Builder — v2.3 (stable)
 # - ADI colors & hover effects
 # - Logo width compatibility
@@ -12,7 +11,6 @@ from pathlib import Path
 from typing import List, Tuple
 import random, pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from docx import Document
 from pptx import Presentation
 from pypdf import PdfReader
@@ -66,35 +64,6 @@ div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef
 """
 CSS_REPL = CSS_REPL.replace("__ADI_GREEN__", ADI_GREEN)
 st.markdown(CSS_REPL, unsafe_allow_html=True)
-
-components.html("""
-<!doctype html><html><head><meta charset='utf-8'></head><body>
-<script>
-(function(){
-  function applyADI(){
-    const d = window.parent && window.parent.document ? window.parent.document : document;
-    d.querySelectorAll('div[data-baseweb="tag"]').forEach(el => {
-      el.style.setProperty('background', '#e7f2ea', 'important');
-      el.style.setProperty('border', '1px solid #c6e0cf', 'important');
-      el.style.setProperty('color', '#143a28', 'important');
-    });
-  }
-  function start(){
-    try{ applyADI(); }catch(e){}
-    try{
-      const d = window.parent && window.parent.document ? window.parent.document : document;
-      new MutationObserver(applyADI).observe(d.body, {subtree:true, childList:true, attributes:true});
-    }catch(e){}
-  }
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(start, 0);
-  } else {
-    document.addEventListener('DOMContentLoaded', start, {once:true});
-  }
-})();
-</script>
-</body></html>
-""", height=0)
 
 ROOT = Path(__file__).parent
 LOGO = ROOT / "Logo.png"
@@ -474,3 +443,4 @@ with tab3:
                            file_name="revision_pack.docx")
     else:
         st.info("Paste or upload content, set Week/Lesson, then **Build revision plan**.")
+
