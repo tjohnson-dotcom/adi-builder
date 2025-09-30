@@ -1,5 +1,4 @@
 
-
 # ADI Builder — v2.1 (colors, hover, Bloom week pills, ADI 3-question mode)
 from io import BytesIO
 from pathlib import Path
@@ -308,7 +307,16 @@ with tab1:
     levels = st.multiselect("Bloom’s levels", ["Understand","Apply","Analyse","Evaluate","Create"],
                             default=["Understand","Apply","Analyse"],
                             disabled=st.session_state["policy_mode"])
-    with st.expander("Verbs per level", expanded=True):
+    with st.expander("Verbs per level", expanded=True):\n
+# --- PATCH: safe defaults for the verbs multiselect ---
+def safe_multiselect_verbs(label, pool, session_key="verbs_mcq"):
+    options = sorted(set(pool))
+    prev = st.session_state.get(session_key, [])
+    safe_default = [v for v in prev if v in options]
+    if not safe_default and options:
+        safe_default = options[: min(4, len(options))]
+    return st.multiselect(label, options, default=safe_default, key=session_key)
+
         chosen_tiers = []
         for lvl in levels:
             if lvl in {"Understand"}: chosen_tiers.append("Low")
