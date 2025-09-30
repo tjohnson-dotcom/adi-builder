@@ -1,4 +1,3 @@
-
 # app.py — ADI Builder (clean build after syntax error)
 # Run:
 #   pip install streamlit pandas python-docx pdfplumber python-pptx
