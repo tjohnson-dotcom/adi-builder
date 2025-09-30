@@ -41,18 +41,13 @@ st.markdown(f"""
   }}
   textarea.bigbox {{ min-height:180px !important; font-size:16px !important; line-height:1.4; }}
   .helper {{ color:#5a6c62; font-size:12px; margin-top:4px }}
-  [data-baseweb="tab-list"] { border-bottom:3px solid #c6d6ce; gap:10px; }
-[data-baseweb="tab"] { padding:10px 14px; border-radius:12px 12px 0 0; font-weight:700; color:#2b3b33; }
-[data-baseweb="tab"]:hover { background:#eaf4ee; color:#1f3b2a; }
-[data-baseweb="tab"][aria-selected="true"] { background:#e7f2ea; color:{ADI_GREEN}; box-shadow:0 2px 0 {ADI_GREEN} inset, 0 -2px 0 #00000005 inset; }
-[data-baseweb="tab"] svg { margin-right:8px; }
-
+  [data-baseweb="tab-list"] {{ border-bottom:2px solid #dfe6e2; }}
+  [data-baseweb="tab"][aria-selected="true"] {{ color:{ADI_GREEN}; font-weight:800; }}
   div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
     border-radius:10px; padding:12px 14px; }}
   div[data-testid="stAlert"] svg {{ color:{ADI_GREEN}; }}
-  div[data-baseweb="tag"], .stChip {{ background:#e7f2ea !important; color:#143a28 !important; border:1px solid #c6e0cf !important; }}
-  div[data-baseweb="tag"]:hover, .stChip:hover {{ background:#e1f0e6 !important; }}
-  div[data-baseweb="tag"] svg, .stChip svg { color:#245a34 !important; }
+  div[data-baseweb="tag"] {{ background:#e8efe9; color:#143a28; border:1px solid #cfd8d2; }}
+  div[data-baseweb="tag"]:hover {{ background:#e1ece5; }}
   div[data-testid="stFileUploader"] > div:first-child {{
     border:2px dashed {ADI_GREEN}; background:#f0f7f2; border-radius:16px; padding:10px; transition: background .12s;
   }}
