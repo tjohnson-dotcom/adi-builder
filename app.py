@@ -25,7 +25,7 @@ ADI_SLATE = "#40514a"
 BG = "#f6f5f2"
 
 # ===== CSS =====
-st.markdown(f"""
+CSS_REPL = """
 <style>
   .stApp {{ background:{BG}; }}
   .adi-hero {{ background:{ADI_GREEN}; color:#fff; padding:18px 22px; border-radius:22px; }}
@@ -41,13 +41,17 @@ st.markdown(f"""
   }}
   textarea.bigbox {{ min-height:180px !important; font-size:16px !important; line-height:1.4; }}
   .helper {{ color:#5a6c62; font-size:12px; margin-top:4px }}
-  [data-baseweb="tab-list"] {{ border-bottom:2px solid #dfe6e2; }}
-  [data-baseweb="tab"][aria-selected="true"] {{ color:{ADI_GREEN}; font-weight:800; }}
-  div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
+  [data-baseweb="tab-list"] { border-bottom:3px solid #c6d6ce; gap:10px; }
+[data-baseweb="tab"] { padding:10px 14px; border-radius:12px 12px 0 0; font-weight:700; color:#2b3b33; }
+[data-baseweb="tab"]:hover { background:#eaf4ee; color:#1f3b2a; }
+[data-baseweb="tab"][aria-selected="true"] { background:#e7f2ea; color:__ADI_GREEN__; box-shadow:0 2px 0 __ADI_GREEN__ inset, 0 -2px 0 #00000005 inset; }
+[data-baseweb="tab"] svg { margin-right:8px; }
+div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
     border-radius:10px; padding:12px 14px; }}
   div[data-testid="stAlert"] svg {{ color:{ADI_GREEN}; }}
-  div[data-baseweb="tag"] {{ background:#e8efe9; color:#143a28; border:1px solid #cfd8d2; }}
-  div[data-baseweb="tag"]:hover {{ background:#e1ece5; }}
+  div[data-baseweb="tag"], .stChip {{ background:#e7f2ea !important; color:#143a28 !important; border:1px solid #c6e0cf !important; }}
+  div[data-baseweb="tag"]:hover, .stChip:hover {{ background:#e1f0e6 !important; }}
+  div[data-baseweb="tag"] svg, .stChip svg { color:#245a34 !important; }
   div[data-testid="stFileUploader"] > div:first-child {{
     border:2px dashed {ADI_GREEN}; background:#f0f7f2; border-radius:16px; padding:10px; transition: background .12s;
   }}
@@ -57,7 +61,9 @@ st.markdown(f"""
   .band.med {{ background:#fbefdd; color:{ADI_AMBER}; border:1px solid #efd4a3; }}
   .band.high {{ background:#e9eef2; color:{ADI_SLATE}; border:1px solid #cfd8df; }}
 </style>
-""", unsafe_allow_html=True)
+"""
+CSS_REPL = CSS_REPL.replace("__ADI_GREEN__", ADI_GREEN)
+st.markdown(CSS_REPL, unsafe_allow_html=True)
 
 ROOT = Path(__file__).parent
 LOGO = ROOT / "Logo.png"
@@ -437,3 +443,4 @@ with tab3:
                            file_name="revision_pack.docx")
     else:
         st.info("Paste or upload content, set Week/Lesson, then **Build revision plan**.")
+
