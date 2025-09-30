@@ -1,3 +1,4 @@
+
 # ADI Builder — v2.3 (stable)
 # - ADI colors & hover effects
 # - Logo width compatibility
@@ -46,8 +47,9 @@ st.markdown(f"""
   div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
     border-radius:10px; padding:12px 14px; }}
   div[data-testid="stAlert"] svg {{ color:{ADI_GREEN}; }}
-  div[data-baseweb="tag"] {{ background:#e8efe9; color:#143a28; border:1px solid #cfd8d2; }}
-  div[data-baseweb="tag"]:hover {{ background:#e1ece5; }}
+  div[data-baseweb="tag"], .stChip {{ background:#e7f2ea !important; color:#143a28 !important; border:1px solid #c6e0cf !important; }}
+  div[data-baseweb="tag"]:hover, .stChip:hover {{ background:#e1f0e6 !important; }}
+  div[data-baseweb="tag"] svg, .stChip svg { color:#245a34 !important; }
   div[data-testid="stFileUploader"] > div:first-child {{
     border:2px dashed {ADI_GREEN}; background:#f0f7f2; border-radius:16px; padding:10px; transition: background .12s;
   }}
@@ -437,5 +439,3 @@ with tab3:
                            file_name="revision_pack.docx")
     else:
         st.info("Paste or upload content, set Week/Lesson, then **Build revision plan**.")
-
-
