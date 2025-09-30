@@ -1,4 +1,3 @@
-
 # app.py — ADI Builder (clean build after syntax error)
 # Run:
 #   pip install streamlit pandas python-docx pdfplumber python-pptx
@@ -129,8 +128,8 @@ def extract_docx(b:bytes)->str:
 # Generators
 
 def offline_mcqs_varied(src_text:str, blooms:List[str], verbs:List[str], n:int, lesson:int, week:int)->pd.DataFrame:
-    """Like offline_mcqs but spreads correct answers across A-D deterministically per lesson/week."""
-    base=[s.strip() for s in re.split(r'[.\n]', src_text or "") if s.strip()] or ["This unit covers core concepts and applied practice."]
+    base=[s.strip() for s in re.split(r'[.
+]', src_text or "") if s.strip()] or ["This unit covers core concepts and applied practice."]
     if not verbs: verbs=["identify"]
     vcycle=(verbs*((n//max(1,len(verbs)))+1))[:n]
     rows=[]
@@ -140,7 +139,6 @@ def offline_mcqs_varied(src_text:str, blooms:List[str], verbs:List[str], n:int, 
         fact=base[i%len(base)]
         v=vcycle[i].capitalize()
         stem=f"{v} the MOST appropriate statement about: {fact}"
-        # Build clean option texts (no letters)
         option_texts=[
             f"A correct point about {fact}.",
             f"An incorrect detail about {fact}.",
@@ -150,14 +148,9 @@ def offline_mcqs_varied(src_text:str, blooms:List[str], verbs:List[str], n:int, 
         rng = random.Random(hash((int(lesson), int(week), i+1)))
         correct_idx = rng.randrange(4)
         letters = "ABCD"
-        # Place the correct option in the chosen slot; others follow in order
-        opts = option_texts[:]  # [0] is correct base
-        # rotate so that correct lands at correct_idx
         if correct_idx != 0:
-            # Move correct text to index
             correct_text = option_texts[0]
             others = option_texts[1:]
-            # build order
             order = [None, None, None, None]
             order[correct_idx] = correct_text
             fill_idx = 0
@@ -165,13 +158,9 @@ def offline_mcqs_varied(src_text:str, blooms:List[str], verbs:List[str], n:int, 
                 if order[j] is None:
                     order[j] = others[fill_idx]; fill_idx += 1
             option_texts = order
-        A, B, C, D = option_texts
+        A,B,C,D = option_texts
         answer = letters[correct_idx]
-        rows.append({
-            "Bloom":b,"Tier":tier,"Q#":i+1,"Question":stem,
-            "Option A":A,"Option B":B,"Option C":C,"Option D":D,
-            "Answer":answer,"Explanation":f"Verb focus: {v} · Tier: {tier}"
-        })
+        rows.append({"Bloom":b,"Tier":tier,"Q#":i+1,"Question":stem,"Option A":A,"Option B":B,"Option C":C,"Option D":D,"Answer":answer,"Explanation":f"Verb focus: {v} · Tier: {tier}"})
     return pd.DataFrame(rows, columns=["Bloom","Tier","Q#","Question","Option A","Option B","Option C","Option D","Answer","Explanation"])
 def offline_mcqs(src_text:str, blooms:List[str], verbs:List[str], n:int)->pd.DataFrame:
     base=[s.strip() for s in re.split(r'[.\n]', src_text or "") if s.strip()] or ["This unit covers core concepts and applied practice."]
@@ -541,7 +530,7 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("📦 Export")
     st.markdown("<div class='adi-section'></div>", unsafe_allow_html=True)
-    df = st.session_state.get("mcq_df"); acts = st.session_state.get("activities") or ([l for l in st.session_state.get("acts_textarea","" ).splitlines() if l.strip()])
+    df = st.session_state.get("mcq_df"); acts = st.session_state.get("activities") or ([l for l in st.session_state.get("acts_textarea","").splitlines() if l.strip()])
     lesson = st.session_state.get("lesson", 1); week = st.session_state.get("week", 1)
     try:
         from docx import Document  # noqa: F401
