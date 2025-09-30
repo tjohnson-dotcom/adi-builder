@@ -1,8 +1,12 @@
 
 services:
   - type: web
-    name: adi-builder-gradio-docker
-    env: docker
-    plan: free
-    autoDeploy: true
+    name: adi-builder-streamlit-pro
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
     healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
