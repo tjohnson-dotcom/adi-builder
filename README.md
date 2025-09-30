@@ -1,29 +1,16 @@
-# ADI Builder — Lesson Activities & MCQs Generator
+[README_DEPLOY.md](https://github.com/user-attachments/files/22622006/README_DEPLOY.md)
+# ADI Builder — quick start
 
-A sleek, professional, and user-friendly Streamlit app for generating lesson-aligned multiple choice questions (MCQs) and skills-based activities from uploaded content (PDF, DOCX, PPTX). Designed for staff at the Academy of Defense Industries (ADI), it supports Bloom’s taxonomy and ADI’s assessment policy.
-
----
-
-## ✨ Features
-
-- ✅ Drag-and-drop upload for PDF, DOCX, PPTX
-- ✅ Bloom’s taxonomy integration (Low → Medium → High)
-- ✅ MCQ generator with tiered logic and distractors
-- ✅ Skills-based activity generator with structured steps
-- ✅ ADI color theme and branding (no red)
-- ✅ Bloom verbs highlighted by tier (green, amber, blue)
-- ✅ Download MCQs and Activities as CSV or Word
-- ✅ Sidebar for lesson/week context
-- ✅ Tabs for MCQs and Activities
-- ✅ Clean, modern UI with tooltips and chips
-
----
-
-## 📦 Installation
-
-1. Clone this repository or upload the files to your GitHub repo.
-2. Install dependencies:
-
-
+## Local
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+streamlit run app_fixed.py
+```
 
+## Render/Heroku/Other PaaS
+1) Upload `app_fixed.py`, `requirements.txt`, and `Procfile`.
+2) Start command (or rely on Procfile):
+```
+streamlit run app_fixed.py --server.port=$PORT --server.address=0.0.0.0
+```
