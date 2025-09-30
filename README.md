@@ -1,4 +1,4 @@
-[README_DEPLOY.md](https://github.com/user-attachments/files/22622006/README_DEPLOY.md)
+[README_DEPLOY.md](https://github.com/user-attachments/files/22622248/README_DEPLOY.md)
 # ADI Builder — quick start
 
 ## Local
