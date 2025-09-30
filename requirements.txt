@@ -1,11 +1,9 @@
-flask
-python-pptx
-python-docx
 streamlit
-gunicorn
-pip install 
-streamlit 
-pandas 
-python-docx 
-pdfplumber 
+pandas
+python-docx
 python-pptx
+pdfplumber
+flask
+gunicorn
+lxml
+Pillow
