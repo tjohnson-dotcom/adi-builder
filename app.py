@@ -1,4 +1,3 @@
-
 # ADI Builder — v2.3 (stable)
 # - ADI colors & hover effects
 # - Logo width compatibility
@@ -42,8 +41,12 @@ st.markdown(f"""
   }}
   textarea.bigbox {{ min-height:180px !important; font-size:16px !important; line-height:1.4; }}
   .helper {{ color:#5a6c62; font-size:12px; margin-top:4px }}
-  [data-baseweb="tab-list"] {{ border-bottom:2px solid #dfe6e2; }}
-  [data-baseweb="tab"][aria-selected="true"] {{ color:{ADI_GREEN}; font-weight:800; }}
+  [data-baseweb="tab-list"] { border-bottom:3px solid #c6d6ce; gap:10px; }
+[data-baseweb="tab"] { padding:10px 14px; border-radius:12px 12px 0 0; font-weight:700; color:#2b3b33; }
+[data-baseweb="tab"]:hover { background:#eaf4ee; color:#1f3b2a; }
+[data-baseweb="tab"][aria-selected="true"] { background:#e7f2ea; color:{ADI_GREEN}; box-shadow:0 2px 0 {ADI_GREEN} inset, 0 -2px 0 #00000005 inset; }
+[data-baseweb="tab"] svg { margin-right:8px; }
+
   div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
     border-radius:10px; padding:12px 14px; }}
   div[data-testid="stAlert"] svg {{ color:{ADI_GREEN}; }}
