@@ -1,5 +1,11 @@
+# ADI Builder — v2.3 (stable)
+# - ADI colors & hover effects
+# - Logo width compatibility
+# - Week-band pills
+# - Policy Mode (3 Qs: Low→Medium→High)
+# - Safe multiselect defaults (no crash)
+# - MCQ/Activities/Revision + downloads
 
-# ADI Builder — v2.1 (colors, hover, Bloom week pills, ADI 3-question mode)
 from io import BytesIO
 from pathlib import Path
 from typing import List, Tuple
@@ -18,20 +24,18 @@ ADI_AMBER = "#b87b1e"
 ADI_SLATE = "#40514a"
 BG = "#f6f5f2"
 
-# ========== THEME & CSS ==========
+# ===== CSS =====
 st.markdown(f"""
 <style>
   .stApp {{ background:{BG}; }}
   .adi-hero {{ background:{ADI_GREEN}; color:#fff; padding:18px 22px; border-radius:22px; }}
   .subtle {{ color:#e6efe9; opacity:.95 }}
-  /* Buttons */
   .stButton > button {{
     background:{ADI_GREEN}; color:#fff; border:0; border-radius:12px; padding:10px 16px; font-weight:700;
-    box-shadow:0 2px 0 rgba(0,0,0,.06); transition:transform .04s ease, box-shadow .08s ease, filter .08s ease;
+    box-shadow:0 2px 0 rgba(0,0,0,.06); transition:transform .04s, box-shadow .08s, filter .08s;
   }}
   .stButton > button:hover {{ filter:brightness(0.96); box-shadow:0 3px 0 rgba(0,0,0,.08); }}
   .stButton > button:active {{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0); }}
-  /* Inputs */
   div[data-baseweb="input"] input, div[data-baseweb="textarea"] textarea {{
     border-radius:12px !important; border:1px solid #cfd8d2 !important;
   }}
@@ -39,26 +43,19 @@ st.markdown(f"""
   .helper {{ color:#5a6c62; font-size:12px; margin-top:4px }}
   [data-baseweb="tab-list"] {{ border-bottom:2px solid #dfe6e2; }}
   [data-baseweb="tab"][aria-selected="true"] {{ color:{ADI_GREEN}; font-weight:800; }}
-  /* Alerts recolor */
   div[data-testid="stAlert"] {{ border-left:5px solid {ADI_GREEN}; background:#eef5ef; color:#1f3b2a;
     border-radius:10px; padding:12px 14px; }}
   div[data-testid="stAlert"] svg {{ color:{ADI_GREEN}; }}
-  /* Chips (tags) */
   div[data-baseweb="tag"] {{ background:#e8efe9; color:#143a28; border:1px solid #cfd8d2; }}
   div[data-baseweb="tag"]:hover {{ background:#e1ece5; }}
-  /* Uploader */
   div[data-testid="stFileUploader"] > div:first-child {{
-    border:2px dashed {ADI_GREEN}; background:#f0f7f2; border-radius:16px; padding:10px;
-    transition: background .12s ease;
+    border:2px dashed {ADI_GREEN}; background:#f0f7f2; border-radius:16px; padding:10px; transition: background .12s;
   }}
   div[data-testid="stFileUploader"]:hover > div:first-child {{ background:#e8f3ea; }}
-  /* Week-band pills */
   .band {{ display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; margin-right:8px }}
   .band.low {{ background:#e7f2ea; color:{ADI_GREEN}; border:1px solid #c6e0cf; }}
   .band.med {{ background:#fbefdd; color:{ADI_AMBER}; border:1px solid #efd4a3; }}
   .band.high {{ background:#e9eef2; color:{ADI_SLATE}; border:1px solid #cfd8df; }}
-  .band a {{ text-decoration:none; color:inherit; }}
-  .band:hover {{ filter:brightness(.98); }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -82,10 +79,12 @@ BLOOM = {
     "Medium": ["apply", "demonstrate", "solve", "illustrate"],
     "High": ["evaluate", "synthesize", "design", "justify"],
 }
+
 def policy_for_week(week:int)->str:
     if 1 <= week <= 3: return "Low"
     if 4 <= week <= 8: return "Medium"
     return "High"
+
 def week_band(week:int)->str:
     if 1 <= week <= 3: return "Weeks 1–3"
     if 4 <= week <= 8: return "Weeks 4–8"
@@ -98,12 +97,10 @@ def big_text_area(label:str, key:str, placeholder:str="", value:str="")->str:
     st.markdown("<script>document.querySelectorAll('textarea').forEach(t=>t.classList.add('bigbox'));</script>", unsafe_allow_html=True)
     return txt
 
-# --- Read files ---
-from io import BytesIO
+# ---- File reading ----
 def read_pdf(file)->str:
     try:
         data = file.read()
-        from pypdf import PdfReader
         reader = PdfReader(BytesIO(data))
         texts = []
         for i, page in enumerate(reader.pages):
@@ -113,12 +110,14 @@ def read_pdf(file)->str:
         return "\n".join(texts)
     except Exception:
         return ""
+
 def read_docx(file)->str:
     try:
         d = Document(file)
         return "\n".join(p.text for p in d.paragraphs if p.text.strip())
     except Exception:
         return ""
+
 def read_pptx(file)->str:
     try:
         prs = Presentation(file)
@@ -134,6 +133,7 @@ def read_pptx(file)->str:
         return "\n\n".join(chunks)
     except Exception:
         return ""
+
 def extract_text(upload):
     if not upload: return "", "", 0
     name = upload.name.lower()
@@ -143,9 +143,11 @@ def extract_text(upload):
     if name.endswith(".pptx"): return read_pptx(upload), "pptx", size
     return "", "", size
 
-# --- Generators ---
-def seed_for(week:int, lesson:int)->int: return (week * 100) + lesson
-def rand_words(n, rng):
+# ---- Generators ----
+def seed_for(week:int, lesson:int)->int:
+    return (week * 100) + lesson
+
+def rand_words(n:int, rng:random.Random)->List[str]:
     corpus = ["system","network","policy","process","safety","ethics","design","testing","controls","risk",
               "audience","quality","evidence","impact","role","model","function","flow","goal","method",
               "data","analysis","outcome","security","module","topic","lesson","practice","standard","criteria"]
@@ -154,9 +156,7 @@ def rand_words(n, rng):
 def generate_mcqs_random(topic, verbs, week, lesson, blocks, spice=0, policy_mode=False):
     rng = random.Random(seed_for(week, lesson) + spice)
     rows = []
-    letters = ["A","B","C","D"]
     if policy_mode:
-        # Force exactly 3, Low -> Medium -> High
         seq = ["Low","Medium","High"]
         blocks = 3
         tiers = [BLOOM[t] for t in seq]
@@ -214,7 +214,7 @@ def generate_revision(topic, text, week, lesson):
     ]
     return plan
 
-# --- Exporters ---
+# ---- Exports ----
 def docx_from_df(df, title):
     d = Document(); d.add_heading(title, 1)
     letters = ["A","B","C","D"]
@@ -222,10 +222,12 @@ def docx_from_df(df, title):
         d.add_paragraph(f"{i+1}. {row['Question']}")
         for L in letters: d.add_paragraph(f"   {L}) {row[L]}")
     bio = BytesIO(); d.save(bio); return bio.getvalue()
+
 def docx_answer_key_from_df(df):
     d = Document(); d.add_heading("Answer Key", 1)
     for i, row in df.iterrows(): d.add_paragraph(f"Q{i+1}: {row['Answer']}")
     bio = BytesIO(); d.save(bio); return bio.getvalue()
+
 def gift_from_df(df):
     lines = []
     for _, row in df.iterrows():
@@ -234,12 +236,13 @@ def gift_from_df(df):
             parts.append(("= " if row['Answer']==L else "~ ")+str(row[L]))
         lines.append(f"::{row['Question'][:40]}:: {row['Question']} {{ {' '.join(parts)} }}")
     return ("\n\n".join(lines)).encode("utf-8")
+
 def docx_from_lines(title, lines):
     d = Document(); d.add_heading(title, 1)
     for i, a in enumerate(lines, 1): d.add_paragraph(f"{i}. {a}")
     bio = BytesIO(); d.save(bio); return bio.getvalue()
 
-# --- Session ---
+# ---- Session ----
 if "week" not in st.session_state: st.session_state["week"] = 1
 if "lesson" not in st.session_state: st.session_state["lesson"] = 1
 if "bloom" not in st.session_state: st.session_state["bloom"] = policy_for_week(st.session_state["week"])
@@ -249,15 +252,13 @@ if "activities" not in st.session_state: st.session_state["activities"] = []
 if "revision" not in st.session_state: st.session_state["revision"] = []
 if "spice" not in st.session_state: st.session_state["spice"] = 0
 
-# --- Header ---
+# ---- Header ----
 c_logo, c_title = st.columns([1,6], vertical_alignment="center")
 with c_logo: show_logo()
 with c_title:
     st.markdown(f'<div class="adi-hero"><div style="font-size:28px;font-weight:800;">{APP_NAME}</div>'
                 f'<div class="subtle" style="margin-top:4px;">{STRAPLINE}</div></div>',
                 unsafe_allow_html=True)
-    # Week band pills with actions
-    wb = week_band(st.session_state["week"])
     colA, colB, colC = st.columns([1,1,1])
     with colA:
         if st.button("Weeks 1–3", key="band_low"):
@@ -272,7 +273,7 @@ with c_title:
             st.session_state["week"] = 9; st.session_state["bloom"] = "High"; st.rerun()
         st.markdown('<span class="band high">High focus</span>', unsafe_allow_html=True)
 
-# --- Sidebar ---
+# ---- Sidebar ----
 with st.sidebar:
     st.markdown("**Upload PDF / DOCX / PPTX**")
     upload = st.file_uploader(" ", type=["pdf","docx","pptx"], label_visibility="collapsed")
@@ -294,29 +295,31 @@ with st.sidebar:
         st.rerun()
     st.caption(f"Policy: {st.session_state['bloom']} • {week_band(st.session_state['week'])}")
 
-# --- Tabs ---
+# ---- Tabs ----
 tab1, tab2, tab3 = st.tabs(["🧠 Knowledge MCQs", "🛠️ Skills Activities", "📘 Revision"])
 
 extracted, kind, size = extract_text(upload)
 topic_hint = (extracted.split("\n")[0][:160] if extracted else "")
 
-# --- Tab 1: MCQs ---
-with tab1:
-    st.subheader("Knowledge MCQs")
-    st.toggle("ADI 3-question policy mode (Low ➜ Medium ➜ High)", key="policy_mode", help="Exactly 3 questions that follow the ADI Bloom policy progression.")
-    levels = st.multiselect("Bloom’s levels", ["Understand","Apply","Analyse","Evaluate","Create"],
-                            default=["Understand","Apply","Analyse"],
-                            disabled=st.session_state["policy_mode"])
-    with st.expander("Verbs per level", expanded=True):\n
-# --- PATCH: safe defaults for the verbs multiselect ---
-def safe_multiselect_verbs(label, pool, session_key="verbs_mcq"):
+# ---- Helper: safe multiselect ----
+def safe_multiselect_verbs(label, pool, session_key="verbs_mcq", disabled=False):
     options = sorted(set(pool))
     prev = st.session_state.get(session_key, [])
     safe_default = [v for v in prev if v in options]
     if not safe_default and options:
         safe_default = options[: min(4, len(options))]
-    return st.multiselect(label, options, default=safe_default, key=session_key)
+    return st.multiselect(label, options, default=safe_default, key=session_key, disabled=disabled)
 
+# ---- Tab 1: MCQs ----
+with tab1:
+    st.subheader("Knowledge MCQs")
+    st.toggle("ADI 3-question policy mode (Low ➜ Medium ➜ High)", key="policy_mode",
+              help="Exactly 3 questions that follow the ADI Bloom policy progression.")
+    levels = st.multiselect("Bloom’s levels",
+                            ["Understand","Apply","Analyse","Evaluate","Create"],
+                            default=["Understand","Apply","Analyse"],
+                            disabled=st.session_state["policy_mode"])
+    with st.expander("Verbs per level", expanded=True):
         chosen_tiers = []
         for lvl in levels:
             if lvl in {"Understand"}: chosen_tiers.append("Low")
@@ -325,30 +328,38 @@ def safe_multiselect_verbs(label, pool, session_key="verbs_mcq"):
         pool = []
         for tier in chosen_tiers or ["Low","Medium"]:
             pool.extend(BLOOM[tier])
-        verbs = st.multiselect("Choose options", sorted(set(pool)),
-                               default=st.session_state["verbs_mcq"],
-                               key="verbs_mcq", disabled=st.session_state["policy_mode"])
+        verbs = safe_multiselect_verbs("Choose options", pool, "verbs_mcq",
+                                       disabled=st.session_state["policy_mode"])
     topic = st.text_input("Topic (optional)", value=topic_hint)
-    quick = st.radio("Quick pick", [5,10,20,30], index=1, horizontal=True, disabled=st.session_state["policy_mode"])
+    quick = st.radio("Quick pick", [5,10,20,30], index=1, horizontal=True,
+                     disabled=st.session_state["policy_mode"])
     blocks = st.number_input("Or custom number of MCQ blocks", 1, 100, int(quick), 1, key="mcq_blocks",
                              disabled=st.session_state["policy_mode"])
 
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("⚡ Generate MCQ Blocks", type="primary"):
-            st.session_state["mcq_df"] = generate_mcqs_random(topic, verbs, st.session_state["week"],
-                                                              st.session_state["lesson"],
-                                                              int(3 if st.session_state["policy_mode"] else blocks),
-                                                              st.session_state["spice"],
-                                                              policy_mode=st.session_state["policy_mode"])
+            st.session_state["mcq_df"] = generate_mcqs_random(
+                topic,
+                verbs,
+                st.session_state["week"],
+                st.session_state["lesson"],
+                int(3 if st.session_state["policy_mode"] else blocks),
+                st.session_state["spice"],
+                policy_mode=st.session_state["policy_mode"]
+            )
     with c2:
         if st.button("🎲 Regenerate (new random set)"):
             st.session_state["spice"] += 1
-            st.session_state["mcq_df"] = generate_mcqs_random(topic, verbs, st.session_state["week"],
-                                                              st.session_state["lesson"],
-                                                              int(3 if st.session_state["policy_mode"] else blocks),
-                                                              st.session_state["spice"],
-                                                              policy_mode=st.session_state["policy_mode"])
+            st.session_state["mcq_df"] = generate_mcqs_random(
+                topic,
+                verbs,
+                st.session_state["week"],
+                st.session_state["lesson"],
+                int(3 if st.session_state["policy_mode"] else blocks),
+                st.session_state["spice"],
+                policy_mode=st.session_state["policy_mode"]
+            )
     with c3:
         if st.button("🧹 Clear"):
             st.session_state["mcq_df"] = pd.DataFrame()
@@ -371,7 +382,7 @@ def safe_multiselect_verbs(label, pool, session_key="verbs_mcq"):
     else:
         st.info("Upload (optional), pick verbs (or use policy mode), set blocks, then **Generate MCQ Blocks**.")
 
-# --- Tab 2: Activities ---
+# ---- Tab 2: Activities ----
 with tab2:
     st.subheader("Skills Activities")
     a1, a2 = st.columns(2)
@@ -408,13 +419,11 @@ with tab2:
     else:
         st.info("Pick count/duration and verbs, then **Generate Activities**.")
 
-# --- Tab 3: Revision ---
+# ---- Tab 3: Revision ----
 with tab3:
     st.subheader("Revision planner by week band")
-    extracted, kind, size = extract_text(st.session_state.get("upload") if "upload" in st.session_state else None)
-    # Use earlier extracted from top-level:
     src = big_text_area("Source text (editable)", key="rev_src",
-                        value=(topic_hint and "") or "",
+                        value=extracted[:3000] if extracted else "",
                         placeholder="Paste the key concepts or summaries here…")
     topic_rev = st.text_input("Topic / unit title", value=(topic_hint or "Module / Unit"))
     if st.button("📘 Build revision plan", type="primary"):
@@ -428,3 +437,5 @@ with tab3:
                            file_name="revision_pack.docx")
     else:
         st.info("Paste or upload content, set Week/Lesson, then **Build revision plan**.")
+
+
