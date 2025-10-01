@@ -15,6 +15,11 @@ import streamlit.components.v1 as components
 from docx import Document
 from pptx import Presentation
 
+try:
+    from pypdf import PdfReader
+    HAVE_PYPDF = True
+except Exception:
+    HAVE_PYPDF = False
 
 
 APP_NAME = "ADI Builder — Lesson Activities & Questions"
