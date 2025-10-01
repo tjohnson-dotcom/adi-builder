@@ -1,23 +1,12 @@
-[Uploading README_DEPLOY.md…]()
+[README_DEPLOY.md](https://github.com/user-attachments/files/22633411/README_DEPLOY.md)
+# ADI Builder — Render deploy (v2.5.6)
 
-# ADI Builder — Streamlit Pro v2 (Render)
+## Build
+pip install -r requirements.txt
 
-## Files
-- `app.py` — Streamlit app (tabs, uploader for PDF/DOCX/PPTX, MCQs, Activities)
-- `requirements.txt` — pinned deps that have wheels for Python 3.11
-- `render.yaml` — one-click Render config (no Procfile)
-
-## Render steps
-1. Push these files to a fresh GitHub repo.
-2. In Render: **New → Web Service** → select the repo.
-   - If Render sees `render.yaml`, it will prefill build/start commands.
-   - If not, set:
-     - **Build:** `pip install -r requirements.txt`
-     - **Start:** `streamlit run app.py --server.port=$PORT --server.address=0.0.0.0`
-   - Health check path: `/`
-3. Deploy. If you ever get a wheel build error, click **Clear build cache & deploy**.
-4. If a dependency fails to build, verify the exact pinned versions in `requirements.txt`.
+## Start
+streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --browser.gatherUsageStats=false --server.headless=true
 
 ## Notes
-- `PyMuPDF==1.24.10` and `lxml==5.2.1` are pinned to versions with manylinux wheels.
-- No Procfile is needed on Render Web Services (that’s a Heroku thing).
+- Python 3.11 is recommended.
+- Uploads up to 200MB.
