@@ -11,6 +11,8 @@ from docx import Document
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="✅", layout="wide")
 
 ADI_GREEN = "#245a34"
+starters = ["In pairs,", "Individually,", "Using the e-book pp.", "With A3 paper,"]
+
 
 CSS = """
 <style>
