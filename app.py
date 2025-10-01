@@ -192,6 +192,9 @@ if uploaded:
 
 # ------------------------- MCQ generation -------------------------------
 
+mix_mode = st.toggle("Mixture mode (varied question types)", value=False, key="mix_mode")
+
+
 def generate_mcq_block(src_text: str, verbs: List[str], block_size: int = 3) -> List[dict]:
     """Generate a small block of MCQs. One correct + 3 distractors (A-D)."""
     base_pool = verbs if verbs else ["define", "identify", "list", "apply"]
@@ -220,6 +223,19 @@ def generate_mcqs(src_text: str, verbs: List[str], num_blocks: int, policy3: boo
         size = 3 if policy3 else 5
         blocks.append(generate_mcq_block(src_text, verbs, block_size=size))
     return blocks
+MIX_TEMPLATES = {
+    "define":   lambda t: f"Which statement best defines **{t}**?",
+    "identify": lambda t: f"Which option correctly identifies **{t}**?",
+    "apply":    lambda t: f"Which option best applies **{t}** to a real case?",
+    "analyze":  lambda t: f"Which option best analyzes **{t}** (evidence vs. trade-offs)?",
+    "evaluate": lambda t: f"Which option best evaluates **{t}** using clear criteria?",
+    "create":   lambda t: f"Which option proposes a sound design using **{t}**?",
+}
+
+# Balanced mix for N questions (no need to be perfect – just varied)
+def choose_mix(n: int):
+    order = (["define","identify","apply","apply","analyze","evaluate","create"] * 10)[:n]
+    return order[:n]
 
 # ------------------------- Activities -----------------------------------
 
