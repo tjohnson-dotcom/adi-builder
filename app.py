@@ -1,23 +1,18 @@
 
-# ADI Builder — Lesson Activities & Questions (green tabs, Render-ready)
-# Matches: Sidebar upload → green pill tabs (Knowledge MCQs / Skills Activities / Revision)
-# Backend: deterministic MCQs, upload toast, exports, optional env-driven variants/mix.
-# Render Start: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
 
 import io, os, re, random, hashlib, datetime as dt
 import streamlit as st
 
-# ---------- Page ----------
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="✅", layout="wide")
 
-# ---------- Style (green pills for tabs) ----------
+# ------------------ THEME: ADI green ------------------
 ADI_GREEN = "#1f3a2e"
 ADI_GREEN_SOFT = "#e8f1ec"
 st.markdown(f"""
 <style>
 /* top accent */
 .adi-topbar {{ height: 8px; background: linear-gradient(90deg,{ADI_GREEN},#c9b77a); margin:-1rem -1rem 1rem -1rem; }}
-/* make tabs look like green pills */
+/* pill tabs */
 .stTabs [data-baseweb="tab"] {{
   color: {ADI_GREEN};
   background: {ADI_GREEN_SOFT};
@@ -29,29 +24,47 @@ st.markdown(f"""
 }}
 .stTabs [aria-selected="true"] {{
   background: {ADI_GREEN};
-  color: #ffffff;
+  color: #fff;
 }}
-/* tidy boxes */
-.box {{ background:#fff; border-radius:14px; padding:1rem; box-shadow:0 2px 10px #00000010; }}
+/* make selected chips green */
+[data-baseweb="tag"] {{ 
+  background-color: {ADI_GREEN}!important; 
+  color: #fff!important; 
+  border-color: {ADI_GREEN}!important; 
+}}
+/* primary buttons dark green */
+.stButton>button {{ background:{ADI_GREEN}; color:#fff; border-radius:10px; border:none; }}
+.stButton>button:hover {{ filter:brightness(0.92); }}
+/* download buttons - rounded */
+.stDownloadButton>button {{ border-radius:10px; }}
 </style>
 <div class="adi-topbar"></div>
 """, unsafe_allow_html=True)
 
-# ---------- Backend feature switches (no new UI) ----------
+# ------------------ Backend switches (no UI) ------------------
 ADI_ENABLE_MIX = os.environ.get("ADI_ENABLE_MIX", "0") == "1"   # default OFF
 ADI_VARIANT    = os.environ.get("ADI_VARIANT", "").strip()      # optional per-teacher code
 
-# ---------- Helpers ----------
+# ------------------ Helpers ------------------
 BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
 BLOOM_TIER   = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
+# Include generic verbs 'apply' and 'evaluate' to avoid default mismatch
 DEFAULT_VERBS = {
     "Remember":["list","define","recall","identify"],
     "Understand":["explain","classify","summarize","illustrate"],
-    "Apply":["use","implement","solve","demonstrate"],
+    "Apply":["apply","use","implement","solve","demonstrate"],
     "Analyze":["compare","differentiate","categorize","analyze"],
-    "Evaluate":["justify","critique","prioritize","defend"],
+    "Evaluate":["evaluate","justify","critique","prioritize","defend"],
     "Create":["design","compose","propose","develop"],
 }
+
+def all_verb_options():
+    # union of all verb lists (lowercased, unique)
+    verbs=set()
+    for vs in DEFAULT_VERBS.values():
+        for v in vs:
+            verbs.add(v.lower())
+    return sorted(verbs)
 
 def policy_caption(week:int)->str:
     if 1 <= week <= 3: return "Policy: Low · Weeks 1–3"
@@ -63,12 +76,10 @@ def safe_sentences(text:str, default:str):
     return items or [default]
 
 def _rng_for(lesson:int, week:int, q_index:int, regen_token:int, variant:str)->random.Random:
-    """Deterministic RNG per (lesson, week, question, regen_token, variant)."""
     base = f"{lesson}|{week}|{q_index}|{regen_token}|{(variant or '').upper()}"
     seed = int(hashlib.sha256(base.encode()).hexdigest(), 16) % (2**32)
     return random.Random(seed)
 
-# Optional balanced stems (enabled only by ADI_ENABLE_MIX)
 _MIX_TEMPLATES = [
     lambda t: f"Which statement best defines **{t}**?",
     lambda t: f"Which option correctly identifies **{t}**?",
@@ -80,7 +91,7 @@ _MIX_TEMPLATES = [
 def _mixed_stem_for(topic:str, rng:random.Random)->str:
     return _MIX_TEMPLATES[rng.randrange(len(_MIX_TEMPLATES))](topic)
 
-# ---------- Activities ----------
+# ------------------ Activities ------------------
 def build_activities(verbs, level, count, duration_min, difficulty, week):
     hints = {
         "Remember":"recall key facts",
@@ -90,8 +101,7 @@ def build_activities(verbs, level, count, duration_min, difficulty, week):
         "Evaluate":"justify a position with criteria",
         "Create":"design or propose a new solution",
     }
-    tier=BLOOM_TIER.get(level,"Low")
-    hint=hints.get(level,"apply the concept")
+    tier=BLOOM_TIER.get(level,"Low"); hint=hints.get(level,"apply the concept")
     verbs = verbs or ["explain","classify","describe","analyze"]
     vseq  = (verbs * ((count // max(1,len(verbs))) + 1))[:count]
     out=[]
@@ -104,7 +114,7 @@ def build_activities(verbs, level, count, duration_min, difficulty, week):
         out.append(line)
     return out
 
-# ---------- MCQs ----------
+# ------------------ MCQs ------------------
 def build_mcqs(src_text, bloom, verbs, n, lesson, week, regen_token:int):
     topics=safe_sentences(src_text, "this topic")
     verbs = verbs or ["identify"]
@@ -134,7 +144,7 @@ def build_mcqs(src_text, bloom, verbs, n, lesson, week, regen_token:int):
         })
     return rows
 
-# ---------- Exports ----------
+# ------------------ Exports ------------------
 def _docx(paragraphs, title):
     try:
         from docx import Document
@@ -165,7 +175,7 @@ def build_gift(mcqs)->str:
         lines.append(f"::{int(r['Q#'])}:: {r['Question']} {{ {' '.join(parts)} }}")
     return "\n\n".join(lines)
 
-# ---------- State ----------
+# ------------------ State ------------------
 defaults = dict(
     lesson=1, week=1, level="Understand",
     verbs=[], num_mcqs=10, activities_per_class=1, duration=45,
@@ -174,8 +184,14 @@ defaults = dict(
 )
 for k,v in defaults.items(): st.session_state.setdefault(k,v)
 
-# ---------- Sidebar ----------
+# ------------------ Sidebar ------------------
 with st.sidebar:
+    # Logo (expects Logo.png in repo root)
+    try:
+        st.image("Logo.png", use_column_width=False, width=140)
+    except Exception:
+        pass
+
     st.header("Upload PDF / DOCX / PPTX")
     uploaded = st.file_uploader("Drag and drop file here", type=["pdf","docx","pptx"], key="uploader")
     if uploaded:
@@ -190,22 +206,26 @@ with st.sidebar:
     st.session_state["lesson"] = st.selectbox("Lesson", list(range(1,21)), index=st.session_state["lesson"]-1)
     st.caption(policy_caption(int(st.session_state["week"])))
 
-# ---------- Header ----------
+# ------------------ Header ------------------
 st.markdown("### ADI Builder — Lesson Activities & Questions")
 st.caption("Professional, branded, editable and export-ready.")
 # Green pill tabs
 tab_mcq, tab_act, tab_rev = st.tabs(["Knowledge MCQs", "Skills Activities", "Revision"])
 
-# === MCQ TAB ===
+# ------------------ MCQ TAB ------------------
 with tab_mcq:
     left, right = st.columns([1.05,1.4])
     with left:
         st.session_state["level"] = st.select_slider("Bloom Level", options=BLOOM_LEVELS, value=st.session_state["level"])
-        verbs_default = DEFAULT_VERBS.get(st.session_state["level"], [])
-        st.session_state["verbs"] = st.multiselect("Verb picker",
-            options=sorted(set(sum(DEFAULT_VERBS.values(), []))),
-            default=verbs_default, key="verbs_mcq")
-
+        # options + default are strictly intersected to avoid StreamlitAPIException
+        options_all = all_verb_options()
+        verbs_default = [v for v in DEFAULT_VERBS.get(st.session_state["level"], []) if v.lower() in options_all]
+        st.session_state["verbs"] = st.multiselect(
+            "Verb picker",
+            options=options_all,
+            default=verbs_default,
+            key="verbs_mcq"
+        )
         st.session_state["num_mcqs"] = st.number_input("How many MCQs?", 1, 50, int(st.session_state["num_mcqs"]))
 
         st.markdown("**Source text (optional)**")
@@ -267,7 +287,7 @@ with tab_mcq:
         else:
             st.button("⬇️ Moodle GIFT (.gift)", disabled=True)
 
-# === ACTIVITIES TAB ===
+# ------------------ ACTIVITIES TAB ------------------
 with tab_act:
     left, right = st.columns([1.05,1.4])
     with left:
@@ -276,9 +296,13 @@ with tab_act:
         st.write("Duration per activity (mins)")
         st.session_state["duration"] = st.number_input(" ", 5, 120, int(st.session_state["duration"]), step=5, key="acts_duration")
         st.write("Preferred action verbs")
+
+        options_all = all_verb_options()
+        default_verbs = ["apply","demonstrate","evaluate","design"]
+        default_verbs = [v for v in default_verbs if v in options_all]  # guarantee validity
         st.session_state["verbs"] = st.multiselect("Pick verbs",
-            options=sorted(set(sum(DEFAULT_VERBS.values(), []))),
-            default=["apply","demonstrate","evaluate","design"], key="verbs_acts")
+            options=options_all, default=default_verbs, key="verbs_acts")
+
         cA,cB = st.columns(2)
         if cA.button("✅ Generate Activities", use_container_width=True):
             acts = build_activities(
@@ -313,6 +337,6 @@ with tab_act:
     else:
         st.button("⬇️ Download Activities (.docx)", disabled=True)
 
-# === REVISION TAB ===
+# ------------------ REVISION TAB ------------------
 with tab_rev:
     st.info("Use Knowledge MCQs for questions or Skills Activities to generate activities. This tab is reserved for future revision templates.")
