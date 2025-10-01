@@ -21,6 +21,11 @@ try:
 except Exception:
     HAVE_PYPDF = False
 
+if HAVE_PYPDF:
+    reader = PdfReader(io.BytesIO(upload_bytes))
+    # extract text...
+
+
 
 APP_NAME = "ADI Builder — Lesson Activities & Questions"
 STRAPLINE = "Professional, branded, editable and export-ready."
