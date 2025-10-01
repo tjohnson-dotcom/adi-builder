@@ -180,6 +180,16 @@ def split_chunks(text: str, n: int) -> List[str]:
         chunks = [""]
     return chunks[:n]
 
+uploaded = st.file_uploader("Upload PDF / DOCX / PPTX", type=["pdf", "docx", "pptx"], key="uploader")
+if uploaded:
+    # one-time toast per new file
+    if st.session_state.get("last_upload_name") != uploaded.name:
+        st.session_state["last_upload_name"] = uploaded.name
+        kb = uploaded.size / 1024
+        st.toast(f"Uploaded **{uploaded.name}** ({kb:.1f} KB)", icon="✅")
+    st.success(f"File ready: **{uploaded.name}**")
+
+
 # ------------------------- MCQ generation -------------------------------
 
 def generate_mcq_block(src_text: str, verbs: List[str], block_size: int = 3) -> List[dict]:
