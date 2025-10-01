@@ -36,6 +36,169 @@ MED_VERBS = ["apply", "demonstrate", "solve", "illustrate", "compare"]
 HIGH_VERBS = ["evaluate", "synthesize", "design", "justify"]
 ALL_VERBS = sorted(set(LOW_VERBS + MED_VERBS + HIGH_VERBS))
 
+st.markdown("""
+<style>
+/* Buttons (use ADI green, never Streamlit red) */
+.stButton>button, .stDownloadButton>button {
+  background: #245a34 !important;
+  color: #fff !important;
+  border: 1px solid #1e4c2b !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: transform .02s ease-in-out, box-shadow .2s ease;
+  border-radius: 10px;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+  filter: brightness(1.02);
+  transform: translateY(-1px);
+}
+
+/* Pills / chips (verbs, week tags) */
+[data-baseweb="tag"] {
+  background: #eaf3ed !important;
+  color: #245a34 !important;
+  border: 1px solid #cfe3d6 !important;
+}
+[data-baseweb="tag"][aria-selected="true"] {
+  background: #245a34 !important; color: #fff !important; border-color:#1e4c2b !important;
+}
+
+/* Tab bar underline & icons – make them pop */
+div[data-testid="stHorizontalBlock"] .stMarkdown a {
+  color: #245a34 !important;
+}
+.stTabs [data-baseweb="tab"] {
+  font-weight: 600;
+  color: #1f3b27;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+  color: #245a34 !important;
+  border-bottom: 3px solid #245a34 !important;
+}
+st.markdown("""
+<style>
+/* Buttons (use ADI green, never Streamlit red) */
+.stButton>button, .stDownloadButton>button {
+  background: #245a34 !important;
+  color: #fff !important;
+  border: 1px solid #1e4c2b !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: transform .02s ease-in-out, box-shadow .2s ease;
+  border-radius: 10px;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+  filter: brightness(1.02);
+  transform: translateY(-1px);
+}
+
+/* Pills / chips (verbs, week tags) */
+[data-baseweb="tag"] {
+  background: #eaf3ed !important;
+  color: #245a34 !important;
+  border: 1px solid #cfe3d6 !important;
+}
+[data-baseweb="tag"][aria-selected="true"] {
+  background: #245a34 !important; color: #fff !important; border-color:#1e4c2b !important;
+}
+
+/* Tab bar underline & icons – make them pop */
+div[data-testid="stHorizontalBlock"] .stMarkdown a {
+  color: #245a34 !important;
+}
+.stTabs [data-baseweb="tab"] {
+  font-weight: 600;
+  color: #1f3b27;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+  color: #245a34 !important;
+  border-bottom: 3px solid #245a34 !important;
+}
+
+/* Card-ish sections */
+.block-container { padding-top: 1rem; }
+.section-card {
+  background:#fff; border:1px solid #e8ece9; border-radius:14px; padding:1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+/* Subtle help text */
+.small-note { color:#687a70; font-size:.86rem; }
+
+/* Hide the aggressive red alert boxes Streamlit shows by default */
+.stAlert { border-radius: 12px; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<style>
+/* Buttons (use ADI green, never Streamlit red) */
+.stButton>button, .stDownloadButton>button {
+  background: #245a34 !important;
+  color: #fff !important;
+  border: 1px solid #1e4c2b !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  transition: transform .02s ease-in-out, box-shadow .2s ease;
+  border-radius: 10px;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+  filter: brightness(1.02);
+  transform: translateY(-1px);
+}
+
+/* Pills / chips (verbs, week tags) */
+[data-baseweb="tag"] {
+  background: #eaf3ed !important;
+  color: #245a34 !important;
+  border: 1px solid #cfe3d6 !important;
+}
+[data-baseweb="tag"][aria-selected="true"] {
+  background: #245a34 !important; color: #fff !important; border-color:#1e4c2b !important;
+}
+
+/* Tab bar underline & icons – make them pop */
+div[data-testid="stHorizontalBlock"] .stMarkdown a {
+  color: #245a34 !important;
+}
+.stTabs [data-baseweb="tab"] {
+  font-weight: 600;
+  color: #1f3b27;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+  color: #245a34 !important;
+  border-bottom: 3px solid #245a34 !important;
+}
+
+/* Card-ish sections */
+.block-container { padding-top: 1rem; }
+.section-card {
+  background:#fff; border:1px solid #e8ece9; border-radius:14px; padding:1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+/* Subtle help text */
+.small-note { color:#687a70; font-size:.86rem; }
+
+/* Hide the aggressive red alert boxes Streamlit shows by default */
+.stAlert { border-radius: 12px; }
+</style>
+""", unsafe_allow_html=True)
+
+
+/* Card-ish sections */
+.block-container { padding-top: 1rem; }
+.section-card {
+  background:#fff; border:1px solid #e8ece9; border-radius:14px; padding:1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+
+/* Subtle help text */
+.small-note { color:#687a70; font-size:.86rem; }
+
+/* Hide the aggressive red alert boxes Streamlit shows by default */
+.stAlert { border-radius: 12px; }
+</style>
+""", unsafe_allow_html=True)
+
+
 def init_state():
     s = st.session_state
     s.setdefault("week", 1)
@@ -50,6 +213,22 @@ def init_state():
     s.setdefault("topic", "")
     s.setdefault("upload_name", "")
 init_state()
+
+def safe_file_uploader(label, types):
+    f = st.file_uploader(label, type=types, accept_multiple_files=False)
+    if f is None:
+        return None
+    # sanity check: avoid flicker re-runs killing state
+    if not hasattr(st.session_state, "_upload_seen"):
+        st.session_state._upload_seen = set()
+    key = (f.name, f.size)
+    if key in st.session_state._upload_seen:
+        return f
+    st.session_state._upload_seen.add(key)
+    return f
+
+upload = safe_file_uploader("Upload PDF / DOCX / PPTX", ["pdf","docx","pptx"])
+
 
 def band_for_week(week:int)->Tuple[str,str]:
     if week<=3: return ("Weeks 1–3", "Low focus")
@@ -147,6 +326,30 @@ def to_docx_activities(rows:List[dict], title:str)->bytes:
         row = t.add_row().cells
         row[0].text = str(r["No"]); row[1].text = r["Activity"]; row[2].text = str(r["Duration (mins)"])
     bio = io.BytesIO(); doc.save(bio); bio.seek(0); return bio.getvalue()
+[theme]
+primaryColor = "#245a34"          # ADI green (buttons, sliders, etc)
+backgroundColor = "#f6f5f2"       # soft page background
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0f2316"
+font = "sans serif"
+
+[server]
+headless = true
+maxUploadSize = 200               # MB – matches your UI copy
+fileWatcherType = "none"
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+active_tab = st.session_state.get("tab", "MCQs")
+title_map = {
+  "MCQs": "🧠 Knowledge MCQs",
+  "Activities": "🛠️ Skills Activities",
+  "Revision": "📘 Revision"
+}
+st.subheader(title_map.get(active_tab, "🧠 Knowledge MCQs"))
+
 
 def to_docx_revision(rows:List[str], title:str)->bytes:
     doc = Document(); doc.add_heading(title, level=1)
