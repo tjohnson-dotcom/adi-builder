@@ -1,5 +1,4 @@
 
-
 # ADI Builder — Lesson Activities & Questions (v2.5.5, stable build)
 # Streamlit 1.35+ ; no JS/HTML injection; safe session handling.
 
@@ -308,3 +307,5 @@ with tab_rev:
                            file_name="revision.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
     else:
         st.info("Paste or upload content, set Week/Lesson, then **Build revision plan**.")
+
+
