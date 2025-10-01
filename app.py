@@ -8,15 +8,18 @@ import random
 
 import streamlit as st
 
-# ===============
-# THEME & STYLES
-# ===============
-ADI_GREEN = "#245a34"  # ADI brand green
-ADI_GOLD = "#C8A85A"   # optional accent
+# =====================
+# BRAND COLORS (ADI)
+# =====================
+ADI_GREEN = "#245a34"   # ADI brand green
+ADI_GOLD  = "#C8A85A"   # optional accent
 
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
-STYLES = f"""
+# =====================
+# THEME & STYLES (no f-string; hardcoded colors to avoid brace issues)
+# =====================
+STYLES = """
 <style>
 /******** Root color overrides ********/
 :root {
@@ -69,7 +72,6 @@ input[type="range"], .stSlider input[type="range"] {
 .block-container { padding-top: 1.2rem; }
 </style>
 """
-
 st.markdown(STYLES, unsafe_allow_html=True)
 
 # ======================
@@ -101,9 +103,8 @@ DEFAULT_VERBS = {
 def uniq(seq):
     return sorted(dict.fromkeys([str(s).strip().lower() for s in seq if str(s).strip()]))
 
-# ADI policy mapping (per user preference):
+# ADI policy mapping (per preference):
 # Weeks 1–4 Low, 5–9 Medium, 10–14 High
-
 def policy_for_week(week:int) -> str:
     if 1 <= week <= 4:
         return "Low"
@@ -116,7 +117,6 @@ POLICY_VERBS = {
     "Medium": uniq(DEFAULT_VERBS["Apply"]    + DEFAULT_VERBS["Analyze"]),
     "High":   uniq(DEFAULT_VERBS["Evaluate"] + DEFAULT_VERBS["Create"]),
 }
-
 
 def policy_caption(week:int) -> str:
     pol = policy_for_week(week)
@@ -162,18 +162,13 @@ def extract_text_from_file(path: str, ext: str, max_chars: int = 6000) -> str:
 # ======================
 # UTILS
 # ======================
-
 def seeded_random(seed_str: str):
     rnd = random.Random()
     rnd.seed(seed_str)
     return rnd
 
-
 def now_str() -> str:
-    # Asia/Riyadh date stamp expected by user; keep naive local date if deployed in UTC.
-    # We'll just use local time of the server.
     return datetime.now().strftime("%Y-%m-%d")
-
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_\-]+", "_", name).strip("_")
@@ -181,7 +176,6 @@ def sanitize_filename(name: str) -> str:
 # ======================
 # SIMPLE MCQ/ACTIVITY BUILDERS (LLM-FREE PLACEHOLDERS)
 # ======================
-
 def build_mcqs(topic_text: str, verbs: list[str], n: int, variant: int, enable_mix: bool, week: int, lesson: int):
     """Return list of dicts: {q, options:[(key,text)], correct_key}
     • Stems vary (not always "Which")
@@ -191,12 +185,10 @@ def build_mcqs(topic_text: str, verbs: list[str], n: int, variant: int, enable_m
     seed = f"mcq::{variant}::{week}::{lesson}::{hashlib.sha1(topic.encode('utf-8')).hexdigest()}"
     rnd = seeded_random(seed)
 
-    # fallback verbs
     if not verbs:
         verbs = POLICY_VERBS[policy_for_week(week)]
     verbs = uniq(verbs)
 
-    # Varied stem templates (keeps language fresh)
     stem_templates = [
         "Using the verb **{verb}**, which option best fits {topic}?",
         "Select the option that **{verb}s** {topic} most accurately.",
@@ -220,17 +212,15 @@ def build_mcqs(topic_text: str, verbs: list[str], n: int, variant: int, enable_m
         ]
         opts = [correct] + distractors
 
-        # mix answers deterministically (optional)
         order = list(range(4))
         if enable_mix:
             rnd.shuffle(order)
         mixed = [opts[idx] for idx in order]
-        correct_index = order.index(0)  # where the original correct landed
+        correct_index = order.index(0)
         correct_key = letters[correct_index]
         options = list(zip(letters, mixed))
         mcqs.append({"q": stem, "options": options, "correct_key": correct_key})
     return mcqs
-
 
 def build_activities(topic_text: str, verbs: list[str], week: int, lesson: int, count: int = 6):
     topic = (topic_text or "this topic").strip()
@@ -258,11 +248,9 @@ def build_activities(topic_text: str, verbs: list[str], week: int, lesson: int, 
 # ======================
 # EXPORTERS
 # ======================
-
 def export_mcq_docx(mcqs, week: int, lesson: int, topic_preview: str = "") -> bytes:
     try:
         from docx import Document
-        from docx.shared import Pt
     except Exception:
         st.error("python-docx is required to export .docx. Add it to requirements.txt")
         return b""
@@ -280,7 +268,6 @@ def export_mcq_docx(mcqs, week: int, lesson: int, topic_preview: str = "") -> by
             doc.add_paragraph(f"   {key}. {text}")
         doc.add_paragraph("")
 
-    # Answer key
     doc.add_heading("Answer Key", level=2)
     for i, item in enumerate(mcqs, start=1):
         doc.add_paragraph(f"{i}. {item['correct_key']}")
@@ -419,7 +406,6 @@ with TABS[0]:
                     st.markdown(f"{key}. {text}")
                 st.write("")
 
-        # Export DOCX
         topic_preview = (st.session_state.get("src_text","") or "this topic").split("\n")[0]
         date_str = now_str()
         file_name = f"ADI_Lesson{st.session_state['lesson']}_Week{st.session_state['week']}_{date_str}_MCQPaper.docx"
@@ -491,4 +477,4 @@ with TABS[2]:
 # ===============
 # FOOTER NOTE
 # ===============
-st.caption("ADI Builder • Green UI • Stable upload • Policy verbs auto‑select • v1.0")
+st.caption("ADI Builder • Green UI • Stable upload • Policy verbs auto‑select • v1.1")
