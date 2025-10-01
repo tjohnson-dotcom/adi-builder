@@ -19,49 +19,54 @@ st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 STYLES = f"""
 <style>
 /******** Root color overrides ********/
-:root {{
-  --adi-green: {ADI_GREEN};
-}}
+:root {
+  --adi-green: #245a34;
+}
 
 /* Primary button */
-.stButton>button {{
+.stButton>button {
   background: var(--adi-green) !important;
   color: #fff !important;
   border: 1px solid rgba(0,0,0,0.06);
   border-radius: 14px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}}
-.stButton>button:hover {{ filter: brightness(0.95); }}
+}
+.stButton>button:hover { filter: brightness(0.95); }
 
 /* Tabs → pill style in ADI green */
-.stTabs [data-baseweb="tab-list"] {{ gap: 6px; }}
-.stTabs [data-baseweb="tab"] {{
+.stTabs [data-baseweb="tab-list"] { gap: 6px; }
+.stTabs [data-baseweb="tab"] {
   background-color: rgba(36,90,52,0.08);
   color: var(--adi-green);
   border-radius: 999px;
   padding: 8px 16px;
   border: 1px solid rgba(36,90,52,0.25);
-}}
-.stTabs [aria-selected="true"] {{
+}
+.stTabs [aria-selected="true"] {
   background-color: var(--adi-green) !important;
   color: #fff !important;
   border: 1px solid var(--adi-green) !important;
-}}
+}
 
 /* Multiselect chips (selected) */
-[data-baseweb="tag"] {{
+[data-baseweb="tag"] {
   background: rgba(36,90,52,0.12) !important;
   color: var(--adi-green) !important;
   border: 1px solid rgba(36,90,52,0.35) !important;
-}}
+}
 
 /* Inputs focus glow */
-.stTextArea textarea, .stTextInput input, .stSelectbox div[role="combobox"], .stMultiSelect div[role="combobox"] {{
+.stTextArea textarea, .stTextInput input, .stSelectbox div[role="combobox"], .stMultiSelect div[role="combobox"] {
   box-shadow: 0 0 0 2px rgba(36,90,52,0.25) !important;
-}}
+}
+
+/* Slider (avoid red accent) */
+input[type="range"], .stSlider input[type="range"] {
+  accent-color: var(--adi-green) !important;
+}
 
 /* Subtle card look for containers */
-.block-container {{ padding-top: 1.2rem; }}
+.block-container { padding-top: 1.2rem; }
 </style>
 """
 
@@ -178,7 +183,10 @@ def sanitize_filename(name: str) -> str:
 # ======================
 
 def build_mcqs(topic_text: str, verbs: list[str], n: int, variant: int, enable_mix: bool, week: int, lesson: int):
-    """Return list of dicts: {q, options:[(key,text)], correct_key}"""
+    """Return list of dicts: {q, options:[(key,text)], correct_key}
+    • Stems vary (not always "Which")
+    • Options letters can be shuffled deterministically when enable_mix=True
+    """
     topic = (topic_text or "this topic").strip()
     seed = f"mcq::{variant}::{week}::{lesson}::{hashlib.sha1(topic.encode('utf-8')).hexdigest()}"
     rnd = seeded_random(seed)
@@ -188,12 +196,22 @@ def build_mcqs(topic_text: str, verbs: list[str], n: int, variant: int, enable_m
         verbs = POLICY_VERBS[policy_for_week(week)]
     verbs = uniq(verbs)
 
+    # Varied stem templates (keeps language fresh)
+    stem_templates = [
+        "Using the verb **{verb}**, which option best fits {topic}?",
+        "Select the option that **{verb}s** {topic} most accurately.",
+        "Which statement **best {verb}s** the idea in {topic}?",
+        "Identify the choice that **{verb}s** {topic} correctly.",
+        "What is the **best** option to **{verb}** {topic}?",
+        "Choose the response that **{verb}s** {topic}.",
+    ]
+
     mcqs = []
     letters = ["A","B","C","D"]
 
     for i in range(1, n+1):
         verb = rnd.choice(verbs)
-        stem = f"Q{i}. Using the verb **{verb}**, which option best fits {topic}?"
+        stem = rnd.choice(stem_templates).format(verb=verb, topic=topic)
         correct = f"A precise choice that aligns with '{verb}' for {topic}."
         distractors = [
             f"A loosely related idea not focused on '{verb}'.",
@@ -358,7 +376,7 @@ with TABS[0]:
     options_mcq = POLICY_VERBS[policy_now]
     default_mcq = [v for v in st.session_state.get("verbs_mcq", []) if v in options_mcq] or options_mcq
 
-    st.session_state["verbs_mcq"] = st.multiselect(
+    st.multiselect(
         "Verb picker",
         options=options_mcq,
         default=default_mcq,
@@ -423,7 +441,7 @@ with TABS[1]:
     options_acts = POLICY_VERBS[policy_now]
     default_acts = [v for v in st.session_state.get("verbs_acts", []) if v in options_acts] or options_acts
 
-    st.session_state["verbs_acts"] = st.multiselect(
+    st.multiselect(
         "Pick verbs",
         options=options_acts,
         default=default_acts,
