@@ -1,241 +1,187 @@
+# streamlit_app.py — ADI Builder (Quick‑win UI)
+# One-file Streamlit app focusing on look & feel and simple, stable inputs (no sliders)
 
-# app_v1_4.py — ADI Builder (broad action bar)
 import os
 import io
-import time
-import tempfile
-from pathlib import Path
-from typing import List, Tuple
-
-import fitz  # PyMuPDF
-from pptx import Presentation
-from docx import Document
-from docx.shared import Pt, Inches
 import streamlit as st
 
-st.set_page_config(page_title="ADI Builder", layout="wide", page_icon="📘")
+# ---------------------------
+# Page & Theme
+# ---------------------------
+st.set_page_config(
+    page_title="ADI Builder — Quick Win",
+    page_icon="📚",
+    layout="wide",
+)
 
-PRIMARY_GREEN = "#245a34"
-ACCENT_GOLD = "#C8A85A"
-STONE_BG = "#f4f1ec"
+ADI_GREEN = "#245a34"   # primary
+ADI_GOLD  = "#C8A85A"    # accent
+STONE_BG  = "#f5f5f4"    # soft stone background
+INK       = "#1f2937"    # dark ink for text
 
-CUSTOM_CSS = f"""
-<style>
-header {{ height: 0px; }}
-.block-container {{ padding-top: 0.75rem; }}
-:root {{
-  --adi-green: {PRIMARY_GREEN};
-  --adi-gold: {ACCENT_GOLD};
-  --adi-stone: {STONE_BG};
-}}
-section[data-testid="stSidebar"] {{ background: var(--adi-stone); }}
-.stButton > button {{
-  border-radius: 14px; padding: .5rem .9rem;
-  border: 1px solid var(--adi-green);
-  background: white; color: var(--adi-green);
-  box-shadow: 0 1px 0 rgba(0,0,0,.04);
-}}
-.stButton > button:hover {{ background: var(--adi-green); color: white; }}
-.stTabs [data-baseweb="tab-list"] {{ gap: 8px; }}
-.stTabs [data-baseweb="tab"] {{ border: 1px solid #ddd; border-radius: 999px; padding: .35rem .9rem; }}
-.stTextInput > div > div > input, .stTextArea textarea {{
-  background: #faf8f5; border-radius: 12px; border: 1px solid #ddd;
-}}
-.action-bar {{ display: flex; flex-wrap: wrap; gap: .5rem; margin: .25rem 0 1rem; }}
-.action-bar .stButton>button {{ border: 1px solid var(--adi-gold); }}
-small.hint {{ color: #666; }}
-</style>
-"""
-st.write(CUSTOM_CSS, unsafe_allow_html=True)
+# Inject lightweight CSS to remove red accents and style pills/buttons
+st.markdown(
+    f"""
+    <style>
+    html, body, [data-testid="stAppViewContainer"] {{
+        background: {STONE_BG};
+        color: {INK};
+    }}
+    /* Buttons */
+    .stButton>button {{
+        background: {ADI_GREEN};
+        color: white;
+        border: 0;
+        border-radius: 14px;
+        padding: 0.6rem 1rem;
+        font-weight: 600;
+        box-shadow: 0 2px 6px rgba(0,0,0,.08);
+    }}
+    .stButton>button:hover {{ filter: brightness(1.05); }}
 
+    /* Sidebar section header */
+    section[data-testid="stSidebar"] h2 {{
+        font-size: 1rem;
+        color: {INK};
+        opacity: .8;
+        margin-top: .5rem;
+    }}
+
+    /* Radio as vertical pill menu */
+    div[data-baseweb="radio"] > div {{ gap: .35rem; }}
+    div[role="radiogroup"] label {{
+        border: 2px solid transparent;
+        border-radius: 999px;
+        padding: .35rem .75rem;
+        font-weight: 600;
+        color: {INK};
+        background: white;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+        cursor: pointer;
+    }}
+    div[role="radiogroup"] label:hover {{
+        border-color: {ADI_GOLD};
+    }}
+    /* Selected state */
+    input[type="radio"]:checked + div p {{
+        color: white !important;
+    }}
+    input[type="radio"]:checked + div {{
+        background: linear-gradient(90deg, {ADI_GREEN}, {ADI_GOLD});
+        color: white !important;
+        border-color: transparent !important;
+    }}
+
+    /* Selects */
+    .stSelectbox>div>div {{
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }}
+
+    /* Text inputs */
+    .stTextInput>div>div>input, .stTextArea textarea {{
+        background: white;
+        border-radius: 12px !important;
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+    }}
+    .stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
+        outline: 2px solid {ADI_GREEN};
+        box-shadow: 0 0 0 3px rgba(36,90,52,.25);
+    }}
+
+    /* Hide default red error color — we’ll rely on neutral messages */
+    .stAlert div[data-baseweb="notification"] {{
+        border-radius: 12px;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------
+# Sidebar (Left-hand controls)
+# ---------------------------
 with st.sidebar:
-    logo_path = Path("Logo.png")
-    if logo_path.exists():
-        st.image(str(logo_path), use_container_width=True)
-    st.markdown("### ADI Builder")
-    lesson = st.radio("Lesson", [1,2,3,4,5], index=0, horizontal=True)
-    week = st.radio("Week", list(range(1,15)), index=0, horizontal=True)
-    st.caption("Bloom policy: Weeks 1-4 Low, 5-9 Medium, 10-14 High")
+    st.image("adi_logo.png") if os.path.isfile("adi_logo.png") else st.markdown(
+        "**ADI Builder**"
+    )
+    st.markdown("### Modes")
+    mode = st.radio(
+        "Pick a workflow",
+        ["Knowledge", "Skills", "Activities", "Revision"],
+        index=0,
+        label_visibility="collapsed",
+    )
 
-TMP_DIR = Path("/tmp/adi_builder"); TMP_DIR.mkdir(exist_ok=True)
+    st.markdown("### Lesson setup")
+    week = st.selectbox("Week", options=list(range(1, 15)), index=0)
+    lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
 
-def save_to_tmp(name: str, data: bytes) -> Path:
-    path = TMP_DIR / name; path.write_bytes(data); return path
+    st.markdown("### Resources")
+    with st.expander("Upload eBook / Lesson Plan / PowerPoint"):
+        ebook_file = st.file_uploader("eBook (PDF)", type=["pdf"], key="ebook")
+        plan_file = st.file_uploader("Lesson Plan (DOCX/PDF)", type=["docx", "pdf"], key="plan")
+        ppt_file  = st.file_uploader("Slides (PPTX)", type=["pptx"], key="ppt")
 
-def extract_text_from_pdf(fbytes: bytes) -> str:
-    text = []
-    with fitz.open(stream=io.BytesIO(fbytes), filetype="pdf") as doc:
-        for page in doc:
-            text.append(page.get_text())
-    return "\n".join(text)
+    st.divider()
+    run = st.button("Generate for staff ✨")
 
-def extract_text_from_pptx(fbytes: bytes) -> str:
-    bio = io.BytesIO(fbytes); prs = Presentation(bio)
-    chunks = []
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                chunks.append(shape.text)
-    return "\n".join(chunks)
+# ---------------------------
+# Main layout
+# ---------------------------
+left, right = st.columns([1, 1])
 
-def extract_text_from_docx(fbytes: bytes) -> str:
-    bio = io.BytesIO(fbytes); doc = Document(bio)
-    return "\n".join(p.text for p in doc.paragraphs)
+with left:
+    st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
+    st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
 
-def guess_extract(name: str, fbytes: bytes) -> str:
-    lower = name.lower()
-    if lower.endswith(".pdf"): return extract_text_from_pdf(fbytes)
-    if lower.endswith(".pptx"): return extract_text_from_pptx(fbytes)
-    if lower.endswith(".docx"): return extract_text_from_docx(fbytes)
-    try: return fbytes.decode("utf-8", errors="ignore")
-    except Exception: return ""
+    # Simple text areas for prompts so staff can edit before exporting
+    topic = st.text_input("Topic / Objective (short)")
+    notes = st.text_area("Key notes (optional)", height=100)
 
-def bloom_level_for_week(w:int) -> str:
-    if 1 <= w <= 4: return "Low"
-    if 5 <= w <= 9: return "Medium"
-    return "High"
+    if run:
+        # Placeholder generation — replace with your real logic
+        st.success("Ready! Drafts created below. Tweak and export.")
 
-LOW_VERBS = ["list", "define", "identify", "recall", "label"]
-MED_VERBS = ["explain", "summarize", "classify", "compare", "apply"]
-HIGH_VERBS = ["analyze", "evaluate", "design", "hypothesize", "create"]
+with right:
+    st.markdown("### Draft outputs")
 
-def verbs_for_week(w:int) -> List[str]:
-    lvl = bloom_level_for_week(w)
-    if lvl == "Low": return LOW_VERBS
-    if lvl == "Medium": return MED_VERBS
-    return HIGH_VERBS
+    if run:
+        if mode == "Knowledge":
+            st.markdown("**Sample Knowledge Questions (MCQs)**")
+            st.write(
+                "1. Which statement best describes the topic?\n\n"
+                "2. Identify the correct sequence for …\n\n"
+                "3. Which definition matches …"
+            )
+        elif mode == "Skills":
+            st.markdown("**Skill-focused Tasks**")
+            st.write("• Perform the core procedure and record observations.\n\n• Peer-check using the rubric.")
+        elif mode == "Activities":
+            st.markdown("**In-class Activities**")
+            st.write("• Think–Pair–Share (3–2–1).\n\n• Jigsaw: split subtopics, teach-back.")
+        elif mode == "Revision":
+            st.markdown("**Revision Prompts**")
+            st.write("• Create a one-page cheat sheet.\n\n• 5 short-answer questions from today’s lesson.")
+    else:
+        st.info("Load your resources on the left, set Week/Lesson, pick a mode, then click **Generate**.")
 
-def generate_mcqs(source_text: str, n:int=10, week:int=1) -> List[Tuple[str, List[str], int]]:
-    import random
-    lines = [ln.strip() for ln in source_text.splitlines() if ln.strip()]
-    chosen = lines[: max(5, min(60, len(lines)))]
-    v = verbs_for_week(week)
-    out = []
-    if not chosen: chosen = [f"Sample fact about the topic to {v[0]}"]
-    for i in range(n):
-        base = chosen[i % len(chosen)]
-        prompt = f"{v[i % len(v)].capitalize()} the correct statement: {base}"
-        correct = base
-        wrongs = [
-            base[::-1][: max(8, min(40, len(base)))],
-            base.upper()[: max(8, min(40, len(base)))],
-            "None of the above" if i % 3 == 0 else base.replace(" the ", " a "),
-        ]
-        options = [correct] + wrongs
-        random.shuffle(options)
-        answer_idx = options.index(correct)
-        out.append((prompt, options, answer_idx))
-    return out
+# ---------------------------
+# Utility: basic file sanity checks (prevents crashes later)
+# ---------------------------
+problems = []
+if run:
+    if ebook_file and ebook_file.size > 25 * 1024 * 1024:
+        problems.append("eBook exceeds 25MB; consider splitting.")
+    if ppt_file and not ppt_file.name.lower().endswith(".pptx"):
+        problems.append("Slides must be .pptx.")
 
-def mcqs_to_gift(mcqs: List[Tuple[str, List[str], int]]) -> str:
-    lines = []
-    for i, (q, opts, correct_index) in enumerate(mcqs, 1):
-        lines.append(f"::Q{i}:: {q} {{")
-        for j, opt in enumerate(opts):
-            prefix = "=" if j == correct_index else "~"
-            lines.append(f"  {prefix}{opt}")
-        lines.append("}")
-        lines.append("")
-    return "\n".join(lines)
+    if problems:
+        st.warning("\n".join([f"• {p}" for p in problems]))
 
-def export_mcqs_docx(mcqs) -> bytes:
-    doc = Document(); doc.add_heading("MCQs", 0)
-    for i, (q, opts, correct_idx) in enumerate(mcqs, 1):
-        doc.add_paragraph(f"{i}. {q}")
-        for j, opt in enumerate(opts):
-            letter = "ABCD"[j] if j < 4 else f"({j+1})"
-            p = doc.add_paragraph(f"{letter}. {opt}")
-            p.paragraph_format.left_indent = Inches(0.25)
-        doc.add_paragraph(f"Answer: {'ABCD'[correct_idx]}"); doc.add_paragraph("")
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
-
-def generate_activities(source_text: str, count:int=5, week:int=1) -> List[str]:
-    verbs = verbs_for_week(week)
-    acts = [f"{i+1}. Students will {verbs[i % len(verbs)]} using the provided topic excerpt." for i in range(count)]
-    return acts
-
-def export_lesson_plan_docx(activities: List[str]) -> bytes:
-    doc = Document(); doc.add_heading("Lesson Plan (Activities)", 0)
-    for line in activities: doc.add_paragraph(line)
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
-
-def export_ebook_docx(source_text: str) -> bytes:
-    doc = Document(); doc.add_heading("E-Book", 0)
-    for para in source_text.split("\n\n"): doc.add_paragraph(para.strip())
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
-
-st.title("ADI Builder")
-st.caption("Green UI - MCQs - Activities - Revision - .docx & Moodle GIFT exports")
-
-uploaded = st.file_uploader("Upload your source (PDF, PPTX, DOCX, or TXT)", type=["pdf","pptx","docx","txt"])
-colL, colR = st.columns([1,2])
-with colL:
-    use_text_clicked = st.button("Use uploaded text")
-with colR:
-    default_count = st.number_input("Default MCQ count", 5, 50, 10)
-
-if "source_text" not in st.session_state: st.session_state.source_text = ""
-
-if uploaded is not None:
-    tmp_path = save_to_tmp(uploaded.name, uploaded.getvalue())
-    st.info(f"Saved upload to {tmp_path}")
-    if use_text_clicked:
-        with st.spinner("Extracting text..."):
-            st.session_state.source_text = guess_extract(uploaded.name, uploaded.getvalue())
-            st.success("Text ready.")
-
-source_text = st.session_state.source_text
-if not source_text:
-    st.warning("No source text yet. Upload a file and click Use uploaded text.")
-else:
-    st.text_area("Source preview", source_text[:5000], height=220)
-
-# Action bar (broad)
-col1, col2, col3 = st.columns(3)
-with col1:
-    if st.button("Export Lesson Plan (.docx)"):
-        acts = generate_activities(source_text, 8, week)
-        st.download_button("Download Lesson Plan (.docx)", export_lesson_plan_docx(acts), file_name="lesson_plan.docx")
-with col2:
-    if st.button("Export E-Book (.docx)"):
-        st.download_button("Download E-Book (.docx)", export_ebook_docx(source_text), file_name="ebook.docx")
-with col3:
-    if st.button("Export Moodle (.gift)"):
-        mcqs = generate_mcqs(source_text, default_count, week)
-        gift = mcqs_to_gift(mcqs)
-        st.download_button("Download Moodle (.gift)", gift, file_name="mcqs.gift")
-
-tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
-
-with tabs[0]:
-    st.subheader("Generate MCQs")
-    n = st.slider("How many MCQs?", 5, 40, default_count)
-    if st.button("Generate MCQs"):
-        mcqs = generate_mcqs(source_text, n, week)
-        for i, (q, opts, ans) in enumerate(mcqs, 1):
-            st.markdown(f"**{i}. {q}**")
-            for j, opt in enumerate(opts):
-                st.write(f"- {opt}")
-            st.caption(f"Answer: {chr(65+ans)}")
-            st.divider()
-        docx_bytes = export_mcqs_docx(mcqs)
-        gift_text = mcqs_to_gift(mcqs)
-        st.download_button("Download .docx", data=docx_bytes, file_name="mcqs.docx")
-        st.download_button("Download Moodle (.gift)", data=gift_text, file_name="mcqs.gift")
-
-with tabs[1]:
-    st.subheader("Generate Activities")
-    c = st.slider("How many activities?", 3, 15, 6)
-    if st.button("Generate Activities"):
-        acts = generate_activities(source_text, c, week)
-        for line in acts: st.write(line)
-        st.download_button("Download Lesson Plan (.docx)", export_lesson_plan_docx(acts), file_name="lesson_plan.docx")
-
-with tabs[2]:
-    st.subheader("Revision / Notes")
-    notes = st.text_area("Draft quick revision notes here:", "", height=200, placeholder="Key concepts, reminders, examples...")
-    if st.button("Export Revision Notes (.docx)"):
-        doc = Document(); doc.add_heading("Revision Notes", 0)
-        for para in notes.split("\n"): doc.add_paragraph(para)
-        bio = io.BytesIO(); doc.save(bio)
-        st.download_button("Download Revision (.docx)", bio.getvalue(), file_name="revision.docx")
+# Footer
+st.markdown(
+    f"<div style='text-align:center; opacity:.6; padding:1rem 0;'>ADI Builder • Theming: <b>{ADI_GREEN}</b> / <b>{ADI_GOLD}</b> • No red accents</div>",
+    unsafe_allow_html=True,
+)
