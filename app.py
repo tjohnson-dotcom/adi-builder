@@ -1,228 +1,68 @@
+# ADI Builder — Stable Single-File App
+# Includes: upload confirmation, mixture-mode MCQs, variant codes, activities, DOCX & GIFT exports.
 
-
-# ADI Builder — Lesson Activities & Questions
-# Version: 2.5.6 (stable, no flicker)
-# Features: Upload (PDF/DOCX/PPTX), MCQs (random A-D), Activities, Revision bands, DOCX & GIFT exports
-# Requirements: streamlit, python-docx, python-pptx, pymupdf, lxml, Pillow
-
-import io
-import random
-import textwrap
-from datetime import datetime
-from typing import List, Tuple
-
+import io, re, random, hashlib, secrets, datetime as dt
 import streamlit as st
 
-# Optional dependencies (guarded imports so app loads even if one is missing)
-try:
-    import fitz  # PyMuPDF
-except Exception:
-    fitz = None
-try:
-    from docx import Document as DocxDocument
-except Exception:
-    DocxDocument = None
-try:
-    from pptx import Presentation
-except Exception:
-    Presentation = None
+# ------------- Page config & style -------------
+st.set_page_config(page_title="ADI Builder", page_icon="✅", layout="wide")
+ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"; BG_STONE="#f7f6f3"
+st.markdown(f"""
+<style>
+  .main {{ background: {BG_STONE}; }}
+  .adi-topbar {{ height: 6px; background: linear-gradient(90deg,{ADI_GREEN},{ADI_GOLD}); margin: -1rem -1rem 1rem -1rem; }}
+  .box {{ background:white; border-radius:16px; padding:1rem; box-shadow:0 2px 10px #00000014; }}
+  .stMultiSelect [data-baseweb="tag"] span {{ font-weight: 600; }}
+</style>
+<div class="adi-topbar"></div>
+""", unsafe_allow_html=True)
 
-# ------------------------- Page & Theme ---------------------------------
-st.set_page_config(
-    page_title="ADI Builder — Lesson Activities & Questions",
-    page_icon="🧠",
-    layout="wide",
-)
-
-def inject_adi_css():
-    st.markdown(
-        """
-        <style>
-          /* Base */
-          .block-container { padding-top: 0.75rem; }
-          /* Header band */
-          .adi-hero {
-            background: #22382b;
-            color:#fff; border-radius: 14px; padding: 14px 18px; margin: 8px 0 18px 0;
-          }
-          .adi-badge {
-            display:inline-block; background:#2e4c3a; color:#fff; padding:6px 10px; border-radius:10px;
-            font-weight:600; font-size:.85rem; margin-right:10px;
-          }
-          .adi-sub { color:#d6e2db; font-size:.9rem; margin-top: 4px; }
-
-          /* Buttons */
-          .stButton>button, .stDownloadButton>button{
-            background:#245a34!important; color:#fff!important;
-            border:1px solid #1e4c2b!important; border-radius:10px;
-            box-shadow:0 1px 2px rgba(0,0,0,.08); transition:transform .02s, box-shadow .2s;
-          }
-          .stButton>button:hover, .stDownloadButton>button:hover{ filter:brightness(1.02); transform:translateY(-1px); }
-
-          /* Pills / chips */
-          [data-baseweb="tag"]{
-            background:#eaf3ed!important; color:#245a34!important; border:1px solid #cfe3d6!important;
-          }
-          [data-baseweb="tag"][aria-selected="true"]{
-            background:#245a34!important; color:#fff!important; border-color:#1e4c2b!important;
-          }
-
-          /* Tabs */
-          .stTabs [data-baseweb="tab"]{ font-weight:600; color:#1f3b27; }
-          .stTabs [data-baseweb="tab"][aria-selected="true"]{
-            color:#245a34!important; border-bottom:3px solid #245a34!important;
-          }
-
-          /* Cards */
-          .section-card{ background:#fff; border:1px solid #e8ece9; border-radius:14px; padding:1rem 1.25rem;
-                        box-shadow:0 1px 3px rgba(0,0,0,.05); margin-bottom: 10px;}
-          .small-note{ color:#687a70; font-size:.86rem; }
-          .muted{ color:#6d7a71; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-inject_adi_css()
-
-# ------------------------- Constants ------------------------------------
-
+# ------------- Helpers & defaults -------------
+BLOOM_LEVELS = ["Remember","Understand","Apply","Analyze","Evaluate","Create"]
+BLOOM_TIER   = {"Remember":"Low","Understand":"Low","Apply":"Medium","Analyze":"Medium","Evaluate":"High","Create":"High"}
 DEFAULT_VERBS = {
-    "Understand": ["define", "identify", "list", "recall", "describe", "label"],
-    "Apply": ["apply", "demonstrate", "solve", "illustrate"],
-    "Analyse": ["analyse", "compare", "contrast", "distinguish", "categorise"],
-    "Evaluate": ["evaluate", "critique", "justify", "recommend"],
-    "Create": ["design", "synthesize", "compose", "construct"],
+    "Remember":["list","define","recall","identify"],
+    "Understand":["explain","classify","summarize","illustrate"],
+    "Apply":["use","implement","solve","demonstrate"],
+    "Analyze":["compare","differentiate","categorize","analyze"],
+    "Evaluate":["justify","critique","prioritize","defend"],
+    "Create":["design","compose","propose","develop"],
 }
 
-WEEK_BANDS = [
-    ("Weeks 1–3", "Low focus"),
-    ("Weeks 4–8", "Medium focus"),
-    ("Weeks 9–14", "High focus"),
-]
+def policy_for_week(week:int)->str:
+    if 1<=week<=4: return "Low"
+    if 5<=week<=9: return "Medium"
+    return "High"
 
-# ------------------------- Helpers --------------------------------------
+def safe_sentences(text:str, default:str):
+    # Split text into simple sentence-ish chunks; fall back to default when empty
+    items=[s.strip() for s in re.split(r"[.\n]+", text or "") if s.strip()]
+    return items or [default]
 
-def initialise_state():
-    ss = st.session_state
-    ss.setdefault("mcq_blocks", 10)
-    ss.setdefault("verbs_mcq", DEFAULT_VERBS["Understand"][:4])
-    ss.setdefault("verbs_act", ["apply", "demonstrate", "evaluate", "design"])
-    ss.setdefault("policy3", False)
-    ss.setdefault("uploaded_text", "")
+# ---------- Activities (offline, deterministic) ----------
+def offline_activities(verbs, level, count, duration_min, difficulty, week):
+    H = {
+        "Remember":"recall key facts",
+        "Understand":"explain ideas in your own words",
+        "Apply":"use the concept in a new example",
+        "Analyze":"compare parts and relationships",
+        "Evaluate":"justify a position with criteria",
+        "Create":"design or propose a new solution",
+    }
+    tier=BLOOM_TIER.get(level,"Low"); hint=H.get(level,"apply the concept")
+    verbs = verbs or ["explain","classify","describe","analyze"]
+    vseq  = (verbs * ((count // max(1,len(verbs))) + 1))[:count]
+    out=[]
+    for i,v in enumerate(vseq, start=1):
+        line=f"{i}. {v.capitalize()} — In teams, {hint}. Produce a {duration_min}-minute output (difficulty: {difficulty}, ADI: {tier}, week {week})."
+        if level in ("Analyze","Evaluate","Create"):
+            line += " Include evidence from the text and one counterexample."
+        else:
+            line += " Include at least 3 key points."
+        out.append(line)
+    return out
 
-initialise_state()
-
-def safe_file_uploader(label, types):
-    """Uploader with simple dedupe to avoid flicker on rerun."""
-    f = st.file_uploader(label, type=types, accept_multiple_files=False, label_visibility="collapsed")
-    if f is None:
-        return None
-    st.session_state.setdefault("_upload_seen", set())
-    key = (f.name, f.size)
-    if key in st.session_state["_upload_seen"]:
-        return f
-    st.session_state["_upload_seen"].add(key)
-    return f
-
-def extract_text_from_file(upload) -> str:
-    name = upload.name.lower()
-    data = upload.read()
-    if name.endswith(".pdf"):
-        if fitz is None:
-            return ""
-        try:
-            doc = fitz.open(stream=data, filetype="pdf")
-            text = ""
-            for page in doc:
-                text += page.get_text("text") + "\n"
-            return text.strip()
-        except Exception:
-            return ""
-    elif name.endswith(".docx"):
-        if DocxDocument is None:
-            return ""
-        try:
-            with io.BytesIO(data) as mem:
-                doc = DocxDocument(mem)
-                return "\n".join(p.text for p in doc.paragraphs)
-        except Exception:
-            return ""
-    elif name.endswith(".pptx"):
-        if Presentation is None:
-            return ""
-        try:
-            with io.BytesIO(data) as mem:
-                prs = Presentation(mem)
-                text = []
-                for slide in prs.slides:
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text"):
-                            text.append(shape.text)
-                return "\n".join(text)
-        except Exception:
-            return ""
-    return ""
-
-def normalise_text(src: str, limit: int = 5000) -> str:
-    s = " ".join(src.split())
-    if len(s) > limit:
-        return s[:limit] + "..."
-    return s
-
-def split_chunks(text: str, n: int) -> List[str]:
-    words = text.split()
-    chunks = []
-    size = max(80, len(words)//max(1, n))
-    for i in range(0, len(words), size):
-        chunks.append(" ".join(words[i:i+size]))
-    if not chunks:
-        chunks = [""]
-    return chunks[:n]
-
-uploaded = st.file_uploader("Upload PDF / DOCX / PPTX", type=["pdf", "docx", "pptx"], key="uploader")
-if uploaded:
-    # one-time toast per new file
-    if st.session_state.get("last_upload_name") != uploaded.name:
-        st.session_state["last_upload_name"] = uploaded.name
-        kb = uploaded.size / 1024
-        st.toast(f"Uploaded **{uploaded.name}** ({kb:.1f} KB)", icon="✅")
-    st.success(f"File ready: **{uploaded.name}**")
-
-
-# ------------------------- MCQ generation -------------------------------
-
-mix_mode = st.toggle("Mixture mode (varied question types)", value=False, key="mix_mode")
-
-
-def generate_mcq_block(src_text: str, verbs: List[str], block_size: int = 3) -> List[dict]:
-    """Generate a small block of MCQs. One correct + 3 distractors (A-D)."""
-    base_pool = verbs if verbs else ["define", "identify", "list", "apply"]
-    nouns = ["process", "concept", "term", "principle", "method", "model", "diagram", "policy"]
-    blocks = []
-    import random as _random
-    for _ in range(block_size):
-        v = _random.choice(base_pool)
-        n = _random.choice(nouns)
-        stem = f"Which option best {v}s the {n}?"
-        correct = f"The best {n} {v}ed is highlighted in the course material."
-        wrongs = [
-            f"A partial {n} unrelated to the question.",
-            f"A common misconception about the {n}.",
-            f"An example that does not {v} the {n}.",
-        ]
-        options = [correct] + wrongs
-        _random.shuffle(options)
-        answer_label = "ABCD"[options.index(correct)]
-        blocks.append({"question": stem, "options": options, "answer": answer_label})
-    return blocks
-
-def generate_mcqs(src_text: str, verbs: List[str], num_blocks: int, policy3: bool) -> List[List[dict]]:
-    blocks = []
-    for _ in range(num_blocks):
-        size = 3 if policy3 else 5
-        blocks.append(generate_mcq_block(src_text, verbs, block_size=size))
-    return blocks
+# ---------- MCQs (varied answers + mixture-mode stems) ----------
 MIX_TEMPLATES = {
     "define":   lambda t: f"Which statement best defines **{t}**?",
     "identify": lambda t: f"Which option correctly identifies **{t}**?",
@@ -231,267 +71,262 @@ MIX_TEMPLATES = {
     "evaluate": lambda t: f"Which option best evaluates **{t}** using clear criteria?",
     "create":   lambda t: f"Which option proposes a sound design using **{t}**?",
 }
-
-# Balanced mix for N questions (no need to be perfect – just varied)
 def choose_mix(n: int):
-    order = (["define","identify","apply","apply","analyze","evaluate","create"] * 10)[:n]
-    return order[:n]
+    base = ["define","identify","apply","apply","analyze","evaluate","create"]
+    return (base * ((n//len(base))+2))[:n]
 
-# ------------------------- Activities -----------------------------------
+def rng_for(lesson:int, week:int, i:int, variant:str):
+    base = f"{lesson}|{week}|{variant}|{i}"
+    seed = int(hashlib.sha256(base.encode()).hexdigest(), 16) % (2**32)
+    return random.Random(seed)
 
-def generate_activities(count: int, duration: int, verbs: List[str], src_text: str) -> List[str]:
-    starters = ["In pairs,", "Individually,", "As a group,", "With A3 paper,", "Using the e-book,"]
-    templates = [
-        " {starter} {verb} the core ideas from the text and present a 2-minute summary.",
-        " {starter} {verb} a real-world example that fits the module content.",
-        " {starter} {verb} a short poster explaining today’s key concept.",
-        " {starter} {verb} three questions you would ask a peer about this topic.",
-        " {starter} {verb} a flowchart that maps the process described."
-    ]
-    verbs_pool = verbs if verbs else ["apply","demonstrate","evaluate","design"]
-    acts = []
-    import random as _random
-    for _ in range(count):
-        t = _random.choice(templates)
-        v = _random.choice(verbs_pool)
-        s = _random.choice(starters)
-        acts.append((t.format(starter=s, verb=v)).strip() + f" (≈ {duration} mins)")
-    return acts
+def offline_mcqs_varied(src_text, blooms, verbs, n, lesson, week, mix_mode:bool, variant:str):
+    topics=safe_sentences(src_text, "this topic")
+    verbs = verbs or ["identify"]
+    vseq  = (verbs * ((n // max(1,len(verbs))) + 1))[:n]
+    mix_order = choose_mix(n) if mix_mode else None
 
-# ------------------------- Revision -------------------------------------
+    rows=[]
+    for i in range(n):
+        bloom = blooms[i%len(blooms)] if blooms else "Understand"
+        tier  = BLOOM_TIER.get(bloom,"Low")
+        fact  = topics[i%len(topics)]
+        verb  = vseq[i].capitalize()
 
-def build_revision_plan(src_text: str, week: int, lesson: int) -> List[str]:
-    if not src_text:
-        return ["Add key points or upload content to generate a revision outline."]
-    chunks = split_chunks(src_text, 5)
-    out = []
-    for i, c in enumerate(chunks, 1):
-        out.append(f"Rev-{i}: " + textwrap.shorten(c, width=160, placeholder='…'))
-    return out
+        if mix_mode:
+            kind = mix_order[i]
+            stem = MIX_TEMPLATES[kind](fact)
+        else:
+            stem = f"Which option best demonstrates **{fact}**?"
 
-# ------------------------- Exports --------------------------------------
+        # Option templates: one correct + three distractors
+        correct = f"A correct point about {fact}."
 
-def export_docx(mcq_blocks: List[List[dict]], activities: List[str], title: str = "ADI Pack") -> bytes:
-    if DocxDocument is None:
-        return b""
-    doc = DocxDocument()
-    doc.add_heading(title, 0)
-    # MCQs
-    if mcq_blocks:
-        doc.add_heading("MCQ Paper", level=1)
-        qn = 1
-        for block in mcq_blocks:
-            for q in block:
-                doc.add_paragraph(f"{qn}. {q['question']}")
-                for i, opt in enumerate(q["options"]):
-                    label = "ABCD"[i]
-                    doc.add_paragraph(f"   {label}. {opt}")
-                qn += 1
-    # Activities
-    if activities:
-        doc.add_heading("Activities", level=1)
-        for i, a in enumerate(activities, 1):
-            doc.add_paragraph(f"{i}. {a}")
-    # Answers
-    if mcq_blocks:
-        doc.add_heading("Answer Key", level=1)
-        qn = 1
-        for block in mcq_blocks:
-            for q in block:
-                doc.add_paragraph(f"{qn}. {q['answer']}")
-                qn += 1
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+        distractors = [
+            f"A misconception about {fact}.",
+            f"An incomplete or vague description of {fact}.",
+            f"A distractor unrelated to {fact}.",
+        ]
 
-def export_gift(mcq_blocks: List[List[dict]]) -> bytes:
-    lines = []
-    qn = 1
-    for block in mcq_blocks:
-        for q in block:
-            stem = q["question"].replace("\\n", " ")
-            opts = q["options"]
-            correct_idx = "ABCD".index(q["answer"])
-            choices = []
-            for i, opt in enumerate(opts):
-                opt = opt.replace("\\n"," ")
-                if i == correct_idx:
-                    choices.append(f"={opt}")
-                else:
-                    choices.append(f"~{opt}")
-            lines.append(f"::{qn}:: {stem} {{ {' '.join(choices)} }}")
-            qn += 1
-    return ("\\n\\n".join(lines)).encode("utf-8")
+        # Deterministic varied correct letter
+        rng = rng_for(int(lesson), int(week), i+1, variant or "")
+        correct_idx = rng.randrange(4)
 
-# ------------------------- UI -------------------------------------------
+        # Place correct and fill others in a stable order
+        order = [None]*4
+        order[correct_idx] = correct
+        k = 0
+        for j in range(4):
+            if order[j] is None:
+                order[j] = distractors[k]
+                k += 1
 
-# Sidebar — upload & selectors
+        A,B,C,D = order
+
+        rows.append({
+            "Q#":i+1, "Bloom":bloom, "Tier":tier, "Question":stem,
+            "Option A":A, "Option B":B, "Option C":C, "Option D":D,
+            "Answer":"ABCD"[correct_idx], "Explanation":f"Verb focus: {verb} · Tier: {tier}"
+        })
+    return rows
+
+# ---------- Exports ----------
+def _docx(paragraphs, title):
+    try:
+        from docx import Document
+        from docx.shared import Pt
+    except Exception:
+        return None
+    doc=Document()
+    style=doc.styles["Normal"]; style.font.name="Calibri"; style.font.size=Pt(11)
+    doc.add_heading(title, level=1)
+    for p in paragraphs:
+        doc.add_paragraph(p)
+    bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+def mcq_paper_and_key_lines(mcqs):
+    paper=[]; key=["Answer Key"]
+    for r in mcqs:
+        i=r["Q#"]
+        paper += [f"{i}. {r['Question']}",
+                  f"   A) {r['Option A']}",
+                  f"   B) {r['Option B']}",
+                  f"   C) {r['Option C']}",
+                  f"   D) {r['Option D']}", ""]
+        key.append(f"{i}. {r['Answer']}")
+    return paper, key
+
+def build_gift(mcqs)->str:
+    lines=[]
+    for r in mcqs:
+        parts=[]
+        for letter in "ABCD":
+            text = r[f"Option {letter}"]
+            parts.append(("=" if letter==r["Answer"] else "~")+str(text))
+        lines.append(f"::{int(r['Q#'])}:: {r['Question']} {{ {' '.join(parts)} }}")
+    return "\n\n".join(lines)
+
+# ---------- State init ----------
+defaults = {
+    "lesson":1, "week":1, "level":"Understand",
+    "verbs":[], "num_mcqs":10, "activities_per_class":2, "duration":20,
+    "difficulty":"Medium", "src_text":"", "mcqs":[], "acts_textarea":"",
+    "activities":[], "variant_code":"", "mix_mode": False
+}
+for k,v in defaults.items(): st.session_state.setdefault(k,v)
+
+# ---------- Sidebar upload with confirmation ----------
 with st.sidebar:
     st.header("Upload PDF / DOCX / PPTX")
-    upload = safe_file_uploader("Upload", ["pdf","docx","pptx"])
-    st.caption("Limit 200MB per file · PDF, DOCX, PPTX")
+    uploaded = st.file_uploader("Drag & drop or choose", type=["pdf","docx","pptx"], key="uploader")
+    if uploaded:
+        if st.session_state.get("last_upload_name") != uploaded.name:
+            st.session_state["last_upload_name"] = uploaded.name
+            kb = uploaded.size/1024
+            st.toast(f"Uploaded **{uploaded.name}** ({kb:.1f} KB)", icon="✅")
+        st.success(f"File ready: **{uploaded.name}**")
 
-    st.divider()
-    week = st.selectbox("Week", [i for i in range(1,15)], index=0)
-    lesson = st.selectbox("Lesson", [i for i in range(1,11)], index=0)
-    st.caption(f"Policy: Low • Weeks 1–3")
+    st.write("---")
+    st.write("**Week**")
+    st.session_state["week"] = st.selectbox("Week", list(range(1,15)),
+                                            index=st.session_state["week"]-1, key="week_select")
+    st.write("**Lesson**")
+    st.session_state["lesson"] = st.selectbox("Lesson", list(range(1,21)),
+                                              index=st.session_state["lesson"]-1, key="lesson_select")
+    st.caption(f"Policy: **{policy_for_week(int(st.session_state['week']))}**")
 
-# Header band
-st.markdown(
-    f"""
-    <div class="adi-hero">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <div style="font-size:1.25rem; font-weight:700;">ADI Builder — Lesson Activities & Questions</div>
-      </div>
-      <div class="adi-sub">Professional, branded, editable and export-ready.</div>
-      <div style="margin-top:8px;">
-        <span class="adi-badge">{WEEK_BANDS[0][0]}</span>
-        <span class="adi-badge">{WEEK_BANDS[1][0]}</span>
-        <span class="adi-badge">{WEEK_BANDS[2][0]}</span>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# ---------- Main layout ----------
+left, right = st.columns([1.05, 1.4])
 
-# Pull text from upload (once)
-if upload is not None:
-    text = extract_text_from_file(upload)
-    st.session_state["uploaded_text"] = normalise_text(text)
-src_text = st.session_state.get("uploaded_text", "")
+with left:
+    st.markdown("### ADI Builder")
+    st.caption("Policy pills · Verb picker · MCQs · Activities · Exports")
 
-tabs = st.tabs(["🧠 Knowledge MCQs", "🛠️ Skills Activities", "📘 Revision"])
+    # Level & verbs
+    policy = policy_for_week(int(st.session_state["week"]))
+    suggested = "Understand" if policy=="Low" else ("Analyze" if policy=="Medium" else "Create")
+    st.session_state["level"] = st.select_slider("Bloom Level",
+        options=BLOOM_LEVELS, value=st.session_state.get("level", suggested))
+    verbs_default = DEFAULT_VERBS.get(st.session_state["level"], [])
+    verbs_sel = st.multiselect("Verb picker",
+        options=sorted(set(sum(DEFAULT_VERBS.values(), []))),
+        default=verbs_default, key="verbs_picker")
+    st.session_state["verbs"] = verbs_sel
 
-# ---------------- MCQs Tab ----------------
-with tabs[0]:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    colL, colR = st.columns([3,2])
-    with colL:
-        st.toggle("ADI 3-question policy mode (Low ➜ Medium ➜ High)", key="policy3", help="If ON, each MCQ block has 3 items. If OFF, 5 items.")
-        bloom = st.multiselect(
-            "Bloom’s levels",
-            ["Understand","Apply","Analyse","Evaluate","Create"],
-            default=["Understand","Apply","Analyse"],
+    # Mixture & variant
+    st.session_state["mix_mode"] = st.toggle("Mixture mode (varied question types)",
+                                             value=bool(st.session_state.get("mix_mode", False)))
+    cV1, cV2 = st.columns([3,1])
+    st.session_state["variant_code"] = cV1.text_input(
+        "Variant code (optional)",
+        st.session_state.get("variant_code",""),
+        placeholder="e.g., A1, B, 7F2C",
+        help="Use different codes to generate different MCQ sets for the same lesson/week."
+    )
+    if cV2.button("New variant"):
+        st.session_state["variant_code"] = secrets.token_hex(2).upper()
+
+    # Counts & options
+    st.session_state["num_mcqs"] = st.number_input("How many MCQs?", 1, 50,
+        value=int(st.session_state["num_mcqs"]))
+    st.session_state["activities_per_class"] = st.number_input("Activities per class", 1, 10,
+        value=int(st.session_state["activities_per_class"]))
+    st.session_state["duration"] = st.number_input("Activity duration (minutes)", 5, 120,
+        value=int(st.session_state["duration"]))
+    st.session_state["difficulty"] = st.selectbox("Difficulty", ["Low","Medium","High"],
+        index=["Low","Medium","High"].index(st.session_state["difficulty"]))
+
+    # Source text
+    st.markdown("**Source text (optional)**")
+    st.session_state["src_text"] = st.text_area(
+        "Paste lesson/topic text (improves MCQs/Activities)",
+        height=130, label_visibility="collapsed")
+
+    # Action buttons
+    if st.button("⚡ Auto-fill MCQs", use_container_width=True):
+        blooms = [st.session_state["level"]] * int(st.session_state["num_mcqs"])
+        st.session_state["mcqs"] = offline_mcqs_varied(
+            st.session_state["src_text"], blooms, st.session_state["verbs"],
+            int(st.session_state["num_mcqs"]), int(st.session_state["lesson"]), int(st.session_state["week"]),
+            bool(st.session_state["mix_mode"]), st.session_state.get("variant_code","").strip()
         )
-    with colR:
-        with st.expander("Verbs per level", expanded=True):
-            pool = []
-            for b in bloom:
-                options = DEFAULT_VERBS.get(b, [])
-                verbs = st.multiselect(f"Verbs for {b}", options, default=options[:max(1, min(3, len(options)))])
-                pool.extend(verbs)
-            st.session_state["verbs_mcq"] = pool
+        st.success(f"Generated {len(st.session_state['mcqs'])} MCQs.")
 
-    topic = st.text_input("Topic (optional)")
+    if st.button("🧩 Generate Activities", use_container_width=True):
+        acts = offline_activities(
+            st.session_state["verbs"], st.session_state["level"],
+            int(st.session_state["activities_per_class"]), int(st.session_state["duration"]),
+            st.session_state["difficulty"], int(st.session_state["week"])
+        )
+        st.session_state["activities"] = acts
+        st.session_state["acts_textarea"] = "\n".join(acts)
+        st.success(f"Generated {len(acts)} activities.")
 
-    c1, c2, c3, c4 = st.columns([1,1,3,3])
-    with c1:
-        quick = st.radio("Quick pick", [5,10,20,30], horizontal=True, index=1, label_visibility="collapsed")
-    with c2:
-        st.number_input("Or custom number of MCQ blocks", min_value=1, max_value=100, step=1, key="mcq_blocks")
-    with c3:
-        gen_mcq_btn = st.button("🧩 Generate MCQ Blocks", use_container_width=True)
-    with c4:
-        regen_mcq_btn = st.button("🔁 Regenerate (new random set)", use_container_width=True)
-
-    if gen_mcq_btn or regen_mcq_btn:
-        nblocks = st.session_state["mcq_blocks"] or quick
-        st.session_state["mcq_data"] = generate_mcqs(src_text, st.session_state.get("verbs_mcq", []), nblocks, st.session_state["policy3"])
-
-    mcq_blocks = st.session_state.get("mcq_data", [])
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Show results + exports
-    if mcq_blocks:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        qn = 1
-        for bi, block in enumerate(mcq_blocks, 1):
-            st.markdown(f"**Block {bi}**")
-            for q in block:
-                st.write(f"**{qn}.** {q['question']}")
-                for i, opt in enumerate(q["options"]):
-                    st.write(f" &nbsp;&nbsp;&nbsp; **{'ABCD'[i]}.** {opt}")
-                st.caption(f"Answer: **{q['answer']}**")
-                qn += 1
-            st.divider()
-        # Exports
-        colA, colB = st.columns(2)
-        with colA:
-            docx_bytes = export_docx(mcq_blocks, [], title=f"MCQ Paper — Week {week} Lesson {lesson}")
-            st.download_button("⬇️ Download MCQ Paper (.docx)", data=docx_bytes, file_name=f"mcq_paper_w{week}_l{lesson}.docx")
-        with colB:
-            gift_bytes = export_gift(mcq_blocks)
-            st.download_button("⬇️ Download Moodle GIFT (.gift)", data=gift_bytes, file_name=f"mcq_w{week}_l{lesson}.gift")
-        st.markdown('</div>', unsafe_allow_html=True)
+with right:
+    st.markdown("#### MCQs (editable)")
+    if st.session_state["mcqs"]:
+        edited = st.data_editor(st.session_state["mcqs"], num_rows="dynamic",
+                                use_container_width=True, key="mcq_editor")
+        st.session_state["mcqs"] = edited
     else:
-        st.caption("Upload content or set blocks and click **Generate MCQ Blocks**.")
+        st.info("Click **Auto-fill MCQs** to generate sample questions.")
 
-# ---------------- Activities Tab ----------------
-with tabs[1]:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    colL, colR = st.columns([2,2])
-    with colL:
-        count = st.number_input("Activities", min_value=1, max_value=20, value=3, step=1)
-    with colR:
-        duration = st.number_input("Duration per activity (mins)", min_value=5, max_value=180, value=45, step=5)
+    st.markdown("---")
+    st.markdown("#### Activities (editable)")
+    st.session_state["acts_textarea"] = st.text_area("One per line",
+        value=st.session_state.get("acts_textarea",""), height=160, key="acts_text_area")
 
-    with st.expander("Preferred action verbs", expanded=True):
-        opts = sorted(set(DEFAULT_VERBS["Apply"] + DEFAULT_VERBS["Evaluate"] + DEFAULT_VERBS["Create"]))
-        verbs_act = st.multiselect("Pick verbs", opts, default=["apply","demonstrate","evaluate","design"])
-        st.session_state["verbs_act"] = verbs_act
+# ---------- Export section ----------
+st.markdown("---"); st.markdown("### Export")
 
-    col1, col2 = st.columns([1,1])
-    with col1:
-        gen_act = st.button("✅ Generate Activities", use_container_width=True)
-    with col2:
-        regen_act = st.button("🔁 Regenerate Activities", use_container_width=True)
+def _text_bytes(lines): return ("\n".join(lines) + "\n").encode("utf-8")
 
-    if gen_act or regen_act:
-        st.session_state["act_data"] = generate_activities(count, duration, st.session_state.get("verbs_act", []), src_text)
+df = st.session_state["mcqs"]
+acts = st.session_state.get("activities") or [l for l in st.session_state.get("acts_textarea","").splitlines() if l.strip()]
+lesson, week = int(st.session_state["lesson"]), int(st.session_state["week"])
+variant = st.session_state.get("variant_code","").strip()
+vtag = f"_v{variant}" if variant else ""
+date_str = dt.date.today().strftime("%Y-%m-%d")
+base = f"ADI_Lesson{lesson}_Week{week}{vtag}_{date_str}"
 
-    activities = st.session_state.get("act_data", [])
-    st.markdown('</div>', unsafe_allow_html=True)
+c1,c2,c3,c4 = st.columns(4)
 
-    if activities:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        for i, a in enumerate(activities, 1):
-            st.write(f"**{i}.** {a}")
-        # Export activities + answers (empty answer key here since activities are open-ended)
-        pack = export_docx([], activities, title=f"Activities — Week {week} Lesson {lesson}")
-        st.download_button("⬇️ Download Activities (.docx)", data=pack, file_name=f"activities_w{week}_l{lesson}.docx")
-        st.markdown('</div>', unsafe_allow_html=True)
+with c1:
+    if acts:
+        data = _docx(acts, "Activity Sheet") or _text_bytes(acts)
+        st.download_button("⬇️ Activity Sheet (.docx)", data=data,
+                           file_name=f"{base}_ActivitySheet.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
-        st.caption("Pick count/duration and verbs, then **Generate Activities**.")
+        st.button("⬇️ Activity Sheet (.docx)", disabled=True)
 
-# ---------------- Revision Tab ----------------
-with tabs[2]:
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-    src_override = st.text_area("Source text (editable)", value=src_text, height=160, help="Paste key concepts or summaries here.")
-    topic = st.text_input("Topic / Unit title", value="Module / Unit")
-    if st.button("📘 Build revision plan"):
-        st.session_state["rev_plan"] = build_revision_plan(src_override, week, lesson)
-    plan = st.session_state.get("rev_plan", [])
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if plan:
-        st.markdown('<div class="section-card">', unsafe_allow_html=True)
-        st.write(f"### Revision outline — {topic}")
-        for item in plan:
-            st.write(f"- {item}")
-        # Export to DOCX
-        if DocxDocument is not None:
-            doc = DocxDocument()
-            doc.add_heading(f"Revision — {topic}", 0)
-            for item in plan:
-                doc.add_paragraph(item)
-            buf = io.BytesIO()
-            doc.save(buf)
-            st.download_button("⬇️ Download Revision (.docx)", data=buf.getvalue(), file_name=f"revision_w{week}_l{lesson}.docx")
-        st.markdown('</div>', unsafe_allow_html=True)
+with c2:
+    if df:
+        paper, _ = mcq_paper_and_key_lines(df)
+        data = _docx(paper, "MCQ Paper") or _text_bytes(paper)
+        st.download_button("⬇️ MCQ Paper (.docx)", data=data,
+                           file_name=f"{base}_MCQPaper.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     else:
-        st.caption("Paste or upload content, then click **Build revision plan**.")
+        st.button("⬇️ MCQ Paper (.docx)", disabled=True)
 
-# Footer
-st.write(" ")
-st.caption("v2.5.6 • Built for ADI • Exports: DOCX & GIFT • Upload size ≤ 200MB")
+with c3:
+    if df:
+        _, key = mcq_paper_and_key_lines(df)
+        data = _docx(key, "Answer Key") or _text_bytes(key)
+        st.download_button("⬇️ Answer Key (.docx)", data=data,
+                           file_name=f"{base}_AnswerKey.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    else:
+        st.button("⬇️ Answer Key (.docx)", disabled=True)
+
+with c4:
+    if df:
+        gift = build_gift(df).encode("utf-8")
+        st.download_button("⬇️ Moodle GIFT (.gift)", data=gift,
+                           file_name=f"{base}.gift", mime="text/plain")
+    else:
+        st.button("⬇️ Moodle GIFT (.gift)", disabled=True)
+
+
+
