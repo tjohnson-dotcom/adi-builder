@@ -327,6 +327,3 @@ with c4:
                            file_name=f"{base}.gift", mime="text/plain")
     else:
         st.button("⬇️ Moodle GIFT (.gift)", disabled=True)
-
-
-
