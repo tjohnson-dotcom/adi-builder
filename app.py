@@ -1,3 +1,12 @@
+
+# --- imports & page setup ---
+import os, io, re, hashlib, random
+from pathlib import Path
+from datetime import datetime
+import streamlit as st  # <<< this was missing
+
+st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
+
 # --- Read inputs
 mode   = st.session_state.get("mode", "knowledge")  # "knowledge" | "skills" | "revision"
 topic  = st.text_input("Topic / Objective (short)", key="quick_topic")
