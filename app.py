@@ -5,6 +5,10 @@ import os
 import io
 import streamlit as st
 
+# Conversation state
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
+
 # ---------------------------
 # Page & Theme
 # ---------------------------
@@ -103,9 +107,10 @@ st.markdown(
 # Sidebar (Left-hand controls)
 # ---------------------------
 with st.sidebar:
-    st.image("adi_logo.png") if os.path.isfile("adi_logo.png") else st.markdown(
-        "**ADI Builder**"
-    )
+    if os.path.isfile("adi_logo.png"):
+        st.image("adi_logo.png")
+    else:
+        st.markdown("**ADI Builder**")
     st.markdown("### Modes")
     mode = st.radio(
         "Pick a workflow",
@@ -179,6 +184,26 @@ if run:
 
     if problems:
         st.warning("\n".join([f"• {p}" for p in problems]))
+
+# Conversation (chat-style)
+st.markdown("### Conversation")
+for msg in st.session_state["messages"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if prompt := st.chat_input("Ask ADI Builder…"):
+    st.session_state["messages"].append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    context = f"{mode} • Week {week} Lesson {lesson}" + (f" • Topic: {topic}" if 'topic' in locals() and topic else "")
+    response = (
+        "Got it. I’ll tailor activities/questions for **" + context + "**. "
+        "Use the **Generate** button for structured drafts, or tell me exactly what to refine."
+    )
+    st.session_state["messages"].append({"role": "assistant", "content": response})
+    with st.chat_message("assistant"):
+        st.markdown(response)
 
 # Footer
 st.markdown(
