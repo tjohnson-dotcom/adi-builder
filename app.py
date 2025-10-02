@@ -23,7 +23,7 @@ INK       = "#1f2937"
 # ---------------------------
 with st.sidebar:
     if os.path.isfile("adi_logo.png"):
-        st.image("adi_logo.png", use_column_width=True)
+        st.image("adi_logo.png", use_container_width=True)   # ✅ fixed here
     else:
         st.markdown("### ADI Builder")
 
@@ -86,7 +86,7 @@ if run:
                     "Step 3: Share back"
                 ]
             })
-    st.rerun()
+    st.rerun()   # ✅ replaced experimental_rerun
 
 # Display items
 if st.session_state["items"]:
@@ -113,7 +113,7 @@ if st.session_state["items"]:
                             "title": f"{mode} {idx+1} ({time_per_item} min)",
                             "steps": ["Step 1: New task","Step 2: Work","Step 3: Review"]
                         }
-                    st.rerun()
+                    st.rerun()   # ✅ fixed
             with cols[1]:
                 st.text_area("📋 Copy", value=str(item), height=80, key=f"copy{idx}")
 
