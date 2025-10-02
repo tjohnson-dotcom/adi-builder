@@ -1,7 +1,6 @@
 # app.py
 # ADI Builder — Lesson Activities & Questions (Streamlit)
-# Requirements: streamlit, python-docx
-#   pip install streamlit==1.37.1 python-docx==1.1.2
+# Deps: streamlit==1.37.1, python-docx==1.1.2
 
 from io import BytesIO
 import random
@@ -21,7 +20,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# Theme & CSS (ADI palette + shaded pills + week badge)
+# Theme & CSS (ADI palette + stronger shading + week badge)
 # ----------------------------------------------------
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
@@ -50,33 +49,42 @@ st.markdown(
     border-bottom: 3px solid {ADI_GOLD} !important; color: {ADI_GREEN} !important;
   }}
 
-  /* Week badge */
+  /* Week badge (stronger tint + subtle shadow) */
   .week-badge {{
     display:inline-block; padding: 8px 12px; border-radius: 999px;
-    font-weight: 600; border: 1px solid #d9d5cd; margin-top: 6px;
+    font-weight: 700; border: 1px solid #d3cec3; margin-top: 6px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.04);
   }}
-  .week-low    {{ background:#e9f4ec; color:#1c3b2a; border-color:#cfe3d4; }}
-  .week-medium {{ background:#fbf3df; color:#3a321b; border-color:#eadbb4; }}
-  .week-high   {{ background:#efeefe; color:#2f2b5f; border-color:#d8d6f3; }}
+  .week-low    {{ background:#dff0e6; color:#193626; border-color:#c6e0ce; }}
+  .week-medium {{ background:#f8e9c6; color:#3a321b; border-color:#ead39d; }}
+  .week-high   {{ background:#e8e7ff; color:#27245a; border-color:#d0cef7; }}
 
-  /* Pills */
+  /* Pills (deeper shading) */
   .pill {{
-    background:#f3f2ef; border:1px solid #d9d5cd; padding:8px 14px;
-    border-radius:999px; font-size:14px; font-weight:600;
+    background:#efede8; border:1px solid #d5d1c7; padding:8px 16px;
+    border-radius:999px; font-size:14px; font-weight:700;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7);
   }}
-  .pill.low    {{ background:#e9f4ec; border-color:#cfe3d4; }}
-  .pill.medium {{ background:#fbf3df; border-color:#eadbb4; }}
-  .pill.high   {{ background:#efeefe; border-color:#d8d6f3; }}
+  .pill.low    {{ background:#dff0e6; border-color:#c6e0ce; }}
+  .pill.medium {{ background:#f8e9c6; border-color:#ead39d; }}
+  .pill.high   {{ background:#e8e7ff; border-color:#d0cef7; }}
   .pill.active {{
     background:{ADI_GREEN} !important; color:white !important; border-color:{ADI_GREEN} !important;
-    box-shadow: 0 0 0 2px rgba(36,90,52,.12);
+    box-shadow: 0 0 0 2px rgba(36,90,52,.15);
   }}
 
   /* Buttons default (for LOW/MEDIUM/HIGH row, etc.) */
   .stButton>button {{
     border-radius:999px; border:1px solid #d9d5cd; background:#f3f2ef; color:#1c1c1c;
-    padding:8px 14px; font-weight:600;
+    padding:8px 14px; font-weight:700;
   }}
+
+  /* Upload status card */
+  .upload-ok {{
+    background:#e8f5ed; border:1px solid #cfe5d6; color:#163a28;
+    border-radius:12px; padding:10px 12px; display:flex; gap:10px; align-items:center;
+  }}
+  .upload-dot {{ width:10px;height:10px;border-radius:999px;background:{ADI_GREEN}; }}
 
   /* Sidebar */
   section[data-testid="stSidebar"] {{
@@ -98,10 +106,8 @@ HIGH_VERBS = ["evaluate", "synthesize", "design", "justify", "critique", "create
 POLICY_MAP = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}
 
 def bloom_focus_for_week(week: int) -> str:
-    if 1 <= week <= 4:
-        return "Low"
-    if 5 <= week <= 9:
-        return "Medium"
+    if 1 <= week <= 4:  return "Low"
+    if 5 <= week <= 9:  return "Medium"
     return "High"
 
 def extract_key_terms(text: str, max_terms: int = 12):
@@ -127,14 +133,12 @@ def make_mcq_from_sentence(sent: str, terms: list[str]) -> dict:
         focus = random.choice(words) if words else "concept"
     else:
         focus = max(t_hits, key=len)
-
     stem = re.sub(rf"\b{re.escape(focus)}\b", "_____", sent, flags=re.I, count=1)
     pool = [t for t in terms if t.lower() != focus.lower()]
     random.shuffle(pool)
     distractors = pool[:3]
     while len(distractors) < 3:
         distractors.append(focus[::-1])
-
     options = distractors + [focus]
     random.shuffle(options)
     correct_index = options.index(focus)
@@ -146,15 +150,10 @@ def generate_mcqs(source_text: str, n: int, verbs_selected: list[str]):
         sentences = [source_text.strip()]
     terms = extract_key_terms(source_text, max_terms=20)
     random.shuffle(sentences)
-
-    items = []
-    for s in sentences[: max(3, n * 2)]:
-        q = make_mcq_from_sentence(s, terms)
-        items.append(q)
-
-    out = []
+    items = [make_mcq_from_sentence(s, terms) for s in sentences[: max(3, n * 2)]]
     if not verbs_selected:
         verbs_selected = LOW_VERBS
+    out = []
     for i, q in enumerate(items[:n], start=1):
         verb = random.choice(verbs_selected)
         out.append({**q, "bloom": verb, "index": i})
@@ -162,30 +161,19 @@ def generate_mcqs(source_text: str, n: int, verbs_selected: list[str]):
 
 def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
     doc = Document()
-    styles = doc.styles["Normal"]
-    styles.font.name = "Calibri"
-    styles.font.size = Pt(11)
-
-    title = doc.add_paragraph()
-    run = title.add_run("ADI Builder — Knowledge MCQs")
-    run.bold = True
-    run.font.size = Pt(16)
-
-    meta = doc.add_paragraph(
+    styles = doc.styles["Normal"]; styles.font.name = "Calibri"; styles.font.size = Pt(11)
+    run = doc.add_paragraph().add_run("ADI Builder — Knowledge MCQs"); run.bold = True; run.font.size = Pt(16)
+    doc.add_paragraph(
         f"Topic/Outcome: {topic or '—'}\n"
         f"Lesson {lesson} • Week {week} • Exported {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     )
     for q in mcqs:
-        p = doc.add_paragraph(f"Q{q['index']}. {q['stem']}")
-        letters = ["A", "B", "C", "D"]
-        for i, opt in enumerate(q["options"]):
-            doc.add_paragraph(f"{letters[i]}. {opt}")
+        doc.add_paragraph(f"Q{q['index']}. {q['stem']}")
+        letters = ["A","B","C","D"]
+        for i, opt in enumerate(q["options"]): doc.add_paragraph(f"{letters[i]}. {opt}")
         doc.add_paragraph(f"Answer: {letters[q['answer']]}  (Bloom: {q['bloom']})")
         doc.add_paragraph("")
-
-    bio = BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
+    bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
 # ----------------------------------------------------
 # Sidebar (flicker-free uploader + context + picks)
@@ -196,8 +184,8 @@ with st.sidebar:
     if "uploaded_file_bytes" not in st.session_state:
         st.session_state.uploaded_file_bytes = None
         st.session_state.uploaded_filename = None
+        st.session_state.uploaded_size = 0
 
-    # Put the uploader in a form to prevent auto re-runs while uploading
     with st.form("upload_form"):
         upl = st.file_uploader(
             "Drag and drop file here",
@@ -210,10 +198,17 @@ with st.sidebar:
     if submitted and upl is not None:
         st.session_state.uploaded_file_bytes = upl.getvalue()
         st.session_state.uploaded_filename = upl.name
-        st.success(f"Added: {upl.name}")
+        st.session_state.uploaded_size = len(st.session_state.uploaded_file_bytes)
+        st.toast(f"Uploaded {upl.name}", icon="✅")
 
     if st.session_state.uploaded_file_bytes:
-        st.caption(f"Loaded: **{st.session_state.uploaded_filename}**")
+        size_mb = st.session_state.uploaded_size / (1024*1024)
+        st.markdown(
+            f'<div class="upload-ok"><div class="upload-dot"></div>'
+            f'<div><b>Uploaded</b>: {st.session_state.uploaded_filename} '
+            f' <span class="muted">({size_mb:.1f} MB)</span></div></div>',
+            unsafe_allow_html=True,
+        )
     else:
         st.caption("Limit 200MB per file • PDF, DOCX, PPTX")
 
@@ -277,26 +272,40 @@ with tab1:
             unsafe_allow_html=True,
         )
 
-    # Source text
-    src = st.text_area("Source text (editable)", height=180, placeholder="Paste or jot key notes, vocab, facts here...")
+    # Source text + optional sample
+    use_sample = st.checkbox("Use sample text (for a quick test)")
+    sample_text = (
+        "Photosynthesis is the process by which green plants convert light energy into chemical energy, "
+        "producing glucose and oxygen from carbon dioxide and water. Chlorophyll in chloroplasts absorbs "
+        "light, driving the light-dependent reactions that generate ATP and NADPH. The Calvin cycle then "
+        "uses these molecules to fix carbon into sugars."
+    )
+    src = st.text_area(
+        "Source text (editable)",
+        height=180,
+        value=(sample_text if use_sample else ""),
+        placeholder="Paste or jot key notes, vocab, facts here...",
+    )
 
-    # Seed text area once after upload (no heavy parsing to keep it snappy)
-    if st.session_state.uploaded_file_bytes and not src.strip():
-        st.info(f"Upload detected — **{st.session_state.uploaded_filename}**. Add your key points below.")
+    # If staff uploaded a file, nudge but don't parse (keeps app fast)
+    if st.session_state.uploaded_file_bytes and not use_sample and not src.strip():
+        st.info(f"Upload detected — **{st.session_state.uploaded_filename}**. Add key points from the e-book above.")
 
     st.markdown("#### Bloom’s verbs (ADI Policy)")
     st.caption("Grouped by policy tiers and week ranges")
 
-    # Verb selection state
+    # Verb selection state + reseed when week changes
     if "verb_states" not in st.session_state:
         st.session_state.verb_states = {v: False for v in LOW_VERBS + MED_VERBS + HIGH_VERBS}
-        st.session_state.auto_seeded = False
+    if "last_week" not in st.session_state:
+        st.session_state.last_week = week
 
-    # Auto-seed once per session based on current week
-    if not st.session_state.auto_seeded:
-        for v in POLICY_MAP[auto_focus]:
+    if st.session_state.last_week != week:
+        # reseed based on new week and clear previous states
+        st.session_state.verb_states = {v: False for v in LOW_VERBS + MED_VERBS + HIGH_VERBS}
+        for v in POLICY_MAP[bloom_focus_for_week(week)]:
             st.session_state.verb_states[v] = True
-        st.session_state.auto_seeded = True
+        st.session_state.last_week = week
 
     def render_pills(tier_label: str, verbs: list[str], css_class: str):
         st.write(f"**{tier_label}**")
@@ -332,13 +341,14 @@ with tab1:
     c_low, c_med, c_high = st.columns(3)
     with c_low:
         if st.button("LOW", use_container_width=True):
-            for v in LOW_VERBS: st.session_state.verb_states[v] = True
+            # select only this tier
+            st.session_state.verb_states = {v: (v in LOW_VERBS) for v in st.session_state.verb_states}
     with c_med:
         if st.button("MEDIUM", use_container_width=True):
-            for v in MED_VERBS: st.session_state.verb_states[v] = True
+            st.session_state.verb_states = {v: (v in MED_VERBS) for v in st.session_state.verb_states}
     with c_high:
         if st.button("HIGH", use_container_width=True):
-            for v in HIGH_VERBS: st.session_state.verb_states[v] = True
+            st.session_state.verb_states = {v: (v in HIGH_VERBS) for v in st.session_state.verb_states}
 
     st.write("")
     gen = st.button("✨ Generate MCQs", type="primary")
@@ -350,6 +360,7 @@ with tab1:
             st.warning("Please paste some source text (key notes, facts, definitions) to generate MCQs.")
         else:
             st.session_state["mcqs"] = generate_mcqs(src, n=target_n, verbs_selected=chosen_verbs)
+            st.toast("MCQs generated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
     if mcqs:
@@ -391,4 +402,5 @@ with tab3:
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
     st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
+
 
