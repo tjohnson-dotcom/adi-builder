@@ -30,7 +30,17 @@ st.markdown(
     html, body, [data-testid="stAppViewContainer"] {{
         background: {STONE_BG};
         color: {INK};
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
     }}
+
+    /* Header */
+    .adi-header {{
+        display:flex; align-items:center; gap:.75rem; padding:.75rem 0 0.25rem 0;
+        border-bottom: 1px solid rgba(0,0,0,.06);
+        margin-bottom:.5rem;
+    }}
+    .adi-title {{ font-weight:800; font-size:1.15rem; color:{INK}; letter-spacing:.2px; }}
+
     /* Buttons */
     .stButton>button {{
         background: {ADI_GREEN};
@@ -43,7 +53,7 @@ st.markdown(
     }}
     .stButton>button:hover {{ filter: brightness(1.05); }}
 
-    /* Sidebar section header */
+    /* Sidebar headings */
     section[data-testid="stSidebar"] h2 {{
         font-size: 1rem;
         color: {INK};
@@ -63,54 +73,52 @@ st.markdown(
         box-shadow: 0 1px 4px rgba(0,0,0,.06);
         cursor: pointer;
     }}
-    div[role="radiogroup"] label:hover {{
-        border-color: {ADI_GOLD};
-    }}
-    /* Selected state */
-    input[type="radio"]:checked + div p {{
-        color: white !important;
-    }}
+    div[role="radiogroup"] label:hover {{ border-color: {ADI_GOLD}; }}
+    input[type="radio"] {{ accent-color: {ADI_GREEN} !important; }}
+    /* hide native radio dot to avoid red */
+    div[role="radiogroup"] input[type="radio"] {{ position:absolute; opacity:0; width:0; height:0; }}
+    input[type="radio"]:checked + div p {{ color: white !important; }}
     input[type="radio"]:checked + div {{
         background: linear-gradient(90deg, {ADI_GREEN}, {ADI_GOLD});
         color: white !important;
         border-color: transparent !important;
     }}
 
-    /* Selects */
-    .stSelectbox>div>div {{
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    /* Cards */
+    .adi-card {{
+        background:white; border-radius:16px; padding:1rem; box-shadow:0 2px 8px rgba(0,0,0,.06);
     }}
 
-    /* Text inputs */
+    /* Selects */
+    .stSelectbox>div>div {{ background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }}
+
+    /* Inputs */
     .stTextInput>div>div>input, .stTextArea textarea {{
-        background: white;
-        border-radius: 12px !important;
-        box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+        background: white; border-radius: 12px !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
     }}
     .stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
-        outline: 2px solid {ADI_GREEN};
-        box-shadow: 0 0 0 3px rgba(36,90,52,.25);
+        outline: 2px solid {ADI_GREEN}; box-shadow: 0 0 0 3px rgba(36,90,52,.25);
     }}
 
-    /* Hide default red error color — we’ll rely on neutral messages */
-    .stAlert div[data-baseweb="notification"] {{
-        border-radius: 12px;
+    .bloom-chip {{
+        display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:999px;
+        background: linear-gradient(90deg, {ADI_GOLD}, {ADI_GREEN}); color:white; font-weight:700; font-size:.85rem;
+        box-shadow:0 2px 6px rgba(0,0,0,.08);
     }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 # ---------------------------
 # Sidebar (Left-hand controls)
 # ---------------------------
 with st.sidebar:
     if os.path.isfile("adi_logo.png"):
-        st.image("adi_logo.png")
+        st.image("adi_logo.png", use_column_width=True)
     else:
-        st.markdown("**ADI Builder**")
+        st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
     st.markdown("### Modes")
     mode = st.radio(
         "Pick a workflow",
@@ -138,8 +146,23 @@ with st.sidebar:
 left, right = st.columns([1, 1])
 
 with left:
-    st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
-    st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
+    # Header row with optional logo and title
+    h1c, h2c = st.columns([1, 6])
+    with h1c:
+        if os.path.isfile("adi_logo.png"):
+            st.image("adi_logo.png")
+    with h2c:
+        st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
+        st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
+
+    # Bloom policy badge based on week
+    def bloom_level(w:int):
+        if 1 <= w <= 4:
+            return "LOW — Remember/Understand"
+        if 5 <= w <= 9:
+            return "MEDIUM — Apply/Analyse"
+        return "HIGH — Evaluate/Create"
+    st.markdown(f"<span class='bloom-chip'>Bloom: {bloom_level(week)}</span>", unsafe_allow_html=True)
 
     # Simple text areas for prompts so staff can edit before exporting
     topic = st.text_input("Topic / Objective (short)")
