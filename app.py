@@ -1,15 +1,23 @@
 # app.py
 # ADI Builder — Lesson Activities & Questions (Streamlit)
-# Deps: streamlit==1.37.1, python-docx==1.1.2
+# Deps (requirements.txt):
+#   streamlit==1.37.1
+#   python-docx==1.1.2
+#   pypdf==4.2.0
+#   python-pptx==0.6.23
 
 from io import BytesIO
 import random
 import re
 from datetime import datetime
+import os
+import pathlib
 
 import streamlit as st
-from docx import Document
+from docx import Document as DocxDocument
 from docx.shared import Pt
+from pypdf import PdfReader
+from pptx import Presentation
 
 # ----------------------------------------------------
 # Page setup
@@ -160,7 +168,7 @@ def generate_mcqs(source_text: str, n: int, verbs_selected: list[str]):
     return out
 
 def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
-    doc = Document()
+    doc = DocxDocument()
     styles = doc.styles["Normal"]; styles.font.name = "Calibri"; styles.font.size = Pt(11)
     run = doc.add_paragraph().add_run("ADI Builder — Knowledge MCQs"); run.bold = True; run.font.size = Pt(16)
     doc.add_paragraph(
@@ -175,6 +183,46 @@ def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
+# ---------- File extraction ----------
+def _safe_truncate(text: str, max_chars: int = 12000) -> str:
+    text = re.sub(r"\s+\n", "\n", text)
+    return text[:max_chars]
+
+def extract_text_from_pdf(raw: bytes) -> str:
+    reader = PdfReader(BytesIO(raw))
+    chunks = []
+    for page in reader.pages[:80]:  # cap for speed
+        try:
+            chunks.append(page.extract_text() or "")
+        except Exception:
+            pass
+    return _safe_truncate("\n".join(chunks))
+
+def extract_text_from_docx(raw: bytes) -> str:
+    doc = DocxDocument(BytesIO(raw))
+    paras = [p.text for p in doc.paragraphs]
+    return _safe_truncate("\n".join(paras))
+
+def extract_text_from_pptx(raw: bytes) -> str:
+    prs = Presentation(BytesIO(raw))
+    chunks = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "has_text_frame") and shape.has_text_frame:
+                chunks.append(shape.text)
+    return _safe_truncate("\n".join(chunks))
+
+def extract_text_from_upload(filename: str, data: bytes) -> str:
+    ext = pathlib.Path(filename).suffix.lower()
+    if ext == ".pdf":
+        return extract_text_from_pdf(data)
+    if ext == ".docx":
+        return extract_text_from_docx(data)
+    if ext in (".pptx", ".ppt"):
+        return extract_text_from_pptx(data)
+    return ""
+# ------------------------------------
+
 # ----------------------------------------------------
 # Sidebar (flicker-free uploader + context + picks)
 # ----------------------------------------------------
@@ -185,6 +233,7 @@ with st.sidebar:
         st.session_state.uploaded_file_bytes = None
         st.session_state.uploaded_filename = None
         st.session_state.uploaded_size = 0
+        st.session_state.extracted_text = ""
 
     with st.form("upload_form"):
         upl = st.file_uploader(
@@ -196,16 +245,23 @@ with st.sidebar:
         submitted = st.form_submit_button("Add file")
 
     if submitted and upl is not None:
-        st.session_state.uploaded_file_bytes = upl.getvalue()
+        data = upl.getvalue()
+        st.session_state.uploaded_file_bytes = data
         st.session_state.uploaded_filename = upl.name
-        st.session_state.uploaded_size = len(st.session_state.uploaded_file_bytes)
-        st.toast(f"Uploaded {upl.name}", icon="✅")
+        st.session_state.uploaded_size = len(data)
+        # Parse to text (fast, lightweight)
+        try:
+            st.session_state.extracted_text = extract_text_from_upload(upl.name, data)
+            st.toast(f"Uploaded & parsed {upl.name}", icon="✅")
+        except Exception:
+            st.session_state.extracted_text = ""
+            st.toast(f"Uploaded {upl.name} (could not parse text)", icon="⚠️")
 
     if st.session_state.uploaded_file_bytes:
         size_mb = st.session_state.uploaded_size / (1024*1024)
         st.markdown(
             f'<div class="upload-ok"><div class="upload-dot"></div>'
-            f'<div><b>Uploaded</b>: {st.session_state.uploaded_filename} '
+            f'<div><b>Uploaded & parsed</b>: {st.session_state.uploaded_filename} '
             f' <span class="muted">({size_mb:.1f} MB)</span></div></div>',
             unsafe_allow_html=True,
         )
@@ -251,6 +307,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# If uploaded, show a main-area banner too (very obvious)
+if st.session_state.uploaded_file_bytes:
+    chars = len(st.session_state.extracted_text)
+    st.info(f"📄 **{st.session_state.uploaded_filename}** uploaded and parsed "
+            f"({chars} characters of text extracted). Use the toggle below to insert it.", icon="✅")
+
 # ----------------------------------------------------
 # Tabs
 # ----------------------------------------------------
@@ -272,24 +334,33 @@ with tab1:
             unsafe_allow_html=True,
         )
 
-    # Source text + optional sample
+    # Source text (with helpers)
     use_sample = st.checkbox("Use sample text (for a quick test)")
+    use_extracted = st.checkbox("Use extracted text (from upload)")
+
     sample_text = (
         "Photosynthesis is the process by which green plants convert light energy into chemical energy, "
         "producing glucose and oxygen from carbon dioxide and water. Chlorophyll in chloroplasts absorbs "
         "light, driving the light-dependent reactions that generate ATP and NADPH. The Calvin cycle then "
         "uses these molecules to fix carbon into sugars."
     )
+
+    default_value = ""
+    if use_sample:
+        default_value = sample_text
+    elif use_extracted and st.session_state.extracted_text:
+        default_value = st.session_state.extracted_text
+
     src = st.text_area(
         "Source text (editable)",
-        height=180,
-        value=(sample_text if use_sample else ""),
+        height=200,
+        value=default_value,
         placeholder="Paste or jot key notes, vocab, facts here...",
     )
 
-    # If staff uploaded a file, nudge but don't parse (keeps app fast)
-    if st.session_state.uploaded_file_bytes and not use_sample and not src.strip():
-        st.info(f"Upload detected — **{st.session_state.uploaded_filename}**. Add key points from the e-book above.")
+    # If uploaded but not used yet, nudge gently
+    if st.session_state.uploaded_file_bytes and not use_extracted and not src.strip():
+        st.caption("Tip: Toggle **Use extracted text (from upload)** to insert text from your e-book.")
 
     st.markdown("#### Bloom’s verbs (ADI Policy)")
     st.caption("Grouped by policy tiers and week ranges")
@@ -301,7 +372,6 @@ with tab1:
         st.session_state.last_week = week
 
     if st.session_state.last_week != week:
-        # reseed based on new week and clear previous states
         st.session_state.verb_states = {v: False for v in LOW_VERBS + MED_VERBS + HIGH_VERBS}
         for v in POLICY_MAP[bloom_focus_for_week(week)]:
             st.session_state.verb_states[v] = True
@@ -318,7 +388,6 @@ with tab1:
                 clicked = st.button(v, key=key, use_container_width=True)
                 if clicked:
                     st.session_state.verb_states[v] = not active
-                # Class toggle (lightweight, once per render)
                 st.markdown(
                     f"""
                     <script>
@@ -341,7 +410,6 @@ with tab1:
     c_low, c_med, c_high = st.columns(3)
     with c_low:
         if st.button("LOW", use_container_width=True):
-            # select only this tier
             st.session_state.verb_states = {v: (v in LOW_VERBS) for v in st.session_state.verb_states}
     with c_med:
         if st.button("MEDIUM", use_container_width=True):
@@ -356,10 +424,14 @@ with tab1:
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
 
     if gen:
-        if not src.strip():
-            st.warning("Please paste some source text (key notes, facts, definitions) to generate MCQs.")
+        # If textarea empty but we have extracted text, use it
+        text_to_use = src.strip()
+        if not text_to_use and st.session_state.extracted_text:
+            text_to_use = st.session_state.extracted_text
+        if not text_to_use:
+            st.warning("Please add source text (or toggle **Use extracted text** / **Use sample text**) to generate MCQs.")
         else:
-            st.session_state["mcqs"] = generate_mcqs(src, n=target_n, verbs_selected=chosen_verbs)
+            st.session_state["mcqs"] = generate_mcqs(text_to_use, n=target_n, verbs_selected=chosen_verbs)
             st.toast("MCQs generated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
