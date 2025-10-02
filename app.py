@@ -31,7 +31,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# Theme & CSS (ADI palette + stronger shading + week badge + mono header logo)
+# Theme & CSS (ADI palette + shaded pills + week badge + mono header logo)
 # ----------------------------------------------------
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
@@ -113,7 +113,6 @@ st.markdown(
 
   /* Header logo */
   .adi-logo {{ height: 30px; width: auto; display:inline-block; }}
-  /* Make the logo white on the dark header without needing a second file */
   .adi-logo--mono {{ filter: brightness(0) invert(1) contrast(1.1); }}
   @media (min-width: 1200px) {{ .adi-logo {{ height: 34px; }} }}
 </style>
@@ -122,12 +121,36 @@ st.markdown(
 )
 
 # ----------------------------------------------------
-# Helpers
+# Light text utilities
+# ----------------------------------------------------
+STOP = set("the a an and or for with from by to of on in at is are were was be as it its this that these those which who whom whose what when where why how".split())
+
+def clean(text: str) -> str:
+    text = re.sub(r"\r\n?", "\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+def sentences(text: str):
+    text = clean(text)
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    return [p.strip() for p in parts if len(p.strip()) > 25][:400]
+
+def keywords(text: str, k: int = 24):
+    words = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", text)
+    score = {}
+    for w in words:
+        wl = w.lower()
+        if wl in STOP: continue
+        score[wl] = score.get(wl, 0) + (2 if w[0].isupper() else 0) + min(len(w),12)/3
+    return [w for w,_ in sorted(score.items(), key=lambda kv: kv[1], reverse=True)[:k]]
+
+# ----------------------------------------------------
+# MCQ generation
 # ----------------------------------------------------
 LOW_VERBS = ["define", "identify", "list", "recall", "describe", "label"]
 MED_VERBS = ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"]
 HIGH_VERBS = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
-
 POLICY_MAP = {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}
 
 def bloom_focus_for_week(week: int) -> str:
@@ -135,67 +158,49 @@ def bloom_focus_for_week(week: int) -> str:
     if 5 <= week <= 9:  return "Medium"
     return "High"
 
-# ------- light text utils -------
-def extract_key_terms(text: str, max_terms: int = 12):
-    words = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", text)
-    scored = {}
-    for w in words:
-        wl = w.lower()
-        score = (2 if w[0].isupper() else 0) + min(len(w), 12) / 3
-        scored[wl] = scored.get(wl, 0) + score
-    stop = set("the a an and or for with from by to of on in at is are were was be as it its this that these those which".split())
-    scored = {k: v for k, v in scored.items() if k not in stop}
-    candidates = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)
-    return [w for w, _ in candidates[:max_terms]]
-
-def sentence_split(text: str):
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [p.strip() for p in parts if len(p.strip()) > 25]
-
-# ------- MCQ generation -------
-def make_mcq_from_sentence(sent: str, terms: list[str]) -> dict:
-    t_hits = [t for t in terms if re.search(rf"\b{re.escape(t)}\b", sent, flags=re.I)]
-    if not t_hits:
-        words = re.findall(r"[A-Za-z][A-Za-z\-]{4,}", sent)
-        focus = random.choice(words) if words else "concept"
-    else:
-        focus = max(t_hits, key=len)
+def _one_mcq(sent: str, terms: list[str]):
+    hits = [t for t in terms if re.search(rf"\b{re.escape(t)}\b", sent, re.I)]
+    focus = max(hits, key=len) if hits else (re.findall(r"[A-Za-z][A-Za-z\-]{4,}", sent) or ["concept"])[0]
     stem = re.sub(rf"\b{re.escape(focus)}\b", "_____", sent, flags=re.I, count=1)
 
-    # Distractors: unique, non-empty, not the answer
-    pool = [t for t in terms if t.lower() != focus.lower() and len(t) > 2]
+    pool = [t for t in terms if t.lower()!=focus.lower() and len(t)>2]
     random.shuffle(pool)
     distractors = []
     for c in pool:
-        if c.lower() not in {focus.lower()} and c.lower() not in {d.lower() for d in distractors}:
+        cl = c.lower()
+        if cl!=focus.lower() and cl not in [d.lower() for d in distractors]:
             distractors.append(c)
-        if len(distractors) == 3: break
-    while len(distractors) < 3:
-        filler = focus[::-1] if len(focus) > 3 else f"{focus}_x"
-        if filler.lower() not in {focus.lower()} | {d.lower() for d in distractors}:
+        if len(distractors)==3: break
+    while len(distractors)<3:
+        filler = (focus[::-1] if len(focus)>3 else f"{focus}_x")
+        if filler.lower() not in [focus.lower()] + [d.lower() for d in distractors]:
             distractors.append(filler)
-
     options = distractors + [focus]
     random.shuffle(options)
-    correct_index = options.index(focus)
-    return {"stem": stem, "options": options, "answer": correct_index, "answer_text": focus}
+    return stem, options, options.index(focus)
 
-def generate_mcqs(source_text: str, n: int, verbs_selected: list[str]):
-    sentences = sentence_split(source_text)
-    if not sentences:
-        sentences = [source_text.strip()]
-    terms = extract_key_terms(source_text, max_terms=24)
-    random.shuffle(sentences)
-    items = [make_mcq_from_sentence(s, terms) for s in sentences[: max(3, n * 3)]]
-    if not verbs_selected:
-        verbs_selected = LOW_VERBS
+def generate_mcqs(text: str, n: int, verbs: list[str], seed: int|None=None):
+    if seed is not None:
+        random.seed(seed)
+    text = (text or "").strip()
+    if not text:
+        return []
+    sents = sentences(text)
+    terms = keywords(text, 24)
+    items = []
+    seen = set()
+    for s in sents:
+        stem, opts, ans = _one_mcq(s, terms)
+        if stem in seen: continue
+        seen.add(stem)
+        items.append({"stem": stem, "options": opts, "answer": ans})
+        if len(items) >= max(3, n*3): break
+    if not verbs: verbs = ["define","identify","apply","evaluate"]
     out = []
-    used_stems = set()
-    for i, q in enumerate(items):
-        if len(out) == n: break
-        if q["stem"] in used_stems: continue
-        used_stems.add(q["stem"])
-        out.append({**q, "bloom": random.choice(verbs_selected), "index": len(out) + 1})
+    for i, it in enumerate(items[:n], start=1):
+        it["index"] = i
+        it["bloom"] = random.choice(verbs)
+        out.append(it)
     return out
 
 def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
@@ -219,39 +224,42 @@ def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
-# ------- Activities generation -------
+# ----------------------------------------------------
+# Activities generation
+# ----------------------------------------------------
 ACTIVITY_SHELLS = [
-    ("Think–Pair–Share",  "pairs",      "discussion"),
+    ("Think–Pair–Share",  "pairs",       "discussion"),
     ("Case Mini-Analysis","small groups","analysis"),
     ("Demonstrate & Critique","whole class","critique"),
-    ("Gallery Walk",      "groups",     "review"),
+    ("Gallery Walk",      "groups",      "review"),
     ("Jigsaw Teaching",   "expert groups","synthesis"),
 ]
 
 def activity_from_inputs(verb: str, focus: str, topic: str) -> dict:
-    base = random.choice(ACTIVITY_SHELLS)
-    title = f"{base[0]} — {verb.title()}"
-    objective = f"Students will {verb} key ideas in {topic or 'this topic'} in line with the {focus} focus."
+    name, grouping, assess = random.choice(ACTIVITY_SHELLS)
+    title = f"{name} — {verb.title()}"
+    objective = f"Students will {verb} key ideas in {topic or 'the topic'} ({focus} focus)."
     steps = [
-        f"Teacher introduces short stimulus related to {topic or 'the lesson'} (2–3 mins).",
-        f"Learners work in {base[1]} to {verb} the prompt.",
-        "Share-out and consolidate key points.",
+        f"Introduce a short stimulus related to {topic or 'the lesson'} (2–3 mins).",
+        f"Learners work in {grouping} to {verb} the prompt.",
+        "Share-out and consolidate key points."
     ]
-    if focus == "High":
-        steps.append("Extend: groups justify their choices and connect to criteria.")
-    materials = ["Slides or short text prompt", "Timer"]
-    differentiation = "Provide scaffolded hints for some groups; add challenge extensions for early finishers."
-    assessment = f"Observe {base[2]} using a simple checklist linked to {verb}."
+    if focus=="High":
+        steps.append("Extend: justify choices using agreed criteria; connect to prior learning.")
+    materials = ["Slide or short text prompt", "Timer"]
+    diff = "Provide scaffolds (sentence starters/examples) and add challenge questions for fast finishers."
+    assessment = f"Observe {assess} with a simple checklist aligned to {verb}."
     return {
         "title": title, "objective": objective, "steps": steps,
-        "materials": materials, "differentiation": differentiation, "assessment": assessment
+        "materials": materials, "differentiation": diff, "assessment": assessment,
+        "meta": {"verb":verb, "focus":focus}
     }
 
-def generate_activities(topic: str, focus: str, verbs_selected: list[str], n: int = 3):
-    base_verbs = verbs_selected or (POLICY_MAP.get(focus, LOW_VERBS))
-    out = []
+def generate_activities(topic: str, focus: str, verbs_selected: list[str], n: int=3):
+    verbs = verbs_selected or ["define","apply","evaluate"]
+    out=[]
     for i in range(n):
-        v = base_verbs[i % len(base_verbs)]
+        v = verbs[i % len(verbs)]
         out.append(activity_from_inputs(v, focus, topic))
     return out
 
@@ -341,6 +349,16 @@ with st.sidebar:
 
     if submitted and upl is not None:
         data = upl.getvalue()
+        size_mb = len(data) / (1024*1024)
+        HARD_LIMIT_MB = 200.0  # keep aligned with config.toml if you raise it
+        if size_mb > HARD_LIMIT_MB:
+            st.session_state.uploaded_file_bytes = None
+            st.session_state.uploaded_filename = None
+            st.session_state.uploaded_size = 0
+            st.session_state.extracted_text = ""
+            st.error(f"File is {size_mb:.1f} MB. Please upload a file ≤ {HARD_LIMIT_MB:.0f} MB (or split/compress it).")
+            st.stop()
+
         st.session_state.uploaded_file_bytes = data
         st.session_state.uploaded_filename = upl.name
         st.session_state.uploaded_size = len(data)
@@ -508,11 +526,11 @@ with tab1:
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
 
     if gen:
-        text_to_use = src.strip() or st.session_state.extracted_text.strip()
+        text_to_use = (src or "").strip() or st.session_state.extracted_text.strip()
         if not text_to_use:
             st.warning("Please add source text (or toggle **Use extracted text** / **Use sample text**) to generate MCQs.")
         else:
-            st.session_state["mcqs"] = generate_mcqs(text_to_use, n=target_n, verbs_selected=chosen_verbs)
+            st.session_state["mcqs"] = generate_mcqs(text_to_use, n=target_n, verbs=chosen_verbs, seed=42)
             st.toast("MCQs generated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
@@ -578,4 +596,3 @@ with tab3:
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
     st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
-
