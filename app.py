@@ -1,14 +1,15 @@
 
-# streamlit_app.py — ADI Builder (Quick‑win UI)
-# One-file Streamlit app focusing on look & feel and simple, stable inputs (no sliders)
+# streamlit_app.py — ADI Builder (Quick-win UI, fixed & polished)
+# Host on Render.com; Start command:
+# streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0
 
 import os
 import io
+import random
+from datetime import datetime
 import streamlit as st
-
-# Conversation state
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+from docx import Document
+from docx.shared import Pt
 
 # ---------------------------
 # Page & Theme
@@ -19,134 +20,105 @@ st.set_page_config(
     layout="wide",
 )
 
+# ADI palette
 ADI_GREEN = "#245a34"   # primary
-ADI_GOLD  = "#C8A85A"    # accent
-STONE_BG  = "#f5f5f4"    # soft stone background
-INK       = "#1f2937"    # dark ink for text
+ADI_GOLD  = "#C8A85A"   # accent
+STONE_BG  = "#f5f5f4"   # soft stone background
+INK       = "#1f2937"   # dark ink
 
-# Inject lightweight CSS to remove red accents and style pills/buttons
-st.markdown(
-    f"""
-    <style>
-    /* Top bar */
-    .adi-topbar { display:flex; align-items:center; gap:.75rem; padding:.6rem 1rem; background:white; border-bottom:1px solid rgba(0,0,0,.06); position:sticky; top:0; z-index:5; }
-    .adi-topbar .brand { font-weight:800; letter-spacing:.2px; color:#1f2937; }
-    .adi-topbar img { height:28px; }
+# Escaped CSS (double braces) because this is an f-string
+CSS = f"""
+<style>
+html, body, [data-testid="stAppViewContainer"] {{
+  background: {STONE_BG};
+  color: {INK};
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+}}
+/* Top bar */
+.adi-topbar {{
+  display:flex; align-items:center; gap:.75rem; padding:.6rem 1rem;
+  background:white; border-bottom:1px solid rgba(0,0,0,.06);
+  position:sticky; top:0; z-index:5;
+}}
+.adi-topbar .brand {{ font-weight:800; letter-spacing:.2px; color:{INK}; font-size:1.05rem; }}
 
-    html, body, [data-testid="stAppViewContainer"] {{
-        background: {STONE_BG};
-        color: {INK};
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
-    }}
+/* Force ADI green button (override themes) */
+.stButton > button {{
+  background: {ADI_GREEN} !important; color:white !important;
+  border:0; border-radius:14px; padding:.6rem 1rem; font-weight:600;
+  box-shadow:0 2px 6px rgba(0,0,0,.08);
+}}
+.stButton > button:hover {{ filter: brightness(1.05); }}
 
-    /* Header */
-    .adi-header {{
-        display:flex; align-items:center; gap:.75rem; padding:.75rem 0 0.25rem 0;
-        border-bottom: 1px solid rgba(0,0,0,.06);
-        margin-bottom:.5rem;
-    }}
-    .adi-title {{ font-weight:800; font-size:1.15rem; color:{INK}; letter-spacing:.2px; }}
+/* Section cards */
+.adi-card {{
+  background:white; border-radius:16px; padding:1rem;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}}
 
-    /* Buttons */
-    .stButton>button { background: #245a34 !important; color: white; border: 0; border-radius: 14px; padding: 0.6rem 1rem; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.08); };
-        color: white;
-        border: 0;
-        border-radius: 14px;
-        padding: 0.6rem 1rem;
-        font-weight: 600;
-        box-shadow: 0 2px 6px rgba(0,0,0,.08);
-    }}
-    .stButton>button:hover {{ filter: brightness(1.05); }}
+/* Radio as “pill” menu (hide native dots) */
+div[data-baseweb="radio"] > div {{ gap:.35rem; }}
+div[role="radiogroup"] input[type="radio"] {{ position:absolute; opacity:0; width:0; height:0; }}
+div[role="radiogroup"] label {{
+  border:2px solid transparent; border-radius:999px; padding:.35rem .75rem;
+  font-weight:600; color:{INK}; background:white; box-shadow:0 1px 4px rgba(0,0,0,.06);
+}}
+div[role="radiogroup"] label:hover {{ border-color:{ADI_GOLD}; }}
+input[type="radio"]:checked + div {{
+  background: linear-gradient(90deg, {ADI_GREEN}, {ADI_GOLD}); color:white !important;
+}}
 
-    /* Sidebar headings */
-    section[data-testid="stSidebar"] h2 {{
-        font-size: 1rem;
-        color: {INK};
-        opacity: .8;
-        margin-top: .5rem;
-    }}
+/* Inputs */
+.stSelectbox > div > div {{ background:white; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }}
+.stTextInput>div>div>input, .stTextArea textarea {{
+  background:white; border-radius:12px !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}}
+.stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
+  outline: 2px solid {ADI_GREEN}; box-shadow: 0 0 0 3px rgba(36,90,52,.25);
+}}
 
-    /* Radio as vertical pill menu */
-    div[data-baseweb="radio"] > div {{ gap: .35rem; }}
-    div[role="radiogroup"] label {{
-        border: 2px solid transparent;
-        border-radius: 999px;
-        padding: .35rem .75rem;
-        font-weight: 600;
-        color: {INK};
-        background: white;
-        box-shadow: 0 1px 4px rgba(0,0,0,.06);
-        cursor: pointer;
-    }}
-    div[role="radiogroup"] label:hover {{ border-color: {ADI_GOLD}; }}
-    input[type="radio"] {{ accent-color: {ADI_GREEN} !important; }}
-    /* hide native radio dot to avoid red */
-    div[role="radiogroup"] input[type="radio"] {{ position:absolute; opacity:0; width:0; height:0; }}
-    input[type="radio"]:checked + div p {{ color: white !important; }}
-    input[type="radio"]:checked + div {{
-        background: linear-gradient(90deg, {ADI_GREEN}, {ADI_GOLD});
-        color: white !important;
-        border-color: transparent !important;
-    }}
+/* Bloom chip */
+.bloom-chip {{
+  display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:999px;
+  background: linear-gradient(90deg, {ADI_GOLD}, {ADI_GREEN}); color:white; font-weight:700; font-size:.85rem;
+  box-shadow:0 2px 6px rgba(0,0,0,.08);
+}}
 
-    /* Cards */
-    .adi-card {{
-        background:white; border-radius:16px; padding:1rem; box-shadow:0 2px 8px rgba(0,0,0,.06);
-    }}
+</style>
+"""
+st.markdown(CSS, unsafe_allow_html=True)
 
-    /* Selects */
-    .stSelectbox>div>div {{ background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }}
-
-    /* Inputs */
-    .stTextInput>div>div>input, .stTextArea textarea {{
-        background: white; border-radius: 12px !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
-    }}
-    .stTextInput>div>div>input:focus, .stTextArea textarea:focus {{
-        outline: 2px solid {ADI_GREEN}; box-shadow: 0 0 0 3px rgba(36,90,52,.25);
-    }}
-
-    .bloom-chip {{
-        display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .7rem; border-radius:999px;
-        background: linear-gradient(90deg, {ADI_GOLD}, {ADI_GREEN}); color:white; font-weight:700; font-size:.85rem;
-        box-shadow:0 2px 6px rgba(0,0,0,.08);
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
+# Persist chat messages
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
 # ---------------------------
 # Sidebar (Left-hand controls)
 # ---------------------------
 with st.sidebar:
+    # Logo or brand text
     if os.path.isfile("adi_logo.png"):
         st.image("adi_logo.png", use_column_width=True)
     else:
-        st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
+        st.markdown("### **ADI Builder**")
+
     st.markdown("### Modes")
-    
-    # Icon-labelled options, but keep a clean internal value for logic
+    # Icon-labelled options, with clean internal value
     _options = ["Knowledge", "Skills", "Activities", "Revision"]
-    _icons = {"Knowledge": "📘", "Skills": "🛠️", "Activities": "🎯", "Revision": "📝"}
-    _labels = [f"{_icons[o]} {o}" for o in _options]
-    _picked = st.radio(
-        "Pick a workflow",
-        _labels,
-        index=0,
-        label_visibility="collapsed",
-    )
-    mode = _options[_labels.index(_picked)]
+    _icons   = {"Knowledge": "📘", "Skills": "🛠️", "Activities": "🎯", "Revision": "📝"}
+    _labels  = [f"{_icons[o]} {o}" for o in _options]
+    _picked  = st.radio("Pick a workflow", _labels, index=0, label_visibility="collapsed")
+    mode     = _options[_labels.index(_picked)]
 
     st.markdown("### 📅 Lesson setup")
-    week = st.selectbox("Week", options=list(range(1, 15)), index=0)
+    week   = st.selectbox("Week", options=list(range(1, 15)), index=0)
     lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
 
     st.markdown("### 📎 Resources (drag & drop supported)")
     with st.expander("📥 Drag & drop files here or click to browse"):
         ebook_file = st.file_uploader("📖 eBook (PDF)", type=["pdf"], key="ebook")
-        plan_file = st.file_uploader("📄 Lesson Plan (DOCX/PDF)", type=["docx", "pdf"], key="plan")
-        ppt_file  = st.file_uploader("📊 Slides (PPTX)", type=["pptx"], key="ppt")
+        plan_file  = st.file_uploader("📄 Lesson Plan (DOCX/PDF)", type=["docx", "pdf"], key="plan")
+        ppt_file   = st.file_uploader("📊 Slides (PPTX)", type=["pptx"], key="ppt")
 
     st.divider()
     run = st.button("✨ Generate for staff")
@@ -154,72 +126,132 @@ with st.sidebar:
 # ---------------------------
 # Main layout
 # ---------------------------
-left, right = st.columns([1, 1])
+# Sticky header bar
+st.markdown(
+    "<div class='adi-topbar'><span class='brand'>📚 ADI Builder</span></div>",
+    unsafe_allow_html=True,
+)
+
+left, right = st.columns([1, 1], gap="large")
+
+def bloom_level(w: int) -> str:
+    if 1 <= w <= 4:
+        return "LOW — Remember/Understand"
+    if 5 <= w <= 9:
+        return "MEDIUM — Apply/Analyse"
+    return "HIGH — Evaluate/Create"
 
 with left:
-    # Top header bar
-    if os.path.isfile("adi_logo.png"):
-        st.markdown("<div class='adi-topbar'><img src='adi_logo.png'/><span class='brand'>&nbsp;ADI Builder</span></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='adi-topbar'><span class='brand'>ADI Builder</span></div>", unsafe_allow_html=True)
-
     st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
     st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
-
-    # Bloom policy badge based on week
-    def bloom_level(w:int):
-        if 1 <= w <= 4:
-            return "LOW — Remember/Understand"
-        if 5 <= w <= 9:
-            return "MEDIUM — Apply/Analyse"
-        return "HIGH — Evaluate/Create"
     st.markdown(f"<span class='bloom-chip'>Bloom: {bloom_level(week)}</span>", unsafe_allow_html=True)
 
-    # Simple text areas for prompts so staff can edit before exporting
+    # Editable context
     topic = st.text_input("Topic / Objective (short)")
     notes = st.text_area("Key notes (optional)", height=100)
 
     if run:
-        # Placeholder generation — replace with your real logic
-        st.success("Ready! Drafts created below. Tweak and export.")
+        st.success("Ready! Drafts created on the right. Tweak and export.")
 
 with right:
     st.markdown("### 📤 Draft outputs")
+    drafts_container = st.container()
+    with drafts_container:
+        if run:
+            # Simple placeholder generation; replace with your real logic.
+            if mode == "Knowledge":
+                items = [
+                    "Which statement best describes the topic?",
+                    "Identify the correct sequence for …",
+                    "Which definition matches …",
+                    "Choose the correct term for …",
+                    "Which example fits the concept best?"
+                ]
+            elif mode == "Skills":
+                items = [
+                    "Perform the core procedure and record observations.",
+                    "Peer-check using the provided rubric.",
+                    "Demonstrate the process and explain each step.",
+                    "Complete a worked example and annotate decisions.",
+                    "Reflect on one improvement for next time."
+                ]
+            elif mode == "Activities":
+                items = [
+                    "Think–Pair–Share (3–2–1).",
+                    "Jigsaw: split subtopics, teach-back.",
+                    "Gallery walk with sticky-notes feedback.",
+                    "Case vignette → small-group solution.",
+                    "Concept mapping in pairs."
+                ]
+            else:  # Revision
+                items = [
+                    "Create a one-page cheat sheet.",
+                    "Five short-answer questions from today’s lesson.",
+                    "Flashcard set: 10 key terms.",
+                    "Past-paper question (timed 7 min).",
+                    "Exit ticket: 2 things learned, 1 question."
+                ]
 
-    if run:
-        if mode == "Knowledge":
-            st.markdown("**Sample Knowledge Questions (MCQs)**")
-            st.write(
-                "1. Which statement best describes the topic?\n\n"
-                "2. Identify the correct sequence for …\n\n"
-                "3. Which definition matches …"
+            # Randomize for variety
+            shuffled = items[:]
+            random.shuffle(shuffled)
+
+            st.markdown("**Draft list (randomized):**")
+            for i, s in enumerate(shuffled, start=1):
+                st.write(f"{i}. {s}")
+
+            # ---- Export to Word (DOCX) ----
+            def build_docx():
+                doc = Document()
+
+                # Title
+                title = f"ADI {mode} — Week {week} Lesson {lesson}"
+                doc.add_heading(title, level=1)
+
+                # Meta
+                meta = doc.add_paragraph()
+                meta.add_run("Generated: ").bold = True
+                meta.add_run(datetime.now().strftime("%Y-%m-%d %H:%M"))
+                if topic:
+                    meta.add_run("   |   Topic: ").bold = True
+                    meta.add_run(topic)
+
+                # Notes
+                if notes:
+                    doc.add_heading("Notes", level=2)
+                    doc.add_paragraph(notes)
+
+                # Content
+                doc.add_heading("Items", level=2)
+                for i, s in enumerate(shuffled, start=1):
+                    p = doc.add_paragraph(f"{i}. {s}")
+
+                    # Optional: slightly larger font for readability
+                    for run in p.runs:
+                        run.font.size = Pt(11)
+
+                # Footer
+                doc.add_paragraph().add_run("Bloom: " + bloom_level(week)).italic = True
+
+                bio = io.BytesIO()
+                doc.save(bio)
+                bio.seek(0)
+                return bio
+
+            docx_bytes = build_docx()
+            st.download_button(
+                label="⬇️ Export to Word (DOCX)",
+                data=docx_bytes,
+                file_name=f"ADI_{mode}_W{week}_L{lesson}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
             )
-        elif mode == "Skills":
-            st.markdown("**Skill-focused Tasks**")
-            st.write("• Perform the core procedure and record observations.\n\n• Peer-check using the rubric.")
-        elif mode == "Activities":
-            st.markdown("**In-class Activities**")
-            st.write("• Think–Pair–Share (3–2–1).\n\n• Jigsaw: split subtopics, teach-back.")
-        elif mode == "Revision":
-            st.markdown("**Revision Prompts**")
-            st.write("• Create a one-page cheat sheet.\n\n• 5 short-answer questions from today’s lesson.")
-    else:
-        st.info("Load your resources on the left, set Week/Lesson, pick a mode, then click **Generate**.")
+        else:
+            st.info("Load your resources on the left, set Week/Lesson, pick a mode, then click **Generate**.")
 
 # ---------------------------
-# Utility: basic file sanity checks (prevents crashes later)
-# ---------------------------
-problems = []
-if run:
-    if ebook_file and ebook_file.size > 25 * 1024 * 1024:
-        problems.append("eBook exceeds 25MB; consider splitting.")
-    if ppt_file and not ppt_file.name.lower().endswith(".pptx"):
-        problems.append("Slides must be .pptx.")
-
-    if problems:
-        st.warning("\n".join([f"• {p}" for p in problems]))
-
 # Conversation (chat-style)
+# ---------------------------
 st.markdown("### 💬 Conversation")
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
@@ -230,17 +262,23 @@ if prompt := st.chat_input("Ask ADI Builder…"):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    context = f"{mode} • Week {week} Lesson {lesson}" + (f" • Topic: {topic}" if 'topic' in locals() and topic else "")
+    context = f"{mode} • Week {week} Lesson {lesson}" + (f" • Topic: {topic}" if topic else "")
     response = (
-        "Got it. I’ll tailor activities/questions for **" + context + "**. "
-        "Use the **Generate** button for structured drafts, or tell me exactly what to refine."
+        "Got it. I’ll tailor items for **" + context +
+        "**. Use **Generate** for structured drafts, or tell me what to refine."
     )
     st.session_state["messages"].append({"role": "assistant", "content": response})
     with st.chat_message("assistant"):
         st.markdown(response)
 
-# Footer
-st.markdown(
-    f"<div style='text-align:center; opacity:.6; padding:1rem 0;'>ADI Builder • Theming: <b>{ADI_GREEN}</b> / <b>{ADI_GOLD}</b> • No red accents</div>",
-    unsafe_allow_html=True,
-)
+# ---------------------------
+# Basic file sanity checks (to avoid crashes)
+# ---------------------------
+problems = []
+if run:
+    if ebook_file and ebook_file.size and ebook_file.size > 25 * 1024 * 1024:
+        problems.append("eBook exceeds 25MB; consider splitting.")
+    if ppt_file and not ppt_file.name.lower().endswith(".pptx"):
+        problems.append("Slides must be .pptx.")
+if problems:
+    st.warning("\n".join([f"• {p}" for p in problems]))
