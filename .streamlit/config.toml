@@ -1,5 +1,0 @@
-[server]
-# Keep these aligned. Streamlit defaults can be lower than you expect.
-maxUploadSize = 100         # MB (what the uploader accepts)
-maxMessageSize = 120        # MB (what the websocket can carry)
-enableXsrfProtection = true
