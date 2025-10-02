@@ -7,33 +7,44 @@
 #   python-pptx==0.6.23
 
 from io import BytesIO
+import base64
 import random
 import re
 from datetime import datetime
-import os
-import pathlib
+from pathlib import Path
 
 import streamlit as st
 from docx import Document as DocxDocument
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 from pypdf import PdfReader
 from pptx import Presentation
 
 # ----------------------------------------------------
 # Page setup
 # ----------------------------------------------------
+LOGO_PATH = Path("assets/adi_logo.png")
+
 st.set_page_config(
     page_title="ADI Builder — Lesson Activities & Questions",
     layout="wide",
+    page_icon=str(LOGO_PATH) if LOGO_PATH.exists() else None,
 )
 
 # ----------------------------------------------------
-# Theme & CSS (ADI palette + stronger shading + week badge)
+# Theme & CSS (ADI palette + stronger shading + week badge + mono header logo)
 # ----------------------------------------------------
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
 ADI_STONE = "#e5e1da"
 BG_STONE  = "#f9f9f7"
+
+def load_logo_b64() -> str | None:
+    try:
+        return base64.b64encode(LOGO_PATH.read_bytes()).decode("utf-8")
+    except Exception:
+        return None
+
+logo_b64 = load_logo_b64()
 
 st.markdown(
     f"""
@@ -57,7 +68,7 @@ st.markdown(
     border-bottom: 3px solid {ADI_GOLD} !important; color: {ADI_GREEN} !important;
   }}
 
-  /* Week badge (stronger tint + subtle shadow) */
+  /* Week badge */
   .week-badge {{
     display:inline-block; padding: 8px 12px; border-radius: 999px;
     font-weight: 700; border: 1px solid #d3cec3; margin-top: 6px;
@@ -67,7 +78,7 @@ st.markdown(
   .week-medium {{ background:#f8e9c6; color:#3a321b; border-color:#ead39d; }}
   .week-high   {{ background:#e8e7ff; color:#27245a; border-color:#d0cef7; }}
 
-  /* Pills (deeper shading) */
+  /* Pills */
   .pill {{
     background:#efede8; border:1px solid #d5d1c7; padding:8px 16px;
     border-radius:999px; font-size:14px; font-weight:700;
@@ -81,7 +92,7 @@ st.markdown(
     box-shadow: 0 0 0 2px rgba(36,90,52,.15);
   }}
 
-  /* Buttons default (for LOW/MEDIUM/HIGH row, etc.) */
+  /* Buttons */
   .stButton>button {{
     border-radius:999px; border:1px solid #d9d5cd; background:#f3f2ef; color:#1c1c1c;
     padding:8px 14px; font-weight:700;
@@ -99,6 +110,12 @@ st.markdown(
     background: white; border-right: 1px solid #ece9e1;
   }}
   .muted {{ color: #666; font-size: 12px; }}
+
+  /* Header logo */
+  .adi-logo {{ height: 30px; width: auto; display:inline-block; }}
+  /* Make the logo white on the dark header without needing a second file */
+  .adi-logo--mono {{ filter: brightness(0) invert(1) contrast(1.1); }}
+  @media (min-width: 1200px) {{ .adi-logo {{ height: 34px; }} }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -118,6 +135,7 @@ def bloom_focus_for_week(week: int) -> str:
     if 5 <= week <= 9:  return "Medium"
     return "High"
 
+# ------- light text utils -------
 def extract_key_terms(text: str, max_terms: int = 12):
     words = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", text)
     scored = {}
@@ -134,6 +152,7 @@ def sentence_split(text: str):
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     return [p.strip() for p in parts if len(p.strip()) > 25]
 
+# ------- MCQ generation -------
 def make_mcq_from_sentence(sent: str, terms: list[str]) -> dict:
     t_hits = [t for t in terms if re.search(rf"\b{re.escape(t)}\b", sent, flags=re.I)]
     if not t_hits:
@@ -142,11 +161,20 @@ def make_mcq_from_sentence(sent: str, terms: list[str]) -> dict:
     else:
         focus = max(t_hits, key=len)
     stem = re.sub(rf"\b{re.escape(focus)}\b", "_____", sent, flags=re.I, count=1)
-    pool = [t for t in terms if t.lower() != focus.lower()]
+
+    # Distractors: unique, non-empty, not the answer
+    pool = [t for t in terms if t.lower() != focus.lower() and len(t) > 2]
     random.shuffle(pool)
-    distractors = pool[:3]
+    distractors = []
+    for c in pool:
+        if c.lower() not in {focus.lower()} and c.lower() not in {d.lower() for d in distractors}:
+            distractors.append(c)
+        if len(distractors) == 3: break
     while len(distractors) < 3:
-        distractors.append(focus[::-1])
+        filler = focus[::-1] if len(focus) > 3 else f"{focus}_x"
+        if filler.lower() not in {focus.lower()} | {d.lower() for d in distractors}:
+            distractors.append(filler)
+
     options = distractors + [focus]
     random.shuffle(options)
     correct_index = options.index(focus)
@@ -156,20 +184,28 @@ def generate_mcqs(source_text: str, n: int, verbs_selected: list[str]):
     sentences = sentence_split(source_text)
     if not sentences:
         sentences = [source_text.strip()]
-    terms = extract_key_terms(source_text, max_terms=20)
+    terms = extract_key_terms(source_text, max_terms=24)
     random.shuffle(sentences)
-    items = [make_mcq_from_sentence(s, terms) for s in sentences[: max(3, n * 2)]]
+    items = [make_mcq_from_sentence(s, terms) for s in sentences[: max(3, n * 3)]]
     if not verbs_selected:
         verbs_selected = LOW_VERBS
     out = []
-    for i, q in enumerate(items[:n], start=1):
-        verb = random.choice(verbs_selected)
-        out.append({**q, "bloom": verb, "index": i})
+    used_stems = set()
+    for i, q in enumerate(items):
+        if len(out) == n: break
+        if q["stem"] in used_stems: continue
+        used_stems.add(q["stem"])
+        out.append({**q, "bloom": random.choice(verbs_selected), "index": len(out) + 1})
     return out
 
 def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
     doc = DocxDocument()
     styles = doc.styles["Normal"]; styles.font.name = "Calibri"; styles.font.size = Pt(11)
+    try:
+        if LOGO_PATH.exists():
+            doc.add_picture(str(LOGO_PATH), width=Inches(1.1))
+    except Exception:
+        pass
     run = doc.add_paragraph().add_run("ADI Builder — Knowledge MCQs"); run.bold = True; run.font.size = Pt(16)
     doc.add_paragraph(
         f"Topic/Outcome: {topic or '—'}\n"
@@ -183,6 +219,66 @@ def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
+# ------- Activities generation -------
+ACTIVITY_SHELLS = [
+    ("Think–Pair–Share",  "pairs",      "discussion"),
+    ("Case Mini-Analysis","small groups","analysis"),
+    ("Demonstrate & Critique","whole class","critique"),
+    ("Gallery Walk",      "groups",     "review"),
+    ("Jigsaw Teaching",   "expert groups","synthesis"),
+]
+
+def activity_from_inputs(verb: str, focus: str, topic: str) -> dict:
+    base = random.choice(ACTIVITY_SHELLS)
+    title = f"{base[0]} — {verb.title()}"
+    objective = f"Students will {verb} key ideas in {topic or 'this topic'} in line with the {focus} focus."
+    steps = [
+        f"Teacher introduces short stimulus related to {topic or 'the lesson'} (2–3 mins).",
+        f"Learners work in {base[1]} to {verb} the prompt.",
+        "Share-out and consolidate key points.",
+    ]
+    if focus == "High":
+        steps.append("Extend: groups justify their choices and connect to criteria.")
+    materials = ["Slides or short text prompt", "Timer"]
+    differentiation = "Provide scaffolded hints for some groups; add challenge extensions for early finishers."
+    assessment = f"Observe {base[2]} using a simple checklist linked to {verb}."
+    return {
+        "title": title, "objective": objective, "steps": steps,
+        "materials": materials, "differentiation": differentiation, "assessment": assessment
+    }
+
+def generate_activities(topic: str, focus: str, verbs_selected: list[str], n: int = 3):
+    base_verbs = verbs_selected or (POLICY_MAP.get(focus, LOW_VERBS))
+    out = []
+    for i in range(n):
+        v = base_verbs[i % len(base_verbs)]
+        out.append(activity_from_inputs(v, focus, topic))
+    return out
+
+def activities_to_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
+    doc = DocxDocument()
+    styles = doc.styles["Normal"]; styles.font.name = "Calibri"; styles.font.size = Pt(11)
+    try:
+        if LOGO_PATH.exists():
+            doc.add_picture(str(LOGO_PATH), width=Inches(1.1))
+    except Exception:
+        pass
+    run = doc.add_paragraph().add_run("ADI Builder — Skills Activities"); run.bold = True; run.font.size = Pt(16)
+    doc.add_paragraph(
+        f"Topic/Outcome: {topic or '—'}\n"
+        f"Lesson {lesson} • Week {week} • Exported {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    )
+    for i, a in enumerate(acts, 1):
+        doc.add_paragraph(f"{i}. {a['title']}")
+        doc.add_paragraph(f"Objective: {a['objective']}")
+        doc.add_paragraph("Steps:")
+        for s in a["steps"]: doc.add_paragraph(f"• {s}")
+        doc.add_paragraph(f"Materials: {', '.join(a['materials'])}")
+        doc.add_paragraph(f"Differentiation: {a['differentiation']}")
+        doc.add_paragraph(f"Assessment: {a['assessment']}")
+        doc.add_paragraph("")
+    bio = BytesIO(); doc.save(bio); return bio.getvalue()
+
 # ---------- File extraction ----------
 def _safe_truncate(text: str, max_chars: int = 12000) -> str:
     text = re.sub(r"\s+\n", "\n", text)
@@ -191,7 +287,7 @@ def _safe_truncate(text: str, max_chars: int = 12000) -> str:
 def extract_text_from_pdf(raw: bytes) -> str:
     reader = PdfReader(BytesIO(raw))
     chunks = []
-    for page in reader.pages[:80]:  # cap for speed
+    for page in reader.pages[:80]:
         try:
             chunks.append(page.extract_text() or "")
         except Exception:
@@ -213,7 +309,7 @@ def extract_text_from_pptx(raw: bytes) -> str:
     return _safe_truncate("\n".join(chunks))
 
 def extract_text_from_upload(filename: str, data: bytes) -> str:
-    ext = pathlib.Path(filename).suffix.lower()
+    ext = Path(filename).suffix.lower()
     if ext == ".pdf":
         return extract_text_from_pdf(data)
     if ext == ".docx":
@@ -221,7 +317,6 @@ def extract_text_from_upload(filename: str, data: bytes) -> str:
     if ext in (".pptx", ".ppt"):
         return extract_text_from_pptx(data)
     return ""
-# ------------------------------------
 
 # ----------------------------------------------------
 # Sidebar (flicker-free uploader + context + picks)
@@ -249,7 +344,6 @@ with st.sidebar:
         st.session_state.uploaded_file_bytes = data
         st.session_state.uploaded_filename = upl.name
         st.session_state.uploaded_size = len(data)
-        # Parse to text (fast, lightweight)
         try:
             st.session_state.extracted_text = extract_text_from_upload(upl.name, data)
             st.toast(f"Uploaded & parsed {upl.name}", icon="✅")
@@ -293,10 +387,10 @@ with st.sidebar:
 # Header
 # ----------------------------------------------------
 st.markdown(
-    """
+    f"""
     <div class="adi-hero">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div style="background:white;color:#1b3b2a;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;">ADI</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        {("<img class='adi-logo adi-logo--mono' src='data:image/png;base64," + logo_b64 + "'/>") if logo_b64 else "<div style='background:white;color:#1b3b2a;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;'>ADI</div>"}
         <div>
           <div style="font-size:18px;font-weight:700;">ADI Builder — Lesson Activities & Questions</div>
           <div class="adi-subtle">Sleek, professional and engaging. Print-ready handouts for your instructors.</div>
@@ -307,11 +401,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# If uploaded, show a main-area banner too (very obvious)
+# If uploaded, show a main banner too
 if st.session_state.uploaded_file_bytes:
     chars = len(st.session_state.extracted_text)
     st.info(f"📄 **{st.session_state.uploaded_filename}** uploaded and parsed "
-            f"({chars} characters of text extracted). Use the toggle below to insert it.", icon="✅")
+            f"({chars} characters extracted). Toggle **Use extracted text** to insert it.", icon="✅")
 
 # ----------------------------------------------------
 # Tabs
@@ -329,12 +423,9 @@ with tab1:
         auto_focus = bloom_focus_for_week(week)
         badge_cls = {"Low": "week-low", "Medium": "week-medium", "High": "week-high"}[auto_focus]
         st.markdown("**Bloom focus (auto)**")
-        st.markdown(
-            f'<span class="week-badge {badge_cls}">Week {week}: {auto_focus}</span>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<span class="week-badge {badge_cls}">Week {week}: {auto_focus}</span>', unsafe_allow_html=True)
 
-    # Source text (with helpers)
+    # Source text controls
     use_sample = st.checkbox("Use sample text (for a quick test)")
     use_extracted = st.checkbox("Use extracted text (from upload)")
 
@@ -351,26 +442,20 @@ with tab1:
     elif use_extracted and st.session_state.extracted_text:
         default_value = st.session_state.extracted_text
 
-    src = st.text_area(
-        "Source text (editable)",
-        height=200,
-        value=default_value,
-        placeholder="Paste or jot key notes, vocab, facts here...",
-    )
+    src = st.text_area("Source text (editable)", height=200, value=default_value,
+                       placeholder="Paste or jot key notes, vocab, facts here...")
 
-    # If uploaded but not used yet, nudge gently
     if st.session_state.uploaded_file_bytes and not use_extracted and not src.strip():
         st.caption("Tip: Toggle **Use extracted text (from upload)** to insert text from your e-book.")
 
     st.markdown("#### Bloom’s verbs (ADI Policy)")
     st.caption("Grouped by policy tiers and week ranges")
 
-    # Verb selection state + reseed when week changes
+    # Verb state + reseed on week change
     if "verb_states" not in st.session_state:
         st.session_state.verb_states = {v: False for v in LOW_VERBS + MED_VERBS + HIGH_VERBS}
     if "last_week" not in st.session_state:
         st.session_state.last_week = week
-
     if st.session_state.last_week != week:
         st.session_state.verb_states = {v: False for v in LOW_VERBS + MED_VERBS + HIGH_VERBS}
         for v in POLICY_MAP[bloom_focus_for_week(week)]:
@@ -420,14 +505,10 @@ with tab1:
 
     st.write("")
     gen = st.button("✨ Generate MCQs", type="primary")
-
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
 
     if gen:
-        # If textarea empty but we have extracted text, use it
-        text_to_use = src.strip()
-        if not text_to_use and st.session_state.extracted_text:
-            text_to_use = st.session_state.extracted_text
+        text_to_use = src.strip() or st.session_state.extracted_text.strip()
         if not text_to_use:
             st.warning("Please add source text (or toggle **Use extracted text** / **Use sample text**) to generate MCQs.")
         else:
@@ -458,14 +539,37 @@ with tab1:
 with tab2:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Skills Activities")
-    st.caption("Simple templates aligned with ADI policy. (Lightweight placeholders you can edit or export.)")
-    activities = [
-        ("Think–Pair–Share", "Pose a scenario using your Week focus; learners think alone, discuss in pairs, then share."),
-        ("Case Mini-Analysis", "Provide a short case; groups identify problem, propose two actions, justify pick."),
-        ("Demonstration & Critique", "Demonstrate a process; learners critique steps using criteria you set.")
-    ]
-    for i, (name, desc) in enumerate(activities, 1):
-        st.write(f"**{i}. {name}** — {desc}")
+    st.caption("Generated from your Week focus and selected Bloom verbs.")
+
+    topic2 = st.text_input("Topic / Context (optional)", key="topic2")
+    num_acts = st.slider("How many activities?", 1, 6, 3)
+
+    gen_act = st.button("🧩 Generate Activities", type="secondary")
+    if gen_act:
+        focus = bloom_focus_for_week(week)
+        chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
+        st.session_state["activities"] = generate_activities(topic2 or topic, focus, chosen_verbs, n=num_acts)
+        st.toast("Activities generated", icon="🧩")
+
+    acts = st.session_state.get("activities", [])
+    if acts:
+        for i, a in enumerate(acts, 1):
+            st.write(f"**{i}. {a['title']}**")
+            st.write(f"*Objective:* {a['objective']}")
+            st.write("**Steps:**")
+            for s in a["steps"]: st.write(f"- {s}")
+            st.write(f"*Materials:* {', '.join(a['materials'])}")
+            st.write(f"*Differentiation:* {a['differentiation']}")
+            st.write(f"*Assessment:* {a['assessment']}")
+            st.markdown("---")
+        docx_bytes = activities_to_docx(acts, topic2 or topic, lesson, week)
+        st.download_button(
+            "⬇️ Export Activities (DOCX)",
+            data=docx_bytes,
+            file_name=f"ADI_Activities_L{lesson}_W{week}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab3:
@@ -474,5 +578,4 @@ with tab3:
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
     st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
-
 
