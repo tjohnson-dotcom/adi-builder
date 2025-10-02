@@ -1,3 +1,4 @@
+
 # app.py
 # ADI Builder — Lesson Activities & Questions (Streamlit)
 # Deps (requirements.txt):
@@ -5,6 +6,7 @@
 #   python-docx==1.1.2
 #   pypdf==4.2.0
 #   python-pptx==0.6.23
+#   pdfminer.six==20240706   # fallback extractor for some PDFs
 
 from io import BytesIO
 import base64
@@ -18,6 +20,12 @@ from docx import Document as DocxDocument
 from docx.shared import Pt, Inches
 from pypdf import PdfReader
 from pptx import Presentation
+
+# Optional PDF fallback (pdfminer.six)
+try:
+    from pdfminer.high_level import extract_text as pdfminer_extract_text
+except Exception:
+    pdfminer_extract_text = None
 
 # ----------------------------------------------------
 # Page setup
@@ -186,7 +194,11 @@ def generate_mcqs(text: str, n: int, verbs: list[str], seed: int|None=None):
     if not text:
         return []
     sents = sentences(text)
-    terms = keywords(text, 24)
+    if not sents:
+        # Create synthetic sentences from keywords so we still produce something
+        terms = keywords(text, 12)
+        sents = [f"{t.title()} is a key concept in this module." for t in terms[:max(3,n)]]
+    terms = keywords(text, 24) or ["concept","process","system","device"]
     items = []
     seen = set()
     for s in sents:
@@ -293,14 +305,26 @@ def _safe_truncate(text: str, max_chars: int = 12000) -> str:
     return text[:max_chars]
 
 def extract_text_from_pdf(raw: bytes) -> str:
-    reader = PdfReader(BytesIO(raw))
-    chunks = []
-    for page in reader.pages[:80]:
+    # First try pypdf (fast)
+    try:
+        reader = PdfReader(BytesIO(raw))
+        chunks = []
+        for page in reader.pages[:80]:
+            try:
+                chunks.append(page.extract_text() or "")
+            except Exception:
+                pass
+        text = "\n".join(chunks)
+    except Exception:
+        text = ""
+
+    # Fallback to pdfminer if very little text found
+    if len(text.strip()) < 50 and pdfminer_extract_text is not None:
         try:
-            chunks.append(page.extract_text() or "")
+            text = pdfminer_extract_text(BytesIO(raw))
         except Exception:
             pass
-    return _safe_truncate("\n".join(chunks))
+    return _safe_truncate(text)
 
 def extract_text_from_docx(raw: bytes) -> str:
     doc = DocxDocument(BytesIO(raw))
@@ -350,7 +374,7 @@ with st.sidebar:
     if submitted and upl is not None:
         data = upl.getvalue()
         size_mb = len(data) / (1024*1024)
-        HARD_LIMIT_MB = 200.0  # keep aligned with config.toml if you raise it
+        HARD_LIMIT_MB = 200.0
         if size_mb > HARD_LIMIT_MB:
             st.session_state.uploaded_file_bytes = None
             st.session_state.uploaded_filename = None
@@ -364,7 +388,10 @@ with st.sidebar:
         st.session_state.uploaded_size = len(data)
         try:
             st.session_state.extracted_text = extract_text_from_upload(upl.name, data)
-            st.toast(f"Uploaded & parsed {upl.name}", icon="✅")
+            if len(st.session_state.extracted_text.strip()) < 40:
+                st.toast(f"Uploaded {upl.name} (no selectable text found — likely a scanned PDF). Try DOCX/PPTX or copy-paste.", icon="⚠️")
+            else:
+                st.toast(f"Uploaded & parsed {upl.name}", icon="✅")
         except Exception:
             st.session_state.extracted_text = ""
             st.toast(f"Uploaded {upl.name} (could not parse text)", icon="⚠️")
