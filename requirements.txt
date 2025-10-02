@@ -1,4 +1,3 @@
-[theme]
 primaryColor="#245a34"
 backgroundColor="#f9f9f7"
 secondaryBackgroundColor="#e5e1da"
