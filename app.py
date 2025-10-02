@@ -53,7 +53,7 @@ def load_logo_b64() -> str | None:
 
 logo_b64 = load_logo_b64()
 
-# Main look
+# Base look & components
 st.markdown(
     f"""
 <style>
@@ -129,20 +129,33 @@ st.markdown(
 # Force-green fallback (even if theme cache misses)
 st.markdown("""
 <style>
-  :root { --adi-green:#245a34; }
+  :root, .stApp {
+    --theme-primaryColor:#245a34 !important;
+    --primary-color:#245a34 !important;
+  }
+  /* Selected tab underline + color */
+  .stTabs [data-baseweb="tab-list"] button[aria-selected="true"]{
+    border-bottom:3px solid #245a34 !important; color:#245a34 !important;
+  }
+  /* Input focus rings (BaseWeb + native) */
   input:focus, textarea:focus, select:focus {
     outline:none!important;
-    box-shadow:0 0 0 1px var(--adi-green) inset, 0 0 0 3px rgba(36,90,52,.2)!important;
-    border-color:var(--adi-green)!important;
+    box-shadow:0 0 0 1px #245a34 inset, 0 0 0 3px rgba(36,90,52,.2)!important;
+    border-color:#245a34!important;
   }
-  [data-baseweb="input"] > div:has(input:focus) {
-    box-shadow:0 0 0 1px var(--adi-green) inset, 0 0 0 3px rgba(36,90,52,.2)!important;
-    border-color:var(--adi-green)!important;
+  [data-baseweb="input"] > div:has(input:focus){
+    box-shadow:0 0 0 1px #245a34 inset, 0 0 0 3px rgba(36,90,52,.2)!important;
+    border-color:#245a34!important;
   }
+  /* File uploader border */
   [data-testid="stFileUploaderDropzone"]{border-color:rgba(36,90,52,.35)!important;}
-  [data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green)!important;}
-  [data-testid="stStatusWidget"] svg [fill="#F63366"] { fill:var(--adi-green)!important; }
-  [data-testid="stStatusWidget"] svg [stroke="#F63366"] { stroke:var(--adi-green)!important; }
+  [data-testid="stFileUploaderDropzone"]:hover{border-color:#245a34!important;}
+  /* Status widget & top progress bar */
+  [data-testid="stStatusWidget"] svg [fill="#F63366"] { fill:#245a34 !important; }
+  [data-testid="stStatusWidget"] svg [stroke="#F63366"] { stroke:#245a34 !important; }
+  [data-testid="stSkeleton"] div[role="progressbar"],
+  [data-testid="stProgressBar"] div[role="progressbar"] { background:#245a34 !important; }
+  header[tabindex="-1"] { border-top-color:#245a34 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -631,3 +644,4 @@ with tab3:
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
     st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
+
