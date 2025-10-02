@@ -359,7 +359,7 @@ with right:
                 with colB:
                     if st.button("🔄 Regenerate", key=f"regen_mcq_{i}"):
                         regenerate_one(i-1, st.session_state.get("last_corpus",""))
-                        st.experimental_rerun()
+                        st.rerun()
                 st.write("")
             st.markdown("**Answer Key**")
             st.write(", ".join([f"Q{q} → {a}" for q,a in answer_key]))
@@ -429,7 +429,7 @@ Quick check: {b['check']}
                 with colB:
                     if st.button("🔄 Regenerate", key=f"regen_act_{i}"):
                         regenerate_one(i-1, st.session_state.get("last_corpus",""))
-                        st.experimental_rerun()
+                        st.rerun()
                 st.write("")
 
             def export_plan_docx():
