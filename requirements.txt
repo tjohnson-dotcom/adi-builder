@@ -1,2 +1,11 @@
-streamlit==1.37.1
-python-docx==1.1.2
+[theme]
+primaryColor="#245a34"
+backgroundColor="#f9f9f7"
+secondaryBackgroundColor="#e5e1da"
+textColor="#1c1c1c"
+font="sans serif"
+
+[server]
+maxUploadSize = 200
+enableXsrfProtection = true
+
