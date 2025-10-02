@@ -1,16 +1,29 @@
-# streamlit_app.py — ADI Builder (Three Modes + Counts/Time + MCQ letter fix)
-import os, io, random
+# streamlit_app.py — ADI Builder (Staff‑friendly)
+import os, io, re, random
+from collections import Counter
+from typing import List, Tuple
+
 import streamlit as st
 from docx import Document
 from docx.shared import Pt
 
+# Optional parsers (guarded imports)
+try:
+    from pptx import Presentation
+except Exception:
+    Presentation = None
+try:
+    from PyPDF2 import PdfReader
+except Exception:
+    PdfReader = None
+try:
+    from docx import Document as DocxReader
+except Exception:
+    DocxReader = None
+
+# ---------- App chrome ----------
 st.set_page_config(page_title="ADI Builder", page_icon="📚", layout="wide")
-
-ADI_GREEN = "#245a34"
-ADI_GOLD  = "#C8A85A"
-STONE_BG  = "#f5f5f4"
-INK       = "#1f2937"
-
+ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"; STONE_BG = "#f5f5f4"; INK = "#1f2937"
 st.markdown(f"""
 <style>
 :root {{ --adi-font-base: 18px; --adi-font-ui: 17px; }}
@@ -19,46 +32,45 @@ html, body, [data-testid="stAppViewContainer"] {{
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, 'Helvetica Neue', Arial;
   font-size: var(--adi-font-base);
 }}
-.main .block-container {{ max-width: 1360px; margin:0 auto; padding-top:.8rem; padding-bottom:2rem; }}
+.main .block-container {{ max-width: 1360px; margin:0 auto; padding-top:.6rem; padding-bottom:2rem; }}
 .stButton>button {{
-  background:{ADI_GREEN} !important; color:white !important;
-  border:0; border-radius:16px; padding:.75rem 1.2rem; font-weight:600; font-size:var(--adi-font-ui);
+  background:{ADI_GREEN} !important; color:white !important; border:0; border-radius:14px;
+  padding:.7rem 1.1rem; font-weight:600; font-size:var(--adi-font-ui);
 }}
 .stButton>button:hover {{ filter:brightness(1.05); }}
-.adi-card {{ background:white; border-radius:16px; padding:1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.06); }}
+.adi-card {{ background:white; border-radius:16px; padding:1.1rem; box-shadow:0 2px 8px rgba(0,0,0,.06); }}
 .bloom-chip {{ display:inline-flex; align-items:center; gap:.5rem; padding:.4rem .8rem; border-radius:999px;
   background:linear-gradient(90deg,{ADI_GOLD},{ADI_GREEN}); color:white; font-weight:700; font-size:.95rem; }}
+.small {{ opacity:.8; font-size:.9rem; }}
+hr {{ border:none; border-top:1px solid rgba(0,0,0,.06); margin:.6rem 0; }}
 </style>
 """, unsafe_allow_html=True)
 
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-if "uploads" not in st.session_state:
-    st.session_state["uploads"] = {}
+# ---------- Session state ----------
+if "messages" not in st.session_state: st.session_state["messages"] = []
+if "uploads" not in st.session_state: st.session_state["uploads"] = {}
 
-# ---- Sidebar ----
+# ---------- Sidebar ----------
 with st.sidebar:
     if os.path.isfile("adi_logo.png"):
         st.image("adi_logo.png", use_container_width=True)
     else:
         st.markdown("### **ADI Builder**")
 
-    modes = ["Knowledge", "Activities", "Revision"]  # exactly 3 buttons
+    modes = ["Knowledge", "Activities", "Revision"]  # three modes only
     icons = {"Knowledge":"📘","Activities":"🎯","Revision":"📝"}
     labels = [f"{icons[m]} {m}" for m in modes]
-    picked = st.radio("Pick a mode", labels, index=0, label_visibility="collapsed")
+    picked = st.radio("Mode", labels, index=0, label_visibility="collapsed")
     mode = modes[labels.index(picked)]
 
     week   = st.selectbox("Week", list(range(1,15)), index=0)
     lesson = st.selectbox("Lesson", list(range(1,6)), index=0)
-
-    # Global controls (now include 1 and 2)
-    count    = st.selectbox("Number of items", [1,2,3,4,5,6,8,10,12,15,20], index=4)
+    count  = st.selectbox("Number of items", [1,2,3,4,5,6,8,10,12,15,20], index=4)
     time_per = st.selectbox("Time per item (minutes)", [5,10,15,20,25,30,40,45,50,60], index=2)
 
-    st.markdown("### 📎 Resources (drag & drop)")
+    st.markdown("### 📎 Resources")
     with st.expander("📥 Drag & drop files or click to browse"):
-        ebook_file = st.file_uploader("📖 eBook (PDF)", type=["pdf"], key="ebook")
+        ebook_file = st.file_uploader("📖 eBook / Reader (PDF)", type=["pdf"], key="ebook")
         plan_file  = st.file_uploader("📄 Lesson Plan (DOCX/PDF)", type=["docx","pdf"], key="plan")
         ppt_file   = st.file_uploader("📊 Slides (PPTX)", type=["pptx"], key="ppt")
 
@@ -66,6 +78,7 @@ with st.sidebar:
     def _remember(tag,f):
         if f: st.session_state["uploads"][tag] = {"name":f.name, "size":round(getattr(f,"size",0)/1024/1024,2)}
     _remember("ebook", ebook_file); _remember("plan", plan_file); _remember("ppt", ppt_file)
+
     if st.session_state["uploads"]:
         st.markdown("#### ✅ Uploaded")
         for tag,meta in st.session_state["uploads"].items():
@@ -74,168 +87,322 @@ with st.sidebar:
 
     run = st.button("✨ Generate for staff")
 
-# ---- Bloom tagging (by week) ----
+# ---------- Bloom band ----------
 def bloom_level(w:int)->str:
     if 1<=w<=4: return "LOW — Remember/Understand"
     if 5<=w<=9: return "MEDIUM — Apply/Analyse"
     return "HIGH — Evaluate/Create"
-
-def _bloom_band(w:int)->str:
+def _band(w:int)->str:
     return "LOW" if w<=4 else ("MEDIUM" if w<=9 else "HIGH")
 
-# ---- Knowledge (MCQs) ----
-def mcq_stems(n:int, topic:str, week:int):
-    topic_txt = topic.strip() if topic else "the topic"
-    band = _bloom_band(week)
-    pools = {
+# ---------- Text extraction (guarded & capped) ----------
+STOP = set("a an and are as at be by for from has have in is it its of on or that the to was were with your you we they not this those these which into over under among between about more most less least such than then there their whose where when who what while how why".split())
+def _clean(t: str) -> str:
+    return re.sub(r"\s+", " ", t or "").strip()
+
+def text_from_pdf(file) -> str:
+    try:
+        if not PdfReader: return ""
+        r = PdfReader(file); pages=[]; cap = min(len(r.pages), 40)
+        for i in range(cap):
+            try: pages.append(r.pages[i].extract_text() or "")
+            except Exception: continue
+        return _clean(" ".join(pages))
+    except Exception: return ""
+
+def text_from_pptx(file) -> str:
+    try:
+        if not Presentation: return ""
+        prs = Presentation(file); buf=[]
+        for sl in prs.slides[:80]:
+            for sh in sl.shapes:
+                if hasattr(sh, "text"): buf.append(sh.text)
+        return _clean(" ".join(buf))
+    except Exception: return ""
+
+def text_from_docx(file) -> str:
+    try:
+        if not DocxReader: return ""
+        d = DocxReader(file)
+        return _clean(" ".join(p.text for p in d.paragraphs))
+    except Exception: return ""
+
+def build_corpus():
+    parts=[]
+    if plan_file and getattr(plan_file, "type", "")=="application/pdf": parts.append(text_from_pdf(plan_file))
+    if plan_file and plan_file.type in ("application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/msword"):
+        parts.append(text_from_docx(plan_file))
+    if ebook_file: parts.append(text_from_pdf(ebook_file))
+    if ppt_file: parts.append(text_from_pptx(ppt_file))
+    return _clean(" ".join(p for p in parts if p))[:250000]
+
+def split_sentences(text: str) -> List[str]:
+    s = re.split(r"(?<=[.!?])\s+", text)
+    return [x.strip() for x in s if 40 <= len(x) <= 180]
+
+def extract_terms(text: str, topk=120) -> List[str]:
+    words = re.findall(r"[A-Za-z][A-Za-z\-]{3,}", text)
+    words = [w.lower() for w in words if w.lower() not in STOP]
+    freq = Counter(words)
+    caps = re.findall(r"\b([A-Z][a-zA-Z]{3,})\b", text)
+    for c in caps: freq[c.lower()] += 2
+    seen=set(); out=[]
+    for w,_ in freq.most_common(topk):
+        base=w.rstrip("s")
+        if base not in seen:
+            out.append(w); seen.add(base)
+    return out[:topk]
+
+# ---------- MCQ generation with QA ----------
+def stem_pool(topic:str, week:int, n:int) -> List[str]:
+    t = topic.strip() if topic else "the topic"
+    band=_band(week)
+    pools={
         "LOW":[
             "Identify the correct term for {T}.",
             "Select the best definition of {T}.",
             "Recognize the main idea of {T}.",
             "Match the concept that describes {T}.",
-            "Choose the statement that correctly describes {T}.",
         ],
         "MEDIUM":[
             "Apply the concept of {T} to a scenario.",
             "Select the step that should occur next in {T}.",
-            "Determine which approach best solves a problem in {T}.",
             "Classify the example according to {T}.",
-            "Select the most appropriate use of {T}.",
+            "Determine which approach best solves a problem in {T}.",
         ],
         "HIGH":[
             "Evaluate which option best justifies {T}.",
             "Decide which solution most improves {T}.",
             "Critique the argument about {T} and pick the most valid claim.",
             "Prioritize the factors for {T} and choose the top priority.",
-            "Design choice: select the option that best develops {T}.",
-        ],
+        ]
     }
-    pool = pools[band]
-    return [pool[i % len(pool)].replace("{T}", topic_txt) for i in range(n)]
+    pool=pools[band]
+    return [pool[i%len(pool)].replace("{T}", t) for i in range(n)]
 
-def mcq_options(stem:str, week:int):
-    # Construct options WITHOUT letters first, shuffle, then re-letter A–D
-    band=_bloom_band(week)
-    correct = f"Best answer aligned to: {stem}"
-    distractors = [
-        f"Partly correct but misses a key detail of: {stem}",
-        f"Plausible wording that conflicts with: {stem}",
-        f"Irrelevant detail not required for: {stem}",
-    ]
-    if band=="MEDIUM":
-        distractors[0]=f"Correct step but wrong order for: {stem}"
-        distractors[1]=f"Mixes two concepts related to: {stem}"
-    elif band=="HIGH":
-        distractors[0]=f"Reasonable yet lacks justification for: {stem}"
-        distractors[1]=f"Claim without evidence about: {stem}"
+def make_cloze_mcqs(text:str, n:int) -> List[dict]:
+    sents=split_sentences(text); terms=extract_terms(text, topk=140)
+    if not sents or not terms: return []
+    out=[]; used=set(); tries=0
+    while len(out)<n and tries<n*8:
+        tries+=1; s=random.choice(sents)
+        cand=[t for t in terms if re.search(rf"\b{re.escape(t)}\b", s, flags=re.I)]
+        if not cand: continue
+        term=random.choice(cand); key=(s,term.lower())
+        if key in used: continue
+        used.add(key)
+        stem = re.sub(rf"\b{re.escape(term)}\b","____",s,flags=re.I,count=1)
+        pool=[t for t in terms if t!=term and abs(len(t)-len(term))<=4]
+        random.shuffle(pool); ds=pool[:3]
+        while len(ds)<3: ds.append(random.choice(terms))
+        raw=[(term,True),(ds[0],False),(ds[1],False),(ds[2],False)]
+        random.shuffle(raw); letters=["A","B","C","D"]
+        options=[(letters[i],txt,is_ok) for i,(txt,is_ok) in enumerate(raw)]
+        out.append({"stem":stem,"options":options})
+    return out
 
-    raw = [(correct, True), (distractors[0], False), (distractors[1], False), (distractors[2], False)]
-    random.shuffle(raw)
-    letters = ["A","B","C","D"]
-    options = []
-    for i,(text,is_correct) in enumerate(raw):
-        options.append((letters[i], text, is_correct))
-    return options
+def validate_mcq(stem:str, options:List[Tuple[str,str,bool]]) -> Tuple[bool,List[str]]:
+    issues=[]
+    if len(stem.split())>28: issues.append("Stem too long")
+    if not any(ok for _,_,ok in options): issues.append("No correct option")
+    if sum(1 for _,_,ok in options if ok)!=1: issues.append("Multiple correct options")
+    # parallel length and structure
+    opt_lens=[len(t.split()) for _,t,_ in options]
+    if max(opt_lens)-min(opt_lens)>15: issues.append("Options length varies too much")
+    for _,t,_ in options:
+        if any(w in t.lower() for w in ["always","never","all of the above","none of the above"]):
+            issues.append("Absolute or banned phrase")
+    return (len(issues)==0, issues)
 
-# ---- Activity seeds ----
-def activity_items(mode:str, topic:str, n:int):
-    topic_txt = topic or "the topic"
-    if mode=="Activities":
-        base=[
-            f"Think–Pair–Share: 3 facts, 2 connections, 1 question about {topic_txt}.",
-            f"Jigsaw: split subtopics of {topic_txt}, teach-back in groups.",
-            f"Gallery walk: poster notes on misconceptions about {topic_txt}.",
-            f"Case vignette: small-group solution applying {topic_txt}.",
-            f"Concept map: connect key terms around {topic_txt}.",
-        ]
-    else: # Revision
-        base=[
-            f"Create a one-page cheat sheet for {topic_txt}.",
-            f"Write 5 short-answer questions covering {topic_txt}.",
-            f"Flashcard set: 10 key terms from {topic_txt}.",
-            f"Past-paper style question on {topic_txt} (timed).",
-            f"Exit ticket: 2 things learned, 1 question on {topic_txt}.",
-        ]
-    return (base * ((n // len(base)) + 1))[:n]
+def generate_mcqs(topic:str, week:int, count:int, corpus:str) -> Tuple[List[dict],List[dict]]:
+    items=[]; checks=[]
+    cloze = make_cloze_mcqs(corpus, count) if corpus else []
+    # backfill with generic stems if needed
+    if len(cloze)<count:
+        fillers=stem_pool(topic,week,count-len(cloze))
+        for fs in fillers:
+            raw=[("Best answer aligned to the topic",True),
+                 ("Partly correct but incomplete",False),
+                 ("Confuses two concepts",False),
+                 ("Irrelevant detail",False)]
+            random.shuffle(raw); letters=["A","B","C","D"]
+            options=[(letters[i],txt,ok) for i,(txt,ok) in enumerate(raw)]
+            cloze.append({"stem":fs,"options":options})
+    # QA pass
+    for q in cloze[:count]:
+        ok, issues = validate_mcq(q["stem"], q["options"])
+        if not ok:
+            # simple repair: shorten stem and rebalance options lengths by truncation
+            q["stem"]=" ".join(q["stem"].split()[:26])
+            new_opts=[]
+            for L,(letter,text,is_ok) in enumerate(q["options"]):
+                words=text.split()[:18]; new_opts.append((letter," ".join(words),is_ok))
+            q["options"]=new_opts
+            ok, issues = validate_mcq(q["stem"], q["options"])
+        items.append(q); checks.append({"ok":ok,"issues":issues})
+    return items, checks
 
-# ---- Layout ----
+# ---------- Activity/Revision generation ----------
+def activity_blocks(mode:str, topic:str, n:int, mins:int):
+    t = topic or "the topic"
+    base_titles = (["Think–Pair–Share","Jigsaw teach-back","Gallery walk","Case vignette","Concept map"]
+                   if mode=="Activities" else
+                   ["Cheat sheet","5 Q short answer","Flashcards","Past-paper drill","Exit ticket"])
+    blocks=[]
+    for i in range(n):
+        title = base_titles[i%len(base_titles)]
+        obj = f"To consolidate understanding of {t}."
+        grouping = "Pairs" if mode=="Activities" else "Individual"
+        materials = "Board, sticky notes" if mode=="Activities" else "Paper, pens"
+        steps = (["Think (1m): note 3 facts, 2 connections, 1 question.",
+                  "Pair (3m): compare and merge ideas.",
+                  "Share (rest): 2–3 pairs feed back to whole class."]
+                 if title=="Think–Pair–Share" else
+                 ["Split subtopics to mini-groups.","Each group creates a 3‑bullet summary.",
+                  "Teach-back: rotate and present to peers."])
+        if title not in ["Think–Pair–Share","Jigsaw teach-back"]:
+            steps = ["Brief: clarify the focus.", "Do: produce the artefact/output.", "Debrief: share, compare, refine."]
+        success = ["Accurate key points","Clear explanation","Evidence or example"]
+        quick = "Exit ticket: one insight + one question."
+        blocks.append({
+            "title": title, "objective": obj, "time": mins, "grouping": grouping,
+            "materials": materials, "steps": steps, "success": success, "check": quick
+        })
+    return blocks
+
+def validate_activity(b):
+    issues=[]
+    if not b["objective"]: issues.append("Missing objective")
+    if not b["steps"] or len(b["steps"])<3: issues.append("Too few steps")
+    if b["time"]<5: issues.append("Time too short")
+    return (len(issues)==0, issues)
+
+# ---------- Main layout ----------
 left, right = st.columns([1,1], gap="large")
-
 with left:
     st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
-    st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
+    st.caption("ADI-aligned prompts and activities. No sliders. Easy picks.")
     st.markdown(f"<span class='bloom-chip'>Bloom: {bloom_level(week)}</span>", unsafe_allow_html=True)
     topic = st.text_input("Topic / Objective (short)")
-    notes = st.text_area("Key notes (optional)", height=120)
+    notes = st.text_area("Key notes (optional)", height=110)
 
 with right:
     st.markdown("### 📤 Draft outputs")
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
     if run:
+        # Build corpus once if needed
+        corpus = build_corpus() if mode=="Knowledge" else ""
         if mode=="Knowledge":
-            stems = mcq_stems(count, topic, week)
+            qs, checks = generate_mcqs(topic, week, count, corpus)
             answer_key=[]
-            for i, stem in enumerate(stems, start=1):
-                st.write(f"**Q{i}.** {stem}")
-                for letter, text, is_correct in mcq_options(stem, week):
+            for i,q in enumerate(qs, start=1):
+                st.write(f"**Q{i}.** {q['stem']}")
+                for letter,text,is_ok in q["options"]:
                     st.write(f" {letter}. {text}")
-                    if is_correct: answer_key.append((i, letter))
+                    if is_ok: answer_key.append((i,letter))
+                # inline quality note if any
+                if not checks[i-1]["ok"]:
+                    st.caption(f"⚠️ Auto-fixed: {', '.join(checks[i-1]['issues'])}")
                 st.write("")
             st.markdown("**Answer Key**")
             st.write(", ".join([f"Q{q} → {a}" for q,a in answer_key]))
 
+            # Exports
             def export_mcq_docx():
-                doc=Document()
-                doc.add_heading(f"ADI Knowledge — W{week} L{lesson}", level=1)
+                doc=Document(); doc.add_heading(f"ADI Knowledge — W{week} L{lesson}", 1)
                 if topic: doc.add_paragraph(f"Topic: {topic}")
                 if notes: doc.add_paragraph(f"Notes: {notes}")
-                for i, stem in enumerate(stems, 1):
-                    doc.add_paragraph(f"Q{i}. {stem}")
-                    for letter, text, _ in mcq_options(stem, week):
+                for i,q in enumerate(qs,1):
+                    doc.add_paragraph(f"Q{i}. {q['stem']}")
+                    for letter,text,_ in q["options"]:
                         p=doc.add_paragraph(f"   {letter}. {text}")
                         for run in p.runs: run.font.size=Pt(11)
-                doc.add_heading("Answer Key", level=2)
-                doc.add_paragraph(", ".join([f"Q{q} → {a}" for q,a in answer_key]))
+                doc.add_heading("Answer Key",2); doc.add_paragraph(", ".join([f"Q{q} → {a}" for q,a in answer_key]))
                 bio=io.BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-            st.download_button("⬇️ Export MCQs (DOCX)",
-                               data=export_mcq_docx(),
-                               file_name=f"ADI_Knowledge_W{week}_L{lesson}.docx",
-                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                               use_container_width=True)
-        else:
-            items = activity_items(mode, topic, count)
-            singular = "Activity" if mode=="Activities" else "Task"
-            for i, s in enumerate(items, start=1):
-                st.write(f"**{singular} {i} ({time_per} min):** {s}")
+            def export_mcq_gift():
+                lines=[]
+                for i,q in enumerate(qs,1):
+                    lines.append(f"::Q{i}:: {q['stem']} {{")
+                    for letter,text,is_ok in q["options"]:
+                        lines.append(("=" if is_ok else "~") + text)
+                    lines.append("}")
+                return io.BytesIO("\n".join(lines).encode("utf-8"))
 
+            c1,c2 = st.columns(2)
+            with c1:
+                st.download_button("⬇️ Export MCQs (DOCX)", data=export_mcq_docx(),
+                                   file_name=f"ADI_Knowledge_W{week}_L{lesson}.docx",
+                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                   use_container_width=True)
+            with c2:
+                st.download_button("⬇️ Export MCQs (Moodle GIFT)", data=export_mcq_gift(),
+                                   file_name=f"ADI_Knowledge_W{week}_L{lesson}.gift",
+                                   mime="text/plain", use_container_width=True)
+
+        else:
+            blocks = activity_blocks(mode, topic, count, time_per)
+            # QA pass
+            checks=[validate_activity(b) for b in blocks]
+            for i,b in enumerate(blocks, start=1):
+                singular = "Activity" if mode=="Activities" else "Task"
+                st.write(f"**{singular} {i} ({b['time']} min) — {b['title']}**")
+                st.caption(b["objective"])
+                st.write(f"**Grouping:** {b['grouping']}  |  **Materials:** {b['materials']}")
+                st.write("**Procedure:**")
+                for step in b["steps"]:
+                    st.write(f"- {step}")
+                st.write("**Success criteria:** " + ", ".join(b["success"]))
+                st.write(f"**Quick check:** {b['check']}")
+                if not checks[i-1][0]:
+                    st.caption("⚠️ " + ", ".join(checks[i-1][1]))
+                st.write("")
+
+            # Export plan
             def export_plan_docx():
-                doc=Document()
-                doc.add_heading(f"ADI {mode} Plan — W{week} L{lesson}", level=1)
+                doc=Document(); doc.add_heading(f"ADI {mode} Plan — W{week} L{lesson}", 1)
                 if topic: doc.add_paragraph(f"Topic: {topic}")
                 if notes: doc.add_paragraph(f"Notes: {notes}")
-                for i, s in enumerate(items, 1):
-                    doc.add_paragraph(f"{singular} {i} ({time_per} min): {s}")
+                for i,b in enumerate(blocks,1):
+                    singular = "Activity" if mode=="Activities" else "Task"
+                    doc.add_paragraph(f"{singular} {i} ({b['time']} min) — {b['title']}")
+                    doc.add_paragraph(f"Objective: {b['objective']}")
+                    doc.add_paragraph(f"Grouping: {b['grouping']}  |  Materials: {b['materials']}")
+                    doc.add_paragraph("Procedure:")
+                    for step in b["steps"]:
+                        doc.add_paragraph(f" - {step}")
+                    doc.add_paragraph("Success criteria: " + ", ".join(b["success"]))
+                    doc.add_paragraph(f"Quick check: {b['check']}")
+                    doc.add_paragraph("")
                 bio=io.BytesIO(); doc.save(bio); bio.seek(0); return bio
 
-            st.download_button(f"⬇️ Export {mode} Plan (DOCX)",
-                               data=export_plan_docx(),
+            st.download_button(f"⬇️ Export {mode} Plan (DOCX)", data=export_plan_docx(),
                                file_name=f"ADI_{mode}_W{week}_L{lesson}.docx",
                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                use_container_width=True)
     else:
-        st.info("Upload resources, set Week/Lesson, choose a mode, number of items, and time per item. Then click **Generate**.")
+        st.info("Upload resources, set Week/Lesson, choose mode, number of items, and time per item. Then click **Generate**.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Chat
+# ---------- Chat ----------
 st.markdown("### 💬 Conversation")
 st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 for msg in st.session_state["messages"]:
-    with st.chat_message(msg["role"]): st.markdown(msg["content"])
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 if prompt := st.chat_input("Ask ADI Builder…"):
     st.session_state["messages"].append({"role":"user","content":prompt})
     with st.chat_message("user"): st.markdown(prompt)
-    reply = "Got it. Use **Generate** for drafts. Counts and time controls are in the sidebar."
+    reply = "Understood. Use Generate for drafts. Exports are at the bottom of the draft card."
     st.session_state["messages"].append({"role":"assistant","content":reply})
     with st.chat_message("assistant"): st.markdown(reply)
-st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------- Guards ----------
+problems=[]
+if run:
+    try:
+        if ebook_file and getattr(ebook_file,"size",0) > 40*1024*1024: problems.append("eBook exceeds 40MB.")
+        if ppt_file and not ppt_file.name.lower().endswith(".pptx"): problems.append("Slides must be .pptx.")
+    except Exception:
+        pass
+if problems: st.warning("\\n".join([f"• {p}" for p in problems]))
