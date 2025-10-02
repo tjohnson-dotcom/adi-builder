@@ -1,13 +1,11 @@
-
-
 # app.py
 # ADI Builder — Lesson Activities & Questions (Streamlit)
-# Deps (requirements.txt):
+# Deps (see requirements.txt):
 #   streamlit==1.37.1
 #   python-docx==1.1.2
 #   pypdf==4.2.0
 #   python-pptx==0.6.23
-#   pdfminer.six==20240706   # fallback extractor for some PDFs
+#   pdfminer.six==20240706   # PDF text fallback
 
 from io import BytesIO
 import base64
@@ -40,7 +38,7 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# Theme & CSS (ADI palette + shaded pills + week badge + mono header logo)
+# Theme & CSS
 # ----------------------------------------------------
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
@@ -55,6 +53,7 @@ def load_logo_b64() -> str | None:
 
 logo_b64 = load_logo_b64()
 
+# Main look
 st.markdown(
     f"""
 <style>
@@ -115,9 +114,7 @@ st.markdown(
   .upload-dot {{ width:10px;height:10px;border-radius:999px;background:{ADI_GREEN}; }}
 
   /* Sidebar */
-  section[data-testid="stSidebar"] {{
-    background: white; border-right: 1px solid #ece9e1;
-  }}
+  section[data-testid="stSidebar"] {{ background: white; border-right: 1px solid #ece9e1; }}
   .muted {{ color: #666; font-size: 12px; }}
 
   /* Header logo */
@@ -129,8 +126,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Force-green fallback (even if theme cache misses)
+st.markdown("""
+<style>
+  :root { --adi-green:#245a34; }
+  input:focus, textarea:focus, select:focus {
+    outline:none!important;
+    box-shadow:0 0 0 1px var(--adi-green) inset, 0 0 0 3px rgba(36,90,52,.2)!important;
+    border-color:var(--adi-green)!important;
+  }
+  [data-baseweb="input"] > div:has(input:focus) {
+    box-shadow:0 0 0 1px var(--adi-green) inset, 0 0 0 3px rgba(36,90,52,.2)!important;
+    border-color:var(--adi-green)!important;
+  }
+  [data-testid="stFileUploaderDropzone"]{border-color:rgba(36,90,52,.35)!important;}
+  [data-testid="stFileUploaderDropzone"]:hover{border-color:var(--adi-green)!important;}
+  [data-testid="stStatusWidget"] svg [fill="#F63366"] { fill:var(--adi-green)!important; }
+  [data-testid="stStatusWidget"] svg [stroke="#F63366"] { stroke:var(--adi-green)!important; }
+</style>
+""", unsafe_allow_html=True)
+
 # ----------------------------------------------------
-# Light text utilities
+# Text helpers & generators
 # ----------------------------------------------------
 STOP = set("the a an and or for with from by to of on in at is are were was be as it its this that these those which who whom whose what when where why how".split())
 
@@ -154,9 +171,7 @@ def keywords(text: str, k: int = 24):
         score[wl] = score.get(wl, 0) + (2 if w[0].isupper() else 0) + min(len(w),12)/3
     return [w for w,_ in sorted(score.items(), key=lambda kv: kv[1], reverse=True)[:k]]
 
-# ----------------------------------------------------
-# MCQ generation
-# ----------------------------------------------------
+# MCQs
 LOW_VERBS = ["define", "identify", "list", "recall", "describe", "label"]
 MED_VERBS = ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"]
 HIGH_VERBS = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
@@ -196,19 +211,17 @@ def generate_mcqs(text: str, n: int, verbs: list[str], seed: int|None=None):
         return []
     sents = sentences(text)
     if not sents:
-        # Create synthetic sentences from keywords so we still produce something
-        terms = keywords(text, 12)
+        # If nothing sentence-like, synthesize simple stems from keywords
+        terms = keywords(text, 12) or ["concept","process","system","device"]
         sents = [f"{t.title()} is a key concept in this module." for t in terms[:max(3,n)]]
     terms = keywords(text, 24) or ["concept","process","system","device"]
-    items = []
-    seen = set()
+    items, seen = [], set()
     for s in sents:
         stem, opts, ans = _one_mcq(s, terms)
         if stem in seen: continue
-        seen.add(stem)
-        items.append({"stem": stem, "options": opts, "answer": ans})
+        seen.add(stem); items.append({"stem": stem, "options": opts, "answer": ans})
         if len(items) >= max(3, n*3): break
-    if not verbs: verbs = ["define","identify","apply","evaluate"]
+    verbs = verbs or ["define","identify","apply","evaluate"]
     out = []
     for i, it in enumerate(items[:n], start=1):
         it["index"] = i
@@ -237,9 +250,7 @@ def mcqs_to_docx(mcqs: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
-# ----------------------------------------------------
-# Activities generation
-# ----------------------------------------------------
+# Activities
 ACTIVITY_SHELLS = [
     ("Think–Pair–Share",  "pairs",       "discussion"),
     ("Case Mini-Analysis","small groups","analysis"),
@@ -257,11 +268,10 @@ def activity_from_inputs(verb: str, focus: str, topic: str) -> dict:
         f"Learners work in {grouping} to {verb} the prompt.",
         "Share-out and consolidate key points."
     ]
-    if focus=="High":
-        steps.append("Extend: justify choices using agreed criteria; connect to prior learning.")
+    if focus=="High": steps.append("Extend: justify choices using agreed criteria; connect to prior learning.")
     materials = ["Slide or short text prompt", "Timer"]
-    diff = "Provide scaffolds (sentence starters/examples) and add challenge questions for fast finishers."
-    assessment = f"Observe {assess} with a simple checklist aligned to {verb}."
+    diff = "Provide scaffolds (sentence starters/examples) and add challenge questions."
+    assessment = f"Observe {assess} with a short checklist aligned to {verb}."
     return {
         "title": title, "objective": objective, "steps": steps,
         "materials": materials, "differentiation": diff, "assessment": assessment,
@@ -307,6 +317,7 @@ def _safe_truncate(text: str, max_chars: int = 12000) -> str:
 
 def extract_text_from_pdf(raw: bytes) -> str:
     # First try pypdf (fast)
+    text = ""
     try:
         reader = PdfReader(BytesIO(raw))
         chunks = []
@@ -319,13 +330,13 @@ def extract_text_from_pdf(raw: bytes) -> str:
     except Exception:
         text = ""
 
-    # Fallback to pdfminer if very little text found
+    # Fallback to pdfminer if needed
     if len(text.strip()) < 50 and pdfminer_extract_text is not None:
         try:
             text = pdfminer_extract_text(BytesIO(raw))
         except Exception:
             pass
-    return _safe_truncate(text)
+    return _safe_truncate(text or "")
 
 def extract_text_from_docx(raw: bytes) -> str:
     doc = DocxDocument(BytesIO(raw))
@@ -343,16 +354,13 @@ def extract_text_from_pptx(raw: bytes) -> str:
 
 def extract_text_from_upload(filename: str, data: bytes) -> str:
     ext = Path(filename).suffix.lower()
-    if ext == ".pdf":
-        return extract_text_from_pdf(data)
-    if ext == ".docx":
-        return extract_text_from_docx(data)
-    if ext in (".pptx", ".ppt"):
-        return extract_text_from_pptx(data)
+    if ext == ".pdf":   return extract_text_from_pdf(data)
+    if ext == ".docx":  return extract_text_from_docx(data)
+    if ext in (".pptx", ".ppt"): return extract_text_from_pptx(data)
     return ""
 
 # ----------------------------------------------------
-# Sidebar (flicker-free uploader + context + picks)
+# Sidebar (auto-parse upload) + context
 # ----------------------------------------------------
 with st.sidebar:
     st.markdown("### Upload (optional)")
@@ -362,47 +370,45 @@ with st.sidebar:
         st.session_state.uploaded_filename = None
         st.session_state.uploaded_size = 0
         st.session_state.extracted_text = ""
+        st.session_state.use_extracted_auto = False
 
-    with st.form("upload_form"):
-        upl = st.file_uploader(
-            "Drag and drop file here",
-            type=["pdf", "docx", "pptx"],
-            label_visibility="collapsed",
-            accept_multiple_files=False,
-        )
-        submitted = st.form_submit_button("Add file")
+    upl = st.file_uploader(
+        "Drag and drop file here",
+        type=["pdf","docx","pptx"],
+        label_visibility="collapsed",
+        accept_multiple_files=False,
+    )
 
-    if submitted and upl is not None:
+    if upl is not None and upl.name != st.session_state.uploaded_filename:
         data = upl.getvalue()
         size_mb = len(data) / (1024*1024)
         HARD_LIMIT_MB = 200.0
         if size_mb > HARD_LIMIT_MB:
-            st.session_state.uploaded_file_bytes = None
-            st.session_state.uploaded_filename = None
-            st.session_state.uploaded_size = 0
-            st.session_state.extracted_text = ""
-            st.error(f"File is {size_mb:.1f} MB. Please upload a file ≤ {HARD_LIMIT_MB:.0f} MB (or split/compress it).")
+            st.error(f"File is {size_mb:.1f} MB. Please upload a file ≤ {HARD_LIMIT_MB:.0f} MB.")
             st.stop()
 
         st.session_state.uploaded_file_bytes = data
         st.session_state.uploaded_filename = upl.name
         st.session_state.uploaded_size = len(data)
+
         try:
-            st.session_state.extracted_text = extract_text_from_upload(upl.name, data)
-            if len(st.session_state.extracted_text.strip()) < 40:
-                st.toast(f"Uploaded {upl.name} (no selectable text found — likely a scanned PDF). Try DOCX/PPTX or copy-paste.", icon="⚠️")
-            else:
-                st.toast(f"Uploaded & parsed {upl.name}", icon="✅")
+            extracted = extract_text_from_upload(upl.name, data)
+            st.session_state.extracted_text = extracted
+            st.session_state.use_extracted_auto = bool(extracted.strip())
+            st.toast(("Uploaded & parsed " + upl.name) if extracted.strip() else
+                     (f"Uploaded {upl.name} (no selectable text found — try DOCX/PPTX or paste text)."),
+                     icon="✅" if extracted.strip() else "⚠️")
         except Exception:
             st.session_state.extracted_text = ""
-            st.toast(f"Uploaded {upl.name} (could not parse text)", icon="⚠️")
+            st.session_state.use_extracted_auto = False
+            st.toast(f"Uploaded {upl.name} (could not parse text).", icon="⚠️")
 
     if st.session_state.uploaded_file_bytes:
         size_mb = st.session_state.uploaded_size / (1024*1024)
         st.markdown(
             f'<div class="upload-ok"><div class="upload-dot"></div>'
             f'<div><b>Uploaded & parsed</b>: {st.session_state.uploaded_filename} '
-            f' <span class="muted">({size_mb:.1f} MB)</span></div></div>',
+            f'<span class="muted">({size_mb:.1f} MB)</span></div></div>',
             unsafe_allow_html=True,
         )
     else:
@@ -451,7 +457,7 @@ st.markdown(
 if st.session_state.uploaded_file_bytes:
     chars = len(st.session_state.extracted_text)
     st.info(f"📄 **{st.session_state.uploaded_filename}** uploaded and parsed "
-            f"({chars} characters extracted). Toggle **Use extracted text** to insert it.", icon="✅")
+            f"({chars} characters extracted). The text box will auto-fill when text is available.", icon="✅")
 
 # ----------------------------------------------------
 # Tabs
@@ -471,9 +477,9 @@ with tab1:
         st.markdown("**Bloom focus (auto)**")
         st.markdown(f'<span class="week-badge {badge_cls}">Week {week}: {auto_focus}</span>', unsafe_allow_html=True)
 
-    # Source text controls
+    # Source text controls (auto-use extracted)
     use_sample = st.checkbox("Use sample text (for a quick test)")
-    use_extracted = st.checkbox("Use extracted text (from upload)")
+    use_extracted = st.session_state.get("use_extracted_auto", False)
 
     sample_text = (
         "Photosynthesis is the process by which green plants convert light energy into chemical energy, "
@@ -491,8 +497,8 @@ with tab1:
     src = st.text_area("Source text (editable)", height=200, value=default_value,
                        placeholder="Paste or jot key notes, vocab, facts here...")
 
-    if st.session_state.uploaded_file_bytes and not use_extracted and not src.strip():
-        st.caption("Tip: Toggle **Use extracted text (from upload)** to insert text from your e-book.")
+    if st.session_state.uploaded_file_bytes and not src.strip():
+        st.caption("We’ve uploaded your file. If this area is empty, the PDF may be scanned. Try DOCX/PPTX or paste the text.")
 
     st.markdown("#### Bloom’s verbs (ADI Policy)")
     st.caption("Grouped by policy tiers and week ranges")
@@ -508,6 +514,7 @@ with tab1:
             st.session_state.verb_states[v] = True
         st.session_state.last_week = week
 
+    # Pills
     def render_pills(tier_label: str, verbs: list[str], css_class: str):
         st.write(f"**{tier_label}**")
         cols = st.columns(6)
@@ -556,7 +563,7 @@ with tab1:
     if gen:
         text_to_use = (src or "").strip() or st.session_state.extracted_text.strip()
         if not text_to_use:
-            st.warning("Please add source text (or toggle **Use extracted text** / **Use sample text**) to generate MCQs.")
+            st.warning("Please add source text (or upload a text-based PDF/DOCX/PPTX) to generate MCQs.")
         else:
             st.session_state["mcqs"] = generate_mcqs(text_to_use, n=target_n, verbs=chosen_verbs, seed=42)
             st.toast("MCQs generated", icon="✨")
