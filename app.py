@@ -120,39 +120,39 @@ with st.sidebar:
     else:
         st.markdown("<div class='adi-title'>ADI Builder</div>", unsafe_allow_html=True)
     st.markdown("### Modes")
+    
+    # Use icons inside radio labels for quicker scanning
     mode = st.radio(
         "Pick a workflow",
-        ["Knowledge", "Skills", "Activities", "Revision"],
+        ["📘 Knowledge", "🛠️ Skills", "🎯 Activities", "📝 Revision"],,
         index=0,
         label_visibility="collapsed",
     )
 
-    st.markdown("### Lesson setup")
+   st.markdown("### 📅 Lesson setup")up")
     week = st.selectbox("Week", options=list(range(1, 15)), index=0)
     lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
 
-    st.markdown("### Resources")
-    with st.expander("Upload eBook / Lesson Plan / PowerPoint"):
-        ebook_file = st.file_uploader("eBook (PDF)", type=["pdf"], key="ebook")
-        plan_file = st.file_uploader("Lesson Plan (DOCX/PDF)", type=["docx", "pdf"], key="plan")
-        ppt_file  = st.file_uploader("Slides (PPTX)", type=["pptx"], key="ppt")
+st.markdown("### 📎 Resources")urceswith st.expander("📥 Drag & drop files here or click to browse"):browse"):ebook_file = st.file_uploader("📖 eBook (PDF)", type=["pdf"], key="ebook")
+        plan_file = st.file_uploader("📄 Lesson Plan (DOCX/PDF)", type=["docx", "pdf"], key="plan")
+        ppt_file  = st.file_uploader("📊 Slides (PPTX)", type=["pptx"], key="ppt")pptx"], key="ppt")
 
-    st.divider()
-    run = st.button("Generate for staff ✨")
+   run = st.button("✨ Generate for staff")nerate for staff")
 
 # ---------------------------
 # Main layout
 # ---------------------------
-left, right = st.columns([1, 1])
-
-with left:
-    # Header row with optional logo and title
+left, right = stwith left:
+    # Header row with optional logo and title + app icon
+    st.markdown("<div class='adi-header'><span class='adi-title'>📚 ADI Builder</span></div>", unsafe_allow_html=True)
+    # Optional logo next to title
+    h1c, h2c = st.columns([1, 6])nal logo and title
     h1c, h2c = st.columns([1, 6])
     with h1c:
         if os.path.isfile("adi_logo.png"):
             st.image("adi_logo.png")
     with h2c:
-        st.subheader(f"{mode} — Week {week}, Lesson {lesson}")
+         {week}, Lesson {lesson}")
         st.caption("ADI-aligned prompts and activities. Zero sliders. Easy picks.")
 
     # Bloom policy badge based on week
@@ -173,9 +173,7 @@ with left:
         st.success("Ready! Drafts created below. Tweak and export.")
 
 with right:
-    st.markdown("### Draft outputs")
-
-    if run:
+    st.markdowst.markdown("### 📤 Draft outputs")f run:
         if mode == "Knowledge":
             st.markdown("**Sample Knowledge Questions (MCQs)**")
             st.write(
@@ -209,8 +207,8 @@ if run:
         st.warning("\n".join([f"• {p}" for p in problems]))
 
 # Conversation (chat-style)
-st.markdown("### Conversation")
-for msg in st.session_state["messages"]:
+
+for msst.markdown("### 💬 Conversation")"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
