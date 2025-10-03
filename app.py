@@ -1,13 +1,13 @@
 # app.py — ADI Builder (Lessons, MCQs, Activities, Revision)
 # Streamlit 1.29+; Zero external LLM/API; on-prem friendly
 
-import os, io, json, time, random, hashlib
+import os, io, json, time, random, hashlib, re
 from datetime import datetime
 
 import streamlit as st
 
 # -------------------------------------------------------------------
-# Streamlit rerun compatibility (experimental_rerun → rerun in newer versions)
+# Streamlit rerun compatibility (experimental_rerun → rerun)
 # -------------------------------------------------------------------
 if not hasattr(st, "experimental_rerun"):
     st.experimental_rerun = st.rerun
@@ -156,9 +156,12 @@ def split_chunks(text, max_chars=1200):
     if cur: chunks.append(" ".join(cur))
     return chunks
 
+def normalise_spaces(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
 def tfidf_keyphrases(text, top_k=25):
     docs = split_chunks(text, 1000) or [" "]
-    vect = TfidfVectorizer(ngram_range=(1,2), max_features=5000, stop_words="english")
+    vect = TfidfVectorizer(ngram_range=(1,2), max_features=6000, stop_words="english")
     X = vect.fit_transform(docs if len(docs)>1 else docs+[" "])
     scores = X.toarray().sum(axis=0)
     terms = vect.get_feature_names_out()
@@ -180,87 +183,6 @@ def noun_verb_terms(text, limit=40):
         if len(out) >= limit: break
     return out
 
-def antonyms(word):
-    ants = set()
-    for s in wn.synsets(word):
-        for l in s.lemmas():
-            for a in l.antonyms():
-                ants.add(a.name().replace("_"," "))
-    return list(ants)
-
-def plausible_distractors(answer, pool):
-    ds = set(antonyms(answer))
-    alen = len(answer)
-    for w in pool:
-        lw = w.lower()
-        if lw==answer.lower(): continue
-        if abs(len(w)-alen)<=2: ds.add(w)
-        if len(ds)>=12: break
-    return [d for d in ds if d.lower()!=answer.lower()][:12]
-
-def build_mcq_from_fact(fact, distractor_bank, rng):
-    base = fact.strip().rstrip(".")
-    if len(base.split())<3:
-        base = f"Which of the following best matches: '{base}'?"
-    answer = fact.strip()
-    distractors = plausible_distractors(answer, distractor_bank)
-    rng.shuffle(distractors)
-    choices = [answer] + distractors[:3]
-    rng.shuffle(choices)
-    key = "ABCD"[choices.index(answer)]
-    return {"stem": base, "choices": choices, "key": key}
-
-def text_to_docx(title, mcqs=None, activities=None, revision=None):
-    doc = DocxDocument()
-    doc.add_heading(title, level=1)
-    if mcqs:
-        doc.add_heading("Multiple-choice questions", level=2)
-        for i,q in enumerate(mcqs,1):
-            doc.add_paragraph(f"{i}. {q['stem']}")
-            for li,opt in zip("ABCD", q["choices"]):
-                doc.add_paragraph(f"{li}. {opt}")
-            doc.add_paragraph(f"Answer: {q['key']}"); doc.add_paragraph("")
-    if activities:
-        doc.add_heading("Skills Activities", level=2)
-        for i,a in enumerate(activities,1):
-            doc.add_paragraph(f"{i}. {a['title']} ({a['minutes']} min)")
-            doc.add_paragraph(a["task"])
-            if a.get("materials"):   doc.add_paragraph("Materials: "+", ".join(a["materials"]))
-            if a.get("deliverable"): doc.add_paragraph("Deliverable: "+a["deliverable"])
-            doc.add_paragraph("")
-    if revision:
-        doc.add_heading("Revision", level=2)
-        for i,r in enumerate(revision,1): doc.add_paragraph(f"{i}. {r}")
-    bio = io.BytesIO(); doc.save(bio); bio.seek(0); return bio
-
-def mcqs_to_gift(mcqs):
-    lines = []
-    for q in mcqs:
-        stem = q["stem"].replace("\n"," ").strip()
-        lines.append(f"::{stem}:: {stem} {{")
-        for li,opt in zip("ABCD", q["choices"]):
-            lines.append((" = " if li==q["key"] else " ~ ")+opt)
-        lines.append("}")
-    return "\n".join(lines)
-
-def mcqs_to_moodle_xml(mcqs, quiz_name="ADI Quiz"):
-    from xml.sax.saxutils import escape
-    lines = ['<?xml version="1.0" encoding="UTF-8"?>','<quiz>']
-    for q in mcqs:
-        lines.append('<question type="multichoice">')
-        lines.append(f"<name><text>{escape(q['stem'][:60])}</text></name>")
-        lines.append(f"<questiontext format=\"html\"><text><![CDATA[{escape(q['stem'])}]]></text></questiontext>")
-        lines.append("<shuffleanswers>1</shuffleanswers><single>true</single>")
-        # correct
-        lines.append(f"<answer fraction=\"100\"><text>{escape(q['choices']['ABCD'.index(q['key'])])}</text></answer>")
-        # distractors
-        for li,opt in zip("ABCD", q["choices"]):
-            if li==q["key"]: continue
-            lines.append(f"<answer fraction=\"0\"><text>{escape(opt)}</text></answer>")
-        lines.append("</question>")
-    lines.append("</quiz>")
-    return "\n".join(lines)
-
 # ----------------------------- Parsing ------------------------------
 def parse_pdf(file_buf, deep=False, max_pages=60, timeout_s=20):
     start = time.time(); text=[]; parsed=0; total=0
@@ -270,71 +192,258 @@ def parse_pdf(file_buf, deep=False, max_pages=60, timeout_s=20):
         for i in range(0, total, step):
             if time.time()-start > timeout_s: break
             try:
-                text.append(d.load_page(i).get_text("text")); parsed += 1
+                t = d.load_page(i).get_text("text")
+                if t: text.append(t); parsed += 1
             except Exception:
                 continue
     return "\n".join(text), {"pages_scanned": parsed, "total_pages": total}
 
 def parse_docx(file_buf):
     doc = DocxDocument(file_buf); out=[]
-    for p in doc.paragraphs: out.append(p.text)
+    for p in doc.paragraphs:
+        if p.text: out.append(p.text)
     for t in doc.tables:
-        for r in t.rows: out.append(" ".join(c.text for c in r.cells))
+        for r in t.rows:
+            row = " ".join(normalise_spaces(c.text) for c in r.cells if c.text)
+            if row: out.append(row)
     return "\n".join(out)
 
 def parse_pptx(file_buf):
     prs = Presentation(file_buf); out=[]
     for s in prs.slides:
         for sh in s.shapes:
-            if hasattr(sh,"text"): out.append(sh.text)
+            if hasattr(sh,"text") and sh.text:
+                out.append(sh.text)
     return "\n".join(out)
 
-# --------------------------- Generators -----------------------------
-def generate_mcqs(source_text, num_qs, seed_tuple):
-    rng = random.Random(stable_seed(*seed_tuple))
-    phrases = tfidf_keyphrases(source_text, top_k=max(30, num_qs*4))
-    nv_terms = noun_verb_terms(source_text, limit=60)
-    bank = list({*phrases, *nv_terms})
-    if len(bank) < num_qs*2:
-        bank.extend([s.strip() for s in source_text.split(".") if len(s.split())>3])
-    rng.shuffle(bank)
-    mcqs=[]
-    for cand in bank:
-        q = build_mcq_from_fact(cand, bank, rng)
-        if any(len(c.split())>20 for c in q["choices"]):
+# ---------------------- MCQ QUALITY UPGRADE ------------------------
+def _noun_phrases(text, cap=60):
+    # lightweight noun phrase finder using POS tags
+    try:
+        toks = word_tokenize(text)
+        tags = pos_tag(toks)
+    except Exception:
+        return []
+    keep, cur = [], []
+    for w,p in tags:
+        if p.startswith("JJ") or p.startswith("NN"):
+            cur.append(w)
+        else:
+            if cur:
+                np = " ".join(cur).strip()
+                if 2 < len(np) < 80 and len(np.split()) <= 6:
+                    keep.append(np.lower())
+                cur = []
+    if cur:
+        np = " ".join(cur).strip()
+        if 2 < len(np) < 80 and len(np.split()) <= 6:
+            keep.append(np.lower())
+    # de-dup while preserving order
+    out, seen = [], set()
+    for k in keep:
+        if k not in seen:
+            seen.add(k); out.append(k)
+        if len(out) >= cap: break
+    return out
+
+def antonyms(word):
+    ants = set()
+    for s in wn.synsets(word):
+        for l in s.lemmas():
+            for a in l.antonyms():
+                ants.add(a.name().replace("_"," "))
+    return list(ants)
+
+def _near_length_pool(answer, bank):
+    alen = len(answer)
+    cand = []
+    for w in bank:
+        lw = w.lower().strip()
+        if lw == answer.lower().strip(): 
             continue
-        mcqs.append(q)
+        if abs(len(lw) - alen) <= 4:
+            cand.append(lw)
+    # Prefer multi-word look-alikes first
+    multi = [c for c in cand if len(c.split())>=2]
+    single= [c for c in cand if len(c.split())<2]
+    cand = multi + single
+    return list(dict.fromkeys(cand))  # unique, keep order
+
+def _wordnet_siblings(term):
+    sib = set()
+    for s in wn.synsets(term.replace(" ", "_")):
+        for rel in (s.hypernyms() + s.hyponyms()):
+            for l in rel.lemmas():
+                sib.add(l.name().replace("_"," "))
+    return list(sib)
+
+def plausible_distractors(answer, pool, max_n=10):
+    s = set()
+    s.update(a for a in antonyms(answer))
+    s.update(_wordnet_siblings(answer))
+    s.update(_near_length_pool(answer, pool))
+    s = [w for w in s if w.lower()!=answer.lower() and 2 < len(w) < 60]
+    s = [w for w in s if len(w.split()) <= 8]
+    # Avoid overly generic distractors
+    ban = {"none of the above","all of the above","both a and b","neither a nor b"}
+    s = [w for w in s if w.lower() not in ban]
+    return s[:max_n]
+
+def _clean_fact(s):
+    s = s.strip().replace("\u00ad", "")  # soft hyphen
+    s = re.sub(r"\s+", " ", s)
+    s = s.strip(" .;:")
+    return s
+
+def _candidate_facts(source_text, want=120):
+    # TF-IDF + noun phrases + short sentences → candidates
+    keys = tfidf_keyphrases(source_text, top_k=want//2 + 30)
+    nps  = _noun_phrases(source_text, cap=want)
+    facts = []
+    for t in keys + nps:
+        t = _clean_fact(t)
+        if len(t) < 3: continue
+        if t not in facts:
+            facts.append(t)
+        if len(facts) >= want: break
+    # also pull short sentences as fallbacks
+    for s in [x.strip() for x in re.split(r"[\.!?]\s+", source_text)]:
+        if 6 <= len(s.split()) <= 18 and s not in facts:
+            facts.append(s)
+            if len(facts) >= want + 40: break
+    return facts
+
+def _stem_templates(term, context_keys, focus_tier="MED"):
+    ck = ", ".join(context_keys[:4]) if context_keys else "the topic"
+    t  = term
+    # Difficulty nudged by focus tier
+    if focus_tier == "LOW":
+        return [
+            (f"Select the **best definition** of **{t}**:",
+             lambda ans: (ans, f"A concept unrelated to {ck}", f"An opposite of {ans}", f"A vague example without structure")),
+            (f"Which statement about **{t}** is **TRUE**?",
+             lambda ans: (ans, f"{t} is unrelated to {ck}", f"{t} always contradicts best practice", f"{t} is purely hypothetical")),
+        ]
+    if focus_tier == "HIGH":
+        return [
+            (f"Which option **best justifies** using **{t}** in practice?",
+             lambda ans: (ans, f"It replaces all checks with guesswork", f"It ignores constraints about {ck}", f"It randomises decisions")),
+            (f"Which statement is the **most accurate critique** of poor use of **{t}**?",
+             lambda ans: (ans, f"It proves {t} is unnecessary", f"It shows {t} should never be planned", f"It means outcomes are always optimal")),
+        ]
+    # MED default
+    return [
+        (f"Which statement about **{t}** is **TRUE**?",
+         lambda ans: (ans, f"{t} is unrelated to {ck}", f"{t} is purely theoretical with no use", f"{t} always means the opposite")),
+        (f"What is the **primary purpose** of **{t}** in this module?",
+         lambda ans: (ans, f"To minimise {t}", f"To randomise {t}", f"To remove the need for {t}")),
+        (f"Which option **best completes** the statement: *In practice, {t} helps to…*",
+         lambda ans: (ans, f"…avoid all planning for {t}", f"…ignore {ck}", f"…replace checks with guesswork")),
+        (f"Select the **best definition** of **{t}**:",
+         lambda ans: (ans, f"A concept unrelated to {ck}", f"An opposite of {ans}", f"A random example without structure")),
+    ]
+
+def build_mcq_from_term(term, distractor_bank, rng, context_keys, focus_tier="MED"):
+    term = _clean_fact(term)
+    answer = term
+    templates = _stem_templates(term, context_keys, focus_tier)
+    stem, make_options = templates[rng.randrange(len(templates))]
+    base_choices = list(make_options(answer))
+    extra = plausible_distractors(answer, distractor_bank, max_n=10)
+    # Merge and de-duplicate while keeping first as correct
+    seen = set()
+    merged = []
+    for ch in base_choices + extra:
+        c = normalise_spaces(ch)
+        if not c or c.lower() in seen:
+            continue
+        seen.add(c.lower()); merged.append(c)
+        if len(merged) >= 8: break
+    # Ensure at least 4 options
+    if len(merged) < 4:
+        for w in distractor_bank:
+            w = normalise_spaces(w)
+            if w.lower() == answer.lower(): 
+                continue
+            if w.lower() not in seen and len(w.split()) <= 8:
+                seen.add(w.lower()); merged.append(w)
+            if len(merged) >= 4: break
+    rng.shuffle(merged)
+    # Guarantee answer present; if not, swap in
+    if answer not in merged:
+        merged[0] = answer
+        rng.shuffle(merged)
+    choices = merged[:4]
+    key = "ABCD"[choices.index(answer)] if answer in choices else "A"
+    # Guardrails: keep options concise & distinct
+    choices = [c[:120] for c in choices]
+    if len(set([c.lower() for c in choices])) < 4:
+        # backfill uniqueness
+        fill = [w for w in distractor_bank if w.lower() not in [c.lower() for c in choices] and 2 < len(w) <= 60]
+        for i in range(4):
+            if sum(1 for _ in [choices[j] for j in range(4) if j!=i and choices[j].lower()==choices[i].lower()])>0 and fill:
+                choices[i] = fill.pop(0)
+        if answer not in choices:
+            choices[0] = answer
+            rng.shuffle(choices)
+            key = "ABCD"[choices.index(answer)]
+    return {"stem": stem, "choices": choices, "key": key}
+
+def generate_mcqs(source_text, num_qs, seed_tuple, focus_tier="MED"):
+    rng = random.Random(stable_seed(*seed_tuple, jitter_minutes=0))
+    facts = _candidate_facts(source_text, want=max(120, num_qs*10))
+    context_keys = tfidf_keyphrases(source_text, top_k=12)
+    mcqs, used = [], set()
+    for term in facts:
+        tnorm = term.lower()
+        if tnorm in used: 
+            continue
+        q = build_mcq_from_term(term, facts, rng, context_keys, focus_tier)
+        # Filters
+        if any(len(c.split())>16 for c in q["choices"]): 
+            continue
+        if re.search(rf"\b{re.escape(term)}\b", q["stem"], re.I) and q["stem"].lower().count(term.lower())>1:
+            continue
+        used.add(tnorm); mcqs.append(q)
         if len(mcqs) >= num_qs: break
+    # Safety backfill
+    while len(mcqs) < num_qs and facts:
+        t = facts.pop(0)
+        mcqs.append(build_mcq_from_term(t, facts, rng, context_keys, focus_tier))
     return mcqs
 
+# --------------------------- Activities / Revision -------------------
 def generate_activities(topic, verbs, minutes_list, source_text):
-    acts=[]; mats = ["whiteboard","markers","laptop","handout"]
-    scaffolds = {
-        "LOW" : "Quick-check recall: Using your notes, {} for {}.",
-        "MED" : "Pair task: {} and apply it to a short scenario about {}.",
-        "HIGH": "Mini project: {} to design/justify an approach for {}."
-    }
+    acts=[]
+    mats = ["whiteboard","markers","laptop","handout"]
+    def prompt_for(verb, lvl):
+        if lvl=="LOW":
+            return f"Quick check: **{verb}** the key idea(s) for **{topic or 'this lesson'}**."
+        if lvl=="MED":
+            return f"Pair task: **use {verb}** on a short scenario about **{topic or 'this lesson'}**."
+        return f"Mini-project: **{verb}** a solution and justify choices for **{topic or 'this lesson'}**."
     for minutes in minutes_list:
         level = "LOW" if minutes<=15 else ("MED" if minutes<=30 else "HIGH")
         verb = (verbs.get(level) or ["identify","apply","design"])[0]
         acts.append({
             "title": f"{verb.title()} — {minutes} min",
             "minutes": minutes,
-            "task": scaffolds[level].format(verb, topic or "this lesson"),
+            "task": prompt_for(verb, level),
             "materials": mats[:2] if level!="HIGH" else mats,
             "deliverable": "1-slide summary" if level!="HIGH" else "Short design brief"
         })
     return acts
 
 def generate_revision(topic, source_text, k=6):
-    keys = tfidf_keyphrases(source_text, top_k=30)
+    keys = tfidf_keyphrases(source_text, top_k=12)
+    anchors = ", ".join(keys[:6]) if keys else (topic or "the lesson")
     prompts = [
-        f"Explain {topic} in your own words (≤120 words).",
-        f"List 5 key definitions related to {topic}.",
-        f"Sketch a mind-map linking: {', '.join(keys[:6])}.",
-        f"Write 3 exam-style questions on {topic} and answer them.",
-        f"Contrast two similar ideas from this lesson and give an example.",
-        f"Summarise the process steps for one core task in this topic."
+        f"Summarise **{topic or 'the lesson'}** in ≤120 words. Include: {anchors}.",
+        f"Define 5 key terms from **{topic or 'the lesson'}** and give a 1-line example each.",
+        f"Create a 6-step checklist for applying **{topic or 'the lesson'}** in practice.",
+        f"Contrast two closely related ideas from the lesson and provide one worked example.",
+        f"Draft 3 exam-style questions (with answers) covering: {anchors}.",
+        f"Draw a quick flow or mind-map linking: {anchors}."
     ]
     return prompts[:k]
 
@@ -378,7 +487,7 @@ with st.sidebar:
             if upload.name.lower().endswith(".pdf"):
                 with st.spinner("Parsing PDF..."):
                     fb = io.BytesIO(upload.getbuffer())
-                    text, meta = parse_pdf(fb, deep=deep, timeout_s=35 if deep else 15)
+                    text, meta = parse_pdf(fb, deep=deep, timeout_s=38 if deep else 16)
             elif upload.name.lower().endswith(".docx"):
                 with st.spinner("Parsing Word..."):
                     fb = io.BytesIO(upload.getbuffer()); text = parse_docx(fb); meta={}
@@ -436,7 +545,7 @@ st.write(f"**Bloom focus (auto)**  <span class='badge'>Week {week}: {focus_tier.
 # Source text editor on MCQ tab
 with tabs[0]:
     st.caption("Paste or jot key notes, vocab, facts here…")
-    src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=180, label_visibility="collapsed")
+    src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=200, label_visibility="collapsed")
 
 # Verbs UI (pills)
 VERBS = {
@@ -500,7 +609,7 @@ if gen_btn or regen_btn:
             "HIGH": st.session_state.selected_verbs["HIGH"] or VERBS["HIGH"],
         }
         seed_parts = (instructor or "anon", week, lesson, topic or "topic")
-        mcqs = generate_mcqs(src, num_mcqs, seed_parts)
+        mcqs = generate_mcqs(src, num_mcqs, seed_parts, focus_tier=focus_tier)
         acts = generate_activities(topic, tier_verbs, act_times, src)
         rev  = generate_revision(topic or "this lesson", src)
         st.session_state["last_mcqs"]=mcqs
@@ -535,15 +644,66 @@ with col2:
     else:
         st.markdown("<ul>"+ "".join([f"<li>{r}</li>" for r in rev_out]) +"</ul>", unsafe_allow_html=True)
 
-# Downloads
+# ----------------------------- Downloads ----------------------------
 st.divider(); st.subheader("Download")
-title = f"ADI_{week:02d}_W{week}_L{lesson}_{(topic or 'Lesson').strip().replace(' ','_')}"
+def text_to_docx(title, mcqs=None, activities=None, revision=None):
+    doc = DocxDocument()
+    doc.add_heading(title, level=1)
+    if mcqs:
+        doc.add_heading("Multiple-choice questions", level=2)
+        for i,q in enumerate(mcqs,1):
+            doc.add_paragraph(f"{i}. {q['stem']}")
+            for li,opt in zip("ABCD", q["choices"]):
+                doc.add_paragraph(f"{li}. {opt}")
+            doc.add_paragraph(f"Answer: {q['key']}"); doc.add_paragraph("")
+    if activities:
+        doc.add_heading("Skills Activities", level=2)
+        for i,a in enumerate(activities,1):
+            doc.add_paragraph(f"{i}. {a['title']} ({a['minutes']} min)")
+            doc.add_paragraph(a["task"])
+            if a.get("materials"):   doc.add_paragraph("Materials: "+", ".join(a["materials"]))
+            if a.get("deliverable"): doc.add_paragraph("Deliverable: "+a["deliverable"])
+            doc.add_paragraph("")
+    if revision:
+        doc.add_heading("Revision", level=2)
+        for i,r in enumerate(revision,1): doc.add_paragraph(f"{i}. {r}")
+    bio = io.BytesIO(); doc.save(bio); bio.seek(0); return bio
+
+def mcqs_to_gift(mcqs):
+    lines = []
+    for q in mcqs:
+        stem = q["stem"].replace("\n"," ").strip()
+        lines.append(f"::{stem}:: {stem} {{")
+        for li,opt in zip("ABCD", q["choices"]):
+            lines.append((" = " if li==q["key"] else " ~ ")+opt)
+        lines.append("}")
+    return "\n".join(lines)
+
+def mcqs_to_moodle_xml(mcqs, quiz_name="ADI Quiz"):
+    from xml.sax.saxutils import escape
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>','<quiz>']
+    for q in mcqs:
+        lines.append('<question type="multichoice">')
+        lines.append(f"<name><text>{escape(q['stem'][:60])}</text></name>")
+        lines.append(f"<questiontext format=\"html\"><text><![CDATA[{escape(q['stem'])}]]></text></questiontext>")
+        lines.append("<shuffleanswers>1</shuffleanswers><single>true</single>")
+        # correct
+        lines.append(f"<answer fraction=\"100\"><text>{escape(q['choices']['ABCD'.index(q['key'])])}</text></answer>")
+        # distractors
+        for li,opt in zip("ABCD", q["choices"]):
+            if li==q["key"]: continue
+            lines.append(f"<answer fraction=\"0\"><text>{escape(opt)}</text></answer>")
+        lines.append("</question>")
+    lines.append("</quiz>")
+    return "\n".join(lines)
+
+title = lambda: f"ADI_{week:02d}_W{week}_L{lesson}_{(topic or 'Lesson').strip().replace(' ','_')}"
 dl = st.columns([1,1,1,1])
 
 with dl[0]:
     if mcqs_out:
-        docx_buf = text_to_docx(title, mcqs_out, acts_out, rev_out)
-        st.download_button("📄 Download DOCX", data=docx_buf, file_name=f"{title}.docx",
+        docx_buf = text_to_docx(title(), mcqs_out, acts_out, rev_out)
+        st.download_button("📄 Download DOCX", data=docx_buf, file_name=f"{title()}.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                            use_container_width=True)
     else: st.button("📄 Download DOCX", disabled=True, use_container_width=True)
@@ -551,26 +711,26 @@ with dl[0]:
 with dl[1]:
     if mcqs_out:
         gift = mcqs_to_gift(mcqs_out)
-        st.download_button("🎯 Download GIFT", data=gift, file_name=f"{title}.gift",
+        st.download_button("🎯 Download GIFT", data=gift, file_name=f"{title()}.gift",
                            mime="text/plain", use_container_width=True)
     else: st.button("🎯 Download GIFT", disabled=True, use_container_width=True)
 
 with dl[2]:
     if mcqs_out:
-        xml = mcqs_to_moodle_xml(mcqs_out, quiz_name=title)
-        st.download_button("🧩 Moodle XML", data=xml, file_name=f"{title}.xml",
+        xml = mcqs_to_moodle_xml(mcqs_out, quiz_name=title())
+        st.download_button("🧩 Moodle XML", data=xml, file_name=f"{title()}.xml",
                            mime="application/xml", use_container_width=True)
     else: st.button("🧩 Moodle XML", disabled=True, use_container_width=True)
 
 with dl[3]:
     if export_pack and (mcqs_out or acts_out or rev_out):
         pack = {
-            "meta":{"title":title,"week":week,"lesson":lesson,"topic":topic,
+            "meta":{"title":title(),"week":week,"lesson":lesson,"topic":topic,
                     "generated_at":datetime.utcnow().isoformat()+"Z","instructor":instructor},
             "mcqs":mcqs_out,"activities":acts_out,"revision":rev_out
         }
         js = json.dumps(pack, ensure_ascii=False, indent=2)
-        st.download_button("📦 Course Pack JSON", data=js, file_name=f"{title}_pack.json",
+        st.download_button("📦 Course Pack JSON", data=js, file_name=f"{title()}_pack.json",
                            mime="application/json", use_container_width=True)
     else: st.button("📦 Course Pack JSON", disabled=True, use_container_width=True)
 
