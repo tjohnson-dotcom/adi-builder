@@ -1,20 +1,12 @@
 # app.py — ADI Builder (Lessons, MCQs, Activities, Revision)
-# Zero-API, on-prem friendly. Streamlit 1.3x compatible.
-# UI: ADI green header, shaded LOW/MED/HIGH bands, large pill-style verbs.
-# Features: Robust parsing (PDF/DOCX/PPTX), MCQs, Activities, Revision,
-# DOCX + GIFT + Moodle XML downloads, optional Course Pack JSON.
+# Zero-API, on-prem friendly. Streamlit 1.3x+ compatible.
 
-import os
-import io
-import json
-import time
-import random
-import hashlib
+import os, io, json, time, random, hashlib
 from datetime import datetime
 
 import streamlit as st
 
-# ---- Streamlit rerun compatibility (fixes experimental_rerun crash) ---
+# ---- Streamlit rerun compatibility (some stacks renamed API) -----------
 if not hasattr(st, "experimental_rerun"):
     st.experimental_rerun = st.rerun
 # -----------------------------------------------------------------------
@@ -36,22 +28,17 @@ for pkg, dl in [
     ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
     ("corpora/wordnet", "wordnet"),
 ]:
-    try:
-        nltk.data.find(pkg)
-    except LookupError:
-        nltk.download(dl)
+    try: nltk.data.find(pkg)
+    except LookupError: nltk.download(dl)
 
 # ----------------- Theme / CSS -----------------------------------------
 ADI_GREEN = "#245a34"
-SHADE_LOW = "rgba(36,90,52,0.06)"
-SHADE_MED = "rgba(36,90,52,0.08)"
+SHADE_LOW  = "rgba(36,90,52,0.06)"
+SHADE_MED  = "rgba(36,90,52,0.08)"
 SHADE_HIGH = "rgba(36,90,52,0.06)"
 
-st.set_page_config(
-    page_title="ADI Builder — Lesson Activities & Questions",
-    page_icon="🧰",
-    layout="wide",
-)
+st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
+                   page_icon="🧰", layout="wide")
 
 CUSTOM_CSS = f"""
 <style>
@@ -63,27 +50,21 @@ CUSTOM_CSS = f"""
 .stTabs [data-baseweb="tab-highlight"] {{
   background: linear-gradient(90deg,{ADI_GREEN} 0%, {ADI_GREEN} 100%);
 }}
-
 /* Shaded Bloom bands */
 .band-low  {{ background:{SHADE_LOW};  border-radius:10px; padding:10px 14px; }}
 .band-med  {{ background:{SHADE_MED};  border-radius:10px; padding:10px 14px; }}
 .band-high {{ background:{SHADE_HIGH}; border-radius:10px; padding:10px 14px; }}
-
 /* Informational chips */
-.badge {{
-  display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px;
-}}
-
+.badge {{ display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px; }}
 /* Parse result boxes */
 .parse-ok   {{ border-left:4px solid {ADI_GREEN}; background:#f1f7f3; padding:10px 12px; border-radius:6px; }}
 .parse-warn {{ border-left:4px solid #c07d00;  background:#fff9e8; padding:10px 12px; border-radius:6px; }}
 
-/* ===== Verb pills (checkbox-as-pill) ===== */
-.verb-wrap {{ margin: 6px 0 2px 0; }}
-div[data-testid="stCheckbox"].adi-verb {{
-  display:inline-block; margin:8px 10px 4px 0;
+/* ===== Verb pills (checkbox-as-pill) – CSS-only, scoped to #verbs ===== */
+#verbs div[data-testid="stCheckbox"] {{
+  display:inline-block; margin:8px 10px 6px 0;
 }}
-div[data-testid="stCheckbox"].adi-verb > label {{
+#verbs div[data-testid="stCheckbox"] > label {{
   display:inline-block;
   border:1px solid #e8e8e8;
   background:#f8f8f7;
@@ -94,13 +75,14 @@ div[data-testid="stCheckbox"].adi-verb > label {{
   cursor:pointer;
   transition:all .12s ease-in-out;
 }}
-div[data-testid="stCheckbox"].adi-verb > div {{ display:none; }} /* hide default box */
-div[data-testid="stCheckbox"].adi-verb > label:hover {{ background:#efefee; }}
-div[data-testid="stCheckbox"].adi-verb input:checked + label {{
+#verbs div[data-testid="stCheckbox"] > div {{ display:none; }} /* hide the default square box */
+#verbs div[data-testid="stCheckbox"] > label:hover {{ background:#efefee; }}
+/* selected state */
+#verbs div[data-testid="stCheckbox"] input:checked + label {{
   background:{ADI_GREEN}; color:#fff; border-color:{ADI_GREEN};
 }}
 
-/* Bigger action buttons */
+/* Larger primary buttons */
 .stButton > button[kind="primary"], .stButton > button {{
   border-radius:10px; padding:10px 16px; font-weight:600;
 }}
@@ -132,7 +114,7 @@ def tfidf_keyphrases(text, top_k=25):
     X = vect.fit_transform(docs if len(docs)>1 else docs+[" "])
     scores = X.toarray().sum(axis=0)
     terms = vect.get_feature_names_out()
-    ranked = sorted(zip(terms, scores), key=lambda x: x[1], reverse=True)
+    ranked = sorted(zip(terms, scores), key=lambda x:x[1], reverse=True)
     return [t for t,_ in ranked[:top_k]]
 
 def noun_verb_terms(text, limit=40):
@@ -159,7 +141,8 @@ def plausible_distractors(answer, pool):
     ds = set(antonyms(answer))
     alen = len(answer)
     for w in pool:
-        if w.lower()==answer.lower(): continue
+        lw = w.lower()
+        if lw==answer.lower(): continue
         if abs(len(w)-alen)<=2: ds.add(w)
         if len(ds)>=12: break
     return [d for d in ds if d.lower()!=answer.lower()][:12]
@@ -191,7 +174,7 @@ def text_to_docx(title, mcqs=None, activities=None, revision=None):
         for i,a in enumerate(activities,1):
             doc.add_paragraph(f"{i}. {a['title']} ({a['minutes']} min)")
             doc.add_paragraph(a["task"])
-            if a.get("materials"): doc.add_paragraph("Materials: "+", ".join(a["materials"]))
+            if a.get("materials"):   doc.add_paragraph("Materials: "+", ".join(a["materials"]))
             if a.get("deliverable"): doc.add_paragraph("Deliverable: "+a["deliverable"])
             doc.add_paragraph("")
     if revision:
@@ -266,7 +249,7 @@ def generate_mcqs(source_text, num_qs, seed_tuple):
     mcqs=[]
     for cand in bank:
         q = build_mcq_from_fact(cand, bank, rng)
-        if any(len(c.split())>20 for c in q["choices"]):  # keep snappy
+        if any(len(c.split())>20 for c in q["choices"]):
             continue
         mcqs.append(q)
         if len(mcqs) >= num_qs: break
@@ -303,7 +286,7 @@ def generate_revision(topic, source_text, k=6):
     ]
     return prompts[:k]
 
-# ----------------- UI pieces -------------------------------------------
+# ----------------- UI helpers ------------------------------------------
 def header():
     st.markdown(f"""
     <div class="adi-banner">
@@ -321,7 +304,7 @@ def endband():
 
 # ----------------- State -----------------------------------------------
 if "parsed_text" not in st.session_state: st.session_state.parsed_text = ""
-if "parse_meta" not in st.session_state:  st.session_state.parse_meta = {}
+if "parse_meta"  not in st.session_state: st.session_state.parse_meta  = {}
 if "selected_verbs" not in st.session_state:
     st.session_state.selected_verbs = {"LOW":[], "MED":[], "HIGH":[]}
 
@@ -333,7 +316,7 @@ tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 with st.sidebar:
     st.subheader("Upload (optional)")
     upload = st.file_uploader("Drag and drop file here", type=["pdf","docx","pptx"], label_visibility="collapsed")
-    deep = st.checkbox("Deep scan (all pages, slower)", value=True, help="Scans more pages with timeouts")
+    deep   = st.checkbox("Deep scan (all pages, slower)", value=True, help="Scans more pages with timeouts")
     if upload is not None:
         stat = st.empty()
         try:
@@ -390,7 +373,7 @@ VERBS = {
     "HIGH":["evaluate","synthesize","design","justify","critique","create"]
 }
 
-# -------- Verb band renderer (checkbox-as-pill) --------
+# -------- Verb bands (checkboxes styled as pills, scoped in #verbs) -----
 def render_verb_band(level):
     title = {
         "LOW":"LOW (Weeks 1–4): Remember / Understand",
@@ -398,30 +381,24 @@ def render_verb_band(level):
         "HIGH":"HIGH (Weeks 10–14): Evaluate / Create"
     }[level]
     band(title, level)
-    st.markdown('<div class="verb-wrap">', unsafe_allow_html=True)
     for v in VERBS[level]:
         key = f"verb_{level}_{v}"
         default = v in st.session_state.selected_verbs[level]
-        # We wrap the checkbox in a container Streamlit renders; our CSS styles it as a pill.
         checked = st.checkbox(v.title(), value=default, key=key, label_visibility="visible")
-        # add the class to the last rendered checkbox node via HTML (Streamlit doesn't expose classes directly)
-        st.markdown(
-            "<script>(function(){const els=[...window.parent.document.querySelectorAll('div[data-testid=\"stCheckbox\"]')];"
-            "if(els.length){els[els.length-1].classList.add('adi-verb');}})();</script>",
-            unsafe_allow_html=True
-        )
         if checked and v not in st.session_state.selected_verbs[level]:
             st.session_state.selected_verbs[level].append(v)
         if not checked and v in st.session_state.selected_verbs[level]:
             st.session_state.selected_verbs[level].remove(v)
-    st.markdown('</div>', unsafe_allow_html=True)
     endband()
 
+# Wrap all verb checkboxes in a div so CSS can target them without JS
+st.markdown('<div id="verbs">', unsafe_allow_html=True)
 render_verb_band("LOW")
 render_verb_band("MED")
 render_verb_band("HIGH")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Subtle outline for current focus tier (JS)
+# Subtle outline for current focus tier
 st.markdown(
     f"""<script>
 const tier="{focus_tier}";
@@ -462,8 +439,8 @@ if gen_btn or regen_btn:
 
 # Output
 mcqs_out = st.session_state.get("last_mcqs", [])
-acts_out = st.session_state.get("last_acts", [])
-rev_out  = st.session_state.get("last_rev",  [])
+acts_out  = st.session_state.get("last_acts", [])
+rev_out   = st.session_state.get("last_rev",  [])
 
 st.divider(); st.subheader("Preview")
 col1, col2 = st.columns([1.2,0.8], gap="large")
