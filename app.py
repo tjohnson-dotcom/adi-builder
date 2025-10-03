@@ -1,4 +1,4 @@
-# app.py (ADI Builder — green-locked + auto-parse + MCQs/Activities)
+# app.py (ADI Builder — green-locked UI + compact selects + MCQs/Activities + ZIP export)
 # Requires (pin in requirements.txt):
 #   streamlit==1.37.1
 #   python-docx==1.1.2
@@ -7,7 +7,7 @@
 #   pdfminer.six==20240706
 
 from io import BytesIO
-import base64, random, re
+import base64, random, re, zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -135,7 +135,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---------------- Text & generators ----------------
+# ---------------- Helpers & generators ----------------
 STOP = set("the a an and or for with from by to of on in at is are were was be as it its this that these those which who whom whose what when where why how".split())
 
 def _clean(t: str) -> str:
@@ -250,7 +250,7 @@ ACT_SHELLS = [
     ("Jigsaw Teaching", "expert groups", "synthesis"),
 ]
 
-def activity_from(verb: str, focus: str, topic: str) -> dict:
+def activity_from(verb: str, focus: str, topic: str, minutes: int) -> dict:
     name, grouping, assess = random.choice(ACT_SHELLS)
     title = f"{name} — {verb.title()}"
     objective = f"Students will {verb} key ideas in {topic or 'the topic'} ({focus} focus)."
@@ -261,17 +261,19 @@ def activity_from(verb: str, focus: str, topic: str) -> dict:
     ]
     if focus == "High":
         steps.append("Extend: justify choices using agreed criteria; connect to prior learning.")
-    materials = ["Slide or short text prompt", "Timer"]
-    diff = "Provide scaffolds (sentence starters/examples) and add challenge questions."
-    assessment = f"Observe {assess} with a short checklist aligned to {verb}."
     return {
-        "title": title, "objective": objective, "steps": steps,
-        "materials": materials, "differentiation": diff, "assessment": assessment
+        "title": title,
+        "objective": objective,
+        "steps": steps,
+        "materials": ["Slide or short text prompt", "Timer"],
+        "differentiation": "Provide scaffolds (sentence starters/examples) and add challenge questions.",
+        "assessment": f"Observe {assess} with a short checklist aligned to {verb}.",
+        "minutes": minutes,
     }
 
-def gen_activities(topic: str, focus: str, verbs: list[str], n: int = 3):
+def gen_activities(topic: str, focus: str, verbs: list[str], n: int = 3, minutes: int = 10):
     verbs = verbs or ["define", "apply", "evaluate"]
-    return [activity_from(verbs[i % len(verbs)], focus, topic) for i in range(n)]
+    return [activity_from(verbs[i % len(verbs)], focus, topic, minutes) for i in range(n)]
 
 def acts_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
     doc = DocxDocument()
@@ -288,6 +290,7 @@ def acts_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
     )
     for i, a in enumerate(acts, 1):
         doc.add_paragraph(f"{i}. {a['title']}")
+        doc.add_paragraph(f"Time: {a.get('minutes', 10)} minutes")  # show timing
         doc.add_paragraph(f"Objective: {a['objective']}")
         doc.add_paragraph("Steps:")
         for s in a["steps"]:
@@ -297,6 +300,14 @@ def acts_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph(f"Assessment: {a['assessment']}")
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
+
+# ZIP helper for combined download
+def make_zip(files: list[tuple[str, bytes]]) -> bytes:
+    bio = BytesIO()
+    with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in files:
+            z.writestr(name, data)
+    return bio.getvalue()
 
 # ---------------- Extraction ----------------
 def _truncate(t: str, n: int = 12000) -> str:
@@ -343,12 +354,13 @@ def extract_upload(name: str, data: bytes) -> str:
     if ext in (".pptx", ".ppt"): return extract_pptx(data)
     return ""
 
-# ---------------- Sidebar (auto-parse, debounced toast) ----------------
+# ---------------- Sidebar (upload + compact select for MCQ count) ----------------
 with st.sidebar:
     if "uploaded_file_bytes" not in st.session_state:
         st.session_state.update(dict(
             uploaded_file_bytes=None, uploaded_filename=None, uploaded_size=0,
-            extracted_text="", use_extracted_auto=False, last_toast_key=""
+            extracted_text="", use_extracted_auto=False, last_toast_key="",
+            mcq_count_select=5
         ))
 
     upl = st.file_uploader("Drag and drop file here", type=["pdf","docx","pptx"],
@@ -370,7 +382,6 @@ with st.sidebar:
         st.session_state.extracted_text = extracted
         st.session_state.use_extracted_auto = bool(extracted.strip())
 
-        # Debounce the toast (reduces flicker)
         key = f"{upl.name}:{bool(extracted.strip())}"
         if st.session_state.last_toast_key != key:
             st.session_state.last_toast_key = key
@@ -394,12 +405,16 @@ with st.sidebar:
     lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
     week   = st.selectbox("Week",   options=list(range(1, 15)), index=6)
 
+    # Compact select for MCQ count
     st.markdown("---")
-    st.markdown("### Quick pick blocks")
-    cols = st.columns(5)
-    picks = [cols[i].checkbox(v, value=(i==0)) for i, v in enumerate(["5","10","15","20","30"])]
-    target_n = [5,10,15,20,30][[i for i,b in enumerate(picks) if b][-1] if any(picks) else 0]
-    st.caption(f"Items selected: **{target_n}**")
+    st.markdown("### Number of MCQs")
+    target_n = st.selectbox(
+        "How many questions?",
+        options=[5, 10, 15, 20, 30],
+        index=[5,10,15,20,30].index(st.session_state.get("mcq_count_select", 5)),
+        key="mcq_count_select",
+    )
+    st.caption("Typical handout: 10–15")
 
 # ---------------- Header ----------------
 st.markdown(
@@ -430,6 +445,7 @@ with tab1:
     c1, c2 = st.columns([2, 1])
     with c1:
         topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
+        st.session_state["topic_last"] = topic  # remember for Downloads/Activities
     with c2:
         focus = focus_for_week(week)
         badge = {"Low":"week-low","Medium":"week-medium","High":"week-high"}[focus]
@@ -474,7 +490,6 @@ with tab1:
             active = st.session_state.verb_states.get(v, False)
             if cols[i % 6].button(v, key=f"pill-{v}", use_container_width=True):
                 st.session_state.verb_states[v] = not active
-            # Style the button as a pill (JS only changes classes; no rerun)
             st.markdown(
                 f"""
                 <script>
@@ -501,16 +516,13 @@ with tab1:
     if cH.button("HIGH", use_container_width=True):
         st.session_state.verb_states = {v: (v in HIGH) for v in st.session_state.verb_states}
 
-    gen = st.button("✨ Generate MCQs", type="primary")
+    gen = st.button("✨ Generate MCQs", type="primary", disabled=not ((src or "").strip() or st.session_state.extracted_text.strip()))
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
 
     if gen:
         text = (src or "").strip() or st.session_state.extracted_text.strip()
-        if not text:
-            st.warning("Please add source text (or upload a text-based PDF/DOCX/PPTX).")
-        else:
-            st.session_state.mcqs = gen_mcqs(text, n=target_n, verbs=chosen_verbs, seed=42)
-            st.toast("MCQs generated", icon="✨")
+        st.session_state.mcqs = gen_mcqs(text, n=st.session_state.get("mcq_count_select", 5), verbs=chosen_verbs, seed=42)
+        st.toast("MCQs generated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
     if mcqs:
@@ -524,7 +536,7 @@ with tab1:
             st.caption(f"Answer: **{letters[q['answer']]}**  •  Bloom: **{q['bloom']}**")
         st.download_button(
             "⬇️ Export to Word (DOCX)",
-            data=mcqs_docx(mcqs, topic, lesson, week),
+            data=mcqs_docx(mcqs, st.session_state.get("topic_last",""), lesson, week),
             file_name=f"ADI_MCQs_L{lesson}_W{week}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
@@ -537,18 +549,27 @@ with tab2:
     st.caption("Generated from your Week focus and selected Bloom verbs.")
 
     topic2   = st.text_input("Topic / Context (optional)", key="topic2")
-    howmany  = st.slider("How many activities?", 1, 6, 3)
+    st.session_state["topic2_value"] = topic2
+
+    colN, colT = st.columns([1, 1])
+    with colN:
+        howmany = st.selectbox("Number of activities", options=[1, 2, 3, 4], index=2, key="act_count")
+    with colT:
+        minutes = st.selectbox("Time per activity (mins)", options=[5, 10, 15, 20], index=1, key="act_minutes")
 
     if st.button("🧩 Generate Activities", type="secondary"):
         focus = focus_for_week(week)
         chosen = [v for v, on in st.session_state.verb_states.items() if on]
-        st.session_state.activities = gen_activities(topic2 or topic, focus, chosen, n=howmany)
+        st.session_state.activities = gen_activities(
+            topic2 or st.session_state.get("topic_last",""),
+            focus, chosen, n=howmany, minutes=minutes
+        )
         st.toast("Activities generated", icon="🧩")
 
     acts = st.session_state.get("activities", [])
     if acts:
         for i, a in enumerate(acts, 1):
-            st.write(f"**{i}. {a['title']}**")
+            st.write(f"**{i}. {a['title']}**  ·  ⏱️ *{a['minutes']} mins*")
             st.write(f"*Objective:* {a['objective']}")
             st.write("**Steps:**")
             for s in a["steps"]:
@@ -557,11 +578,28 @@ with tab2:
             st.write(f"*Differentiation:* {a['differentiation']}")
             st.write(f"*Assessment:* {a['assessment']}")
             st.markdown("---")
+
         st.download_button(
             "⬇️ Export Activities (DOCX)",
-            data=acts_docx(acts, topic2 or topic, lesson, week),
+            data=acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week),
             file_name=f"ADI_Activities_L{lesson}_W{week}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    # Combined ZIP when both exist
+    mcqs_zip = st.session_state.get("mcqs", [])
+    if mcqs_zip and acts:
+        mcq_doc = mcqs_docx(mcqs_zip, st.session_state.get("topic_last",""), lesson, week)
+        acts_doc = acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week)
+        zip_bytes = make_zip([
+            (f"ADI_MCQs_L{lesson}_W{week}.docx", mcq_doc),
+            (f"ADI_Activities_L{lesson}_W{week}.docx", acts_doc),
+        ])
+        st.download_button(
+            "⬇️ Download MCQs + Activities (ZIP)",
+            data=zip_bytes,
+            file_name=f"ADI_Pack_L{lesson}_W{week}.zip",
+            mime="application/zip",
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -570,5 +608,5 @@ with tab3:
     st.markdown('<div class="adi-card">', unsafe_allow_html=True)
     st.markdown("### Revision")
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
-    st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
+    st.write("• Tip: Use **Number of MCQs** in the sidebar to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
