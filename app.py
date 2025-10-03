@@ -27,6 +27,17 @@ except Exception:
 
 import xml.etree.ElementTree as ET
 
+def _rerun():
+    """Works on both new and old Streamlit versions."""
+    try:
+        st.rerun()                     # Streamlit ≥1.27
+    except Exception:
+        try:
+            st.experimental_rerun()    # older Streamlit
+        except Exception:
+            pass
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Theming
 # ──────────────────────────────────────────────────────────────────────────────
