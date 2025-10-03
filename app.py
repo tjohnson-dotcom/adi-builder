@@ -1,33 +1,37 @@
 # app.py — ADI Builder (Lessons, MCQs, Activities, Revision)
-# Streamlit 1.29+; Zero-API; on-prem friendly
+# Streamlit 1.29+; Zero external LLM/API; on-prem friendly
 
 import os, io, json, time, random, hashlib
 from datetime import datetime
 
 import streamlit as st
 
-# ---------------- Rerun compatibility ----------------
+# -------------------------------------------------------------------
+# Streamlit rerun compatibility (experimental_rerun → rerun in newer versions)
+# -------------------------------------------------------------------
 if not hasattr(st, "experimental_rerun"):
     st.experimental_rerun = st.rerun
 
-# ---------------- Parsing libs -----------------------
-import fitz  # PyMuPDF
+# ------------------------- File parsing libs ------------------------
+import fitz                      # PyMuPDF (PDF)
 from docx import Document as DocxDocument
 from pptx import Presentation
 
-# ---------------- NLP / NLTK (race-safe bootstrap) ---
+# -------------------------- NLTK bootstrap --------------------------
+# Robust, race-safe bootstrap that works on Render/containers without errors
 import nltk
 NLTK_DIR = os.environ.get("NLTK_DATA", "/opt/render/nltk_data")
 os.environ["NLTK_DATA"] = NLTK_DIR
 os.makedirs(NLTK_DIR, exist_ok=True)
 
-def _ensure_nltk(pkg_path: str, names: list[str]):
+def _ensure_nltk(pkg_path: str, name_candidates: list[str]):
+    """Ensure an NLTK resource exists (safe if multiple workers init at once)."""
     try:
         nltk.data.find(pkg_path)
         return
     except LookupError:
         pass
-    for nm in names:
+    for nm in name_candidates:
         try:
             nltk.download(nm, download_dir=NLTK_DIR, quiet=True, raise_on_error=False)
             nltk.data.find(pkg_path)
@@ -35,6 +39,7 @@ def _ensure_nltk(pkg_path: str, names: list[str]):
         except Exception:
             continue
 
+# Support classic & new names across NLTK versions
 _ensure_nltk("tokenizers/punkt", ["punkt", "punkt_tab"])
 _ensure_nltk("taggers/averaged_perceptron_tagger",
              ["averaged_perceptron_tagger", "averaged_perceptron_tagger_eng"])
@@ -44,7 +49,47 @@ from nltk.corpus import wordnet as wn
 from nltk import word_tokenize, pos_tag
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# ---------------- Theme / CSS ------------------------
+# ----------------------- ADI catalog & staff ------------------------
+COURSE_CATALOG = {
+    "Cohort 1: T3-24-25 (D1)": [
+        ("GE4-EPM", "Defense Technology Practices: Experimentation, Quality Management and Inspection"),
+        ("GE4-IPM", "Integrated Project and Materials Management in Defense Technology"),
+        ("GE4-MRO", "Military Vehicle and Aircraft MRO: Principles & Applications"),
+        ("CT4-COM", "Computation for Chemical Technologists"),
+        ("CT4-EMG", "Explosives Manufacturing"),
+        ("CT4-TFL", "Thermofluids"),
+        ("MT4-CMG", "Composite Manufacturing"),
+        ("MT4-CAD", "Computer Aided Design"),
+        ("MT4-MAE", "Machine Elements"),
+        ("EE4-MFC", "Electrical Materials"),
+        ("EE4-PMG", "PCB Manufacturing"),
+        ("EE4-PCT", "Power Circuits & Transmission"),
+    ],
+    "Cohort 2: T3-24-25 (D1)": [
+        ("MT5-MPD", "Mechanical Product Dissection"),
+        ("MT5-AST", "Assembly Technology"),
+        ("MT5-AVM", "Aviation Maintenance"),
+        ("MT5-HYP", "Hydraulics and Pneumatics"),
+        ("MT5-CAD", "Computer Aided Design and Additive Manufacturing"),
+        ("MT5-CNC", "Industrial Machining"),
+        ("CT5-TCE", "Thermochemistry of Explosives"),
+        ("CT5-SET", "Separation Technologies 1"),
+        ("CT5-POT", "Explosives Plant Operations and Troubleshooting"),
+        ("CT5-COT", "Coating Technologies"),
+        ("CT5-LAB", "Chemical Technology Laboratory Techniques"),
+        ("CT5-CPT", "Chemical Process Technology"),
+    ],
+}
+
+STAFF_ROSTER = [
+    "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ","FAIZ LAZAM ALSHAMMARI",
+    "DR. MASHAEL ALSHAMMARI","AHMED ALBADER","Noura Aldossari","Ahmed Gasem Alharbi",
+    "Mohammed Saeed Alfarhan","Abdulmalik Halawani","Dari AlMutairi","Meshari AlMutrafi",
+    "Myra Crawford","Meshal Alghurabi","Ibrahim Alrawili","Michail Mavroftas","Gerhard Van der Poel",
+    "Khalil Razak","Mohammed Alwuthylah","Rana Ramadan","Salem Saleh Subaih","Barend Daniel Esterhuizen",
+]
+
+# ----------------------------- Theme --------------------------------
 ADI_GREEN = "#245a34"
 SHADE_LOW  = "rgba(36,90,52,0.06)"
 SHADE_MED  = "rgba(36,90,52,0.08)"
@@ -55,38 +100,45 @@ st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
 
 CUSTOM_CSS = f"""
 <style>
+/* Banner + tabs */
 .adi-banner {{
   background:{ADI_GREEN}; color:#fff; border-radius:10px; padding:16px 18px; font-weight:600;
 }}
 .stTabs [data-baseweb="tab-highlight"] {{
   background: linear-gradient(90deg,{ADI_GREEN} 0%, {ADI_GREEN} 100%);
 }}
+.badge {{ display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px; }}
+
+/* Shaded bands */
 .band-low  {{ background:{SHADE_LOW};  border-radius:10px; padding:10px 14px; }}
 .band-med  {{ background:{SHADE_MED};  border-radius:10px; padding:10px 14px; }}
 .band-high {{ background:{SHADE_HIGH}; border-radius:10px; padding:10px 14px; }}
-.badge {{ display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px; }}
+
+/* Upload parse status */
 .parse-ok   {{ border-left:4px solid {ADI_GREEN}; background:#f1f7f3; padding:10px 12px; border-radius:6px; }}
 .parse-warn {{ border-left:4px solid #c07d00;  background:#fff9e8; padding:10px 12px; border-radius:6px; }}
 
-/* Pill checkboxes for verbs (CSS-only, scoped to #verbs) */
-#verbs div[data-testid="stCheckbox"] {{ display:inline-block; margin:8px 10px 6px 0; }}
-#verbs div[data-testid="stCheckbox"] > label {{
-  display:inline-block; border:1px solid #e8e8e8; background:#f8f8f7; color:#333;
-  padding:10px 18px; border-radius:999px; font-weight:500; cursor:pointer; transition:all .12s;
+/* Buttons */
+.stButton > button {{ border-radius:10px; padding:10px 16px; font-weight:600; }}
+
+/* --- Pill checkboxes (robust across Streamlit versions) --- */
+#verbs [role="checkbox"]{{
+  display:inline-block; margin:8px 10px 6px 0;
 }}
-#verbs div[data-testid="stCheckbox"] > div {{ display:none; }} /* hide square box */
-#verbs div[data-testid="stCheckbox"] > label:hover {{ background:#efefee; }}
-#verbs div[data-testid="stCheckbox"] input:checked + label {{
+#verbs [role="checkbox"] input{{ display:none; }}   /* hide square box */
+#verbs [role="checkbox"] label{{
+  display:inline-block; border:1px solid #e8e8e8; background:#f8f8f7; color:#333;
+  padding:10px 18px; border-radius:999px; font-weight:600; cursor:pointer; transition:all .12s;
+}}
+#verbs [role="checkbox"]:hover label{{ background:#efefee; }}
+#verbs [role="checkbox"][aria-checked="true"] label{{
   background:{ADI_GREEN}; color:#fff; border-color:{ADI_GREEN};
 }}
-
-/* Bigger buttons */
-.stButton > button {{ border-radius:10px; padding:10px 16px; font-weight:600; }}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# ---------------- Helpers ----------------------------
+# --------------------------- Helpers -------------------------------
 def stable_seed(*parts, jitter_minutes=0):
     base = "|".join(map(str, parts))
     if jitter_minutes:
@@ -209,7 +261,7 @@ def mcqs_to_moodle_xml(mcqs, quiz_name="ADI Quiz"):
     lines.append("</quiz>")
     return "\n".join(lines)
 
-# ---------------- Parsing ----------------------------
+# ----------------------------- Parsing ------------------------------
 def parse_pdf(file_buf, deep=False, max_pages=60, timeout_s=20):
     start = time.time(); text=[]; parsed=0; total=0
     with fitz.open(stream=file_buf.read(), filetype="pdf") as d:
@@ -237,7 +289,7 @@ def parse_pptx(file_buf):
             if hasattr(sh,"text"): out.append(sh.text)
     return "\n".join(out)
 
-# ---------------- Generators -------------------------
+# --------------------------- Generators -----------------------------
 def generate_mcqs(source_text, num_qs, seed_tuple):
     rng = random.Random(stable_seed(*seed_tuple))
     phrases = tfidf_keyphrases(source_text, top_k=max(30, num_qs*4))
@@ -286,7 +338,7 @@ def generate_revision(topic, source_text, k=6):
     ]
     return prompts[:k]
 
-# ---------------- UI pieces --------------------------
+# ---------------------------- UI pieces -----------------------------
 def header():
     st.markdown(f"""
     <div class="adi-banner">
@@ -302,17 +354,20 @@ def band(title, level_key):
 def endband():
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- State ------------------------------
+# ---------------------------- State --------------------------------
 if "parsed_text" not in st.session_state: st.session_state.parsed_text = ""
 if "parse_meta"  not in st.session_state: st.session_state.parse_meta  = {}
 if "selected_verbs" not in st.session_state:
     st.session_state.selected_verbs = {"LOW":[], "MED":[], "HIGH":[]}
+if "last_mcqs" not in st.session_state: st.session_state["last_mcqs"]=[]
+if "last_acts" not in st.session_state: st.session_state["last_acts"]=[]
+if "last_rev"  not in st.session_state: st.session_state["last_rev"]=[]
 
-# ---------------- Layout -----------------------------
+# ---------------------------- Layout -------------------------------
 header()
 tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 
-# Sidebar
+# ---------------------------- Sidebar ------------------------------
 with st.sidebar:
     st.subheader("Upload (optional)")
     upload = st.file_uploader("Drag and drop file here", type=["pdf","docx","pptx"], label_visibility="collapsed")
@@ -341,9 +396,24 @@ with st.sidebar:
                           unsafe_allow_html=True)
 
     st.subheader("Course context")
+
+    cohort_names = list(COURSE_CATALOG.keys())
+    cohort = st.selectbox("Cohort", cohort_names, index=0)
+
+    course_codes = [f"{c[0]} — {c[1]}" for c in COURSE_CATALOG.get(cohort, [])]
+    course_choice = st.selectbox("Course", course_codes, index=0) if course_codes else ""
+
+    if course_choice:
+        sel_code, sel_title = course_choice.split(" — ", 1)
+    else:
+        sel_code, sel_title = "", ""
+
     lesson = st.selectbox("Lesson", list(range(1,15)), index=0)
     week   = st.selectbox("Week",   list(range(1,15)), index=0)
-    topic  = st.text_input("Topic / outcome", placeholder="Module description, knowledge & skills outcomes")
+
+    default_topic = f"{sel_code}: {sel_title}" if sel_code else ""
+    topic  = st.text_input("Topic / outcome", value=default_topic,
+                           placeholder="Module description, knowledge & skills outcomes")
 
     st.subheader("Number of MCQs")
     num_mcqs = st.selectbox("How many questions?", [5,10,15,20,30], index=1)
@@ -352,22 +422,23 @@ with st.sidebar:
     act_times = st.multiselect("Pick durations", [5,10,15,20,30,45,60], default=[10,20,30,60])
 
     st.subheader("Instructor (for unique seed)")
-    instructor = st.text_input("Your name", value="", placeholder="Optional (ensures different sets)")
+    instructor_sel = st.selectbox("Your name", ["(not set)"] + STAFF_ROSTER, index=0)
+    instructor = "" if instructor_sel == "(not set)" else instructor_sel
 
     st.subheader("Export")
     export_pack = st.checkbox("Include Course Pack JSON", value=False)
 
-# Focus tier
+# Auto Bloom focus
 focus_map = {1:"LOW",2:"LOW",3:"LOW",4:"LOW",5:"MED",6:"MED",7:"MED",8:"MED",9:"MED",10:"HIGH",11:"HIGH",12:"HIGH",13:"HIGH",14:"HIGH"}
 focus_tier = focus_map.get(week,"LOW")
 st.write(f"**Bloom focus (auto)**  <span class='badge'>Week {week}: {focus_tier.title()}</span>", unsafe_allow_html=True)
 
-# Source text area (same tab 0 for editing)
+# Source text editor on MCQ tab
 with tabs[0]:
     st.caption("Paste or jot key notes, vocab, facts here…")
     src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=180, label_visibility="collapsed")
 
-# Verbs
+# Verbs UI (pills)
 VERBS = {
     "LOW":["define","identify","list","recall","describe","label"],
     "MED":["apply","demonstrate","solve","illustrate","classify","compare"],
@@ -397,7 +468,7 @@ render_verb_band("MED")
 render_verb_band("HIGH")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Outline current focus tier subtly (no dependency on mutation)
+# Outline current focus tier subtly
 st.markdown(
     f"""<script>
 const tier="{focus_tier}";
@@ -503,6 +574,7 @@ with dl[3]:
                            mime="application/json", use_container_width=True)
     else: st.button("📦 Course Pack JSON", disabled=True, use_container_width=True)
 
+# Activities & Revision tabs (read-only mirrors)
 with tabs[1]:
     st.caption("Activities reflect durations chosen in the sidebar.")
     if acts_out:
