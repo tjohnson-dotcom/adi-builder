@@ -31,12 +31,6 @@ st.set_page_config(
     page_icon=str(LOGO_PATH) if LOGO_PATH.exists() else None,
 )
 
-# Hard-set theme at runtime (extra insurance against red accents)
-st.set_option("theme.primaryColor", "#245a34")
-st.set_option("theme.backgroundColor", "#f9f9f7")
-st.set_option("theme.secondaryBackgroundColor", "#e5e1da")
-st.set_option("theme.textColor", "#1c1c1c")
-
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
 BG_STONE  = "#f9f9f7"
@@ -578,4 +572,3 @@ with tab3:
     st.write("• Auto-generate quick recall cards from your source text (copy/paste into your LMS).")
     st.write("• Tip: Use **Quick pick blocks** to change how many items you want.")
     st.markdown('</div>', unsafe_allow_html=True)
-
