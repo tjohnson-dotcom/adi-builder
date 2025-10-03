@@ -1,37 +1,50 @@
 # app.py — ADI Builder (Lessons, MCQs, Activities, Revision)
-# Zero-API, on-prem friendly. Streamlit 1.3x+ compatible.
+# Streamlit 1.29+; Zero-API; on-prem friendly
 
 import os, io, json, time, random, hashlib
 from datetime import datetime
 
 import streamlit as st
 
-# ---- Streamlit rerun compatibility (some stacks renamed API) -----------
+# ---------------- Rerun compatibility ----------------
 if not hasattr(st, "experimental_rerun"):
     st.experimental_rerun = st.rerun
-# -----------------------------------------------------------------------
 
-# Parsing libs
+# ---------------- Parsing libs -----------------------
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from pptx import Presentation
 
-# NLP
+# ---------------- NLP / NLTK (race-safe bootstrap) ---
 import nltk
+NLTK_DIR = os.environ.get("NLTK_DATA", "/opt/render/nltk_data")
+os.environ["NLTK_DATA"] = NLTK_DIR
+os.makedirs(NLTK_DIR, exist_ok=True)
+
+def _ensure_nltk(pkg_path: str, names: list[str]):
+    try:
+        nltk.data.find(pkg_path)
+        return
+    except LookupError:
+        pass
+    for nm in names:
+        try:
+            nltk.download(nm, download_dir=NLTK_DIR, quiet=True, raise_on_error=False)
+            nltk.data.find(pkg_path)
+            return
+        except Exception:
+            continue
+
+_ensure_nltk("tokenizers/punkt", ["punkt", "punkt_tab"])
+_ensure_nltk("taggers/averaged_perceptron_tagger",
+             ["averaged_perceptron_tagger", "averaged_perceptron_tagger_eng"])
+_ensure_nltk("corpora/wordnet", ["wordnet"])
+
 from nltk.corpus import wordnet as wn
 from nltk import word_tokenize, pos_tag
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Ensure NLTK data
-for pkg, dl in [
-    ("tokenizers/punkt", "punkt"),
-    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
-    ("corpora/wordnet", "wordnet"),
-]:
-    try: nltk.data.find(pkg)
-    except LookupError: nltk.download(dl)
-
-# ----------------- Theme / CSS -----------------------------------------
+# ---------------- Theme / CSS ------------------------
 ADI_GREEN = "#245a34"
 SHADE_LOW  = "rgba(36,90,52,0.06)"
 SHADE_MED  = "rgba(36,90,52,0.08)"
@@ -42,55 +55,38 @@ st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
 
 CUSTOM_CSS = f"""
 <style>
-/* Banner */
 .adi-banner {{
   background:{ADI_GREEN}; color:#fff; border-radius:10px; padding:16px 18px; font-weight:600;
 }}
-/* Tabs accent */
 .stTabs [data-baseweb="tab-highlight"] {{
   background: linear-gradient(90deg,{ADI_GREEN} 0%, {ADI_GREEN} 100%);
 }}
-/* Shaded Bloom bands */
 .band-low  {{ background:{SHADE_LOW};  border-radius:10px; padding:10px 14px; }}
 .band-med  {{ background:{SHADE_MED};  border-radius:10px; padding:10px 14px; }}
 .band-high {{ background:{SHADE_HIGH}; border-radius:10px; padding:10px 14px; }}
-/* Informational chips */
 .badge {{ display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px; }}
-/* Parse result boxes */
 .parse-ok   {{ border-left:4px solid {ADI_GREEN}; background:#f1f7f3; padding:10px 12px; border-radius:6px; }}
 .parse-warn {{ border-left:4px solid #c07d00;  background:#fff9e8; padding:10px 12px; border-radius:6px; }}
 
-/* ===== Verb pills (checkbox-as-pill) – CSS-only, scoped to #verbs ===== */
-#verbs div[data-testid="stCheckbox"] {{
-  display:inline-block; margin:8px 10px 6px 0;
-}}
+/* Pill checkboxes for verbs (CSS-only, scoped to #verbs) */
+#verbs div[data-testid="stCheckbox"] {{ display:inline-block; margin:8px 10px 6px 0; }}
 #verbs div[data-testid="stCheckbox"] > label {{
-  display:inline-block;
-  border:1px solid #e8e8e8;
-  background:#f8f8f7;
-  color:#333;
-  padding:10px 18px;
-  border-radius:999px;
-  font-weight:500;
-  cursor:pointer;
-  transition:all .12s ease-in-out;
+  display:inline-block; border:1px solid #e8e8e8; background:#f8f8f7; color:#333;
+  padding:10px 18px; border-radius:999px; font-weight:500; cursor:pointer; transition:all .12s;
 }}
-#verbs div[data-testid="stCheckbox"] > div {{ display:none; }} /* hide the default square box */
+#verbs div[data-testid="stCheckbox"] > div {{ display:none; }} /* hide square box */
 #verbs div[data-testid="stCheckbox"] > label:hover {{ background:#efefee; }}
-/* selected state */
 #verbs div[data-testid="stCheckbox"] input:checked + label {{
   background:{ADI_GREEN}; color:#fff; border-color:{ADI_GREEN};
 }}
 
-/* Larger primary buttons */
-.stButton > button[kind="primary"], .stButton > button {{
-  border-radius:10px; padding:10px 16px; font-weight:600;
-}}
+/* Bigger buttons */
+.stButton > button {{ border-radius:10px; padding:10px 16px; font-weight:600; }}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# ----------------- Small helpers ---------------------------------------
+# ---------------- Helpers ----------------------------
 def stable_seed(*parts, jitter_minutes=0):
     base = "|".join(map(str, parts))
     if jitter_minutes:
@@ -109,7 +105,7 @@ def split_chunks(text, max_chars=1200):
     return chunks
 
 def tfidf_keyphrases(text, top_k=25):
-    docs = split_chunks(text, 1000)
+    docs = split_chunks(text, 1000) or [" "]
     vect = TfidfVectorizer(ngram_range=(1,2), max_features=5000, stop_words="english")
     X = vect.fit_transform(docs if len(docs)>1 else docs+[" "])
     scores = X.toarray().sum(axis=0)
@@ -118,8 +114,11 @@ def tfidf_keyphrases(text, top_k=25):
     return [t for t,_ in ranked[:top_k]]
 
 def noun_verb_terms(text, limit=40):
-    toks = word_tokenize(text)
-    tagged = pos_tag(toks)
+    try:
+        toks = word_tokenize(text)
+        tagged = pos_tag(toks)
+    except Exception:
+        return []
     keep = [w for (w,p) in tagged if (p.startswith("NN") or p.startswith("VB")) and w.isalpha() and len(w)>2]
     out, seen = [], set()
     for w in keep:
@@ -210,17 +209,18 @@ def mcqs_to_moodle_xml(mcqs, quiz_name="ADI Quiz"):
     lines.append("</quiz>")
     return "\n".join(lines)
 
-# ----------------- Parsing ---------------------------------------------
+# ---------------- Parsing ----------------------------
 def parse_pdf(file_buf, deep=False, max_pages=60, timeout_s=20):
-    start = time.time(); text=[]; parsed=0
+    start = time.time(); text=[]; parsed=0; total=0
     with fitz.open(stream=file_buf.read(), filetype="pdf") as d:
         total = d.page_count
-        step = 1 if deep else max(1, total//max_pages)
+        step = 1 if deep else max(1, total//max_pages or 1)
         for i in range(0, total, step):
             if time.time()-start > timeout_s: break
             try:
                 text.append(d.load_page(i).get_text("text")); parsed += 1
-            except Exception: continue
+            except Exception:
+                continue
     return "\n".join(text), {"pages_scanned": parsed, "total_pages": total}
 
 def parse_docx(file_buf):
@@ -237,7 +237,7 @@ def parse_pptx(file_buf):
             if hasattr(sh,"text"): out.append(sh.text)
     return "\n".join(out)
 
-# ----------------- Generators ------------------------------------------
+# ---------------- Generators -------------------------
 def generate_mcqs(source_text, num_qs, seed_tuple):
     rng = random.Random(stable_seed(*seed_tuple))
     phrases = tfidf_keyphrases(source_text, top_k=max(30, num_qs*4))
@@ -258,8 +258,8 @@ def generate_mcqs(source_text, num_qs, seed_tuple):
 def generate_activities(topic, verbs, minutes_list, source_text):
     acts=[]; mats = ["whiteboard","markers","laptop","handout"]
     scaffolds = {
-        "LOW":  "Quick-check recall: Using your notes, {} for {}.",
-        "MED":  "Pair task: {} and apply it to a short scenario about {}.",
+        "LOW" : "Quick-check recall: Using your notes, {} for {}.",
+        "MED" : "Pair task: {} and apply it to a short scenario about {}.",
         "HIGH": "Mini project: {} to design/justify an approach for {}."
     }
     for minutes in minutes_list:
@@ -286,7 +286,7 @@ def generate_revision(topic, source_text, k=6):
     ]
     return prompts[:k]
 
-# ----------------- UI helpers ------------------------------------------
+# ---------------- UI pieces --------------------------
 def header():
     st.markdown(f"""
     <div class="adi-banner">
@@ -302,13 +302,13 @@ def band(title, level_key):
 def endband():
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ----------------- State -----------------------------------------------
+# ---------------- State ------------------------------
 if "parsed_text" not in st.session_state: st.session_state.parsed_text = ""
 if "parse_meta"  not in st.session_state: st.session_state.parse_meta  = {}
 if "selected_verbs" not in st.session_state:
     st.session_state.selected_verbs = {"LOW":[], "MED":[], "HIGH":[]}
 
-# ----------------- Layout ----------------------------------------------
+# ---------------- Layout -----------------------------
 header()
 tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 
@@ -337,7 +337,8 @@ with st.sidebar:
                 unsafe_allow_html=True,
             )
         except Exception as e:
-            st.warning(f"Could not parse file: {e}")
+            stat.markdown(f"""<div class="parse-warn"><b>Could not parse file</b><br/><small>{e}</small></div>""",
+                          unsafe_allow_html=True)
 
     st.subheader("Course context")
     lesson = st.selectbox("Lesson", list(range(1,15)), index=0)
@@ -348,7 +349,7 @@ with st.sidebar:
     num_mcqs = st.selectbox("How many questions?", [5,10,15,20,30], index=1)
 
     st.subheader("Activities duration (mins)")
-    act_times = st.multiselect("Pick durations", [5,10,15,20,30,45,60], default=[10,20,30])
+    act_times = st.multiselect("Pick durations", [5,10,15,20,30,45,60], default=[10,20,30,60])
 
     st.subheader("Instructor (for unique seed)")
     instructor = st.text_input("Your name", value="", placeholder="Optional (ensures different sets)")
@@ -361,19 +362,18 @@ focus_map = {1:"LOW",2:"LOW",3:"LOW",4:"LOW",5:"MED",6:"MED",7:"MED",8:"MED",9:"
 focus_tier = focus_map.get(week,"LOW")
 st.write(f"**Bloom focus (auto)**  <span class='badge'>Week {week}: {focus_tier.title()}</span>", unsafe_allow_html=True)
 
-# Source
+# Source text area (same tab 0 for editing)
 with tabs[0]:
     st.caption("Paste or jot key notes, vocab, facts here…")
     src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=180, label_visibility="collapsed")
 
-# Verb data
+# Verbs
 VERBS = {
     "LOW":["define","identify","list","recall","describe","label"],
     "MED":["apply","demonstrate","solve","illustrate","classify","compare"],
     "HIGH":["evaluate","synthesize","design","justify","critique","create"]
 }
 
-# -------- Verb bands (checkboxes styled as pills, scoped in #verbs) -----
 def render_verb_band(level):
     title = {
         "LOW":"LOW (Weeks 1–4): Remember / Understand",
@@ -391,14 +391,13 @@ def render_verb_band(level):
             st.session_state.selected_verbs[level].remove(v)
     endband()
 
-# Wrap all verb checkboxes in a div so CSS can target them without JS
 st.markdown('<div id="verbs">', unsafe_allow_html=True)
 render_verb_band("LOW")
 render_verb_band("MED")
 render_verb_band("HIGH")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Subtle outline for current focus tier
+# Outline current focus tier subtly (no dependency on mutation)
 st.markdown(
     f"""<script>
 const tier="{focus_tier}";
@@ -504,7 +503,6 @@ with dl[3]:
                            mime="application/json", use_container_width=True)
     else: st.button("📦 Course Pack JSON", disabled=True, use_container_width=True)
 
-# Tabs 2 & 3 mirrors
 with tabs[1]:
     st.caption("Activities reflect durations chosen in the sidebar.")
     if acts_out:
