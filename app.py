@@ -2,6 +2,8 @@
 # ADI Builder — Lesson Activities, MCQs, Revision
 # API-free generators + Hybrid Course Packs + LMS Importer + Lesson Plan ingestor
 # Instructor-aware variation (3-way partition) + Simple Mode (MCQs / Activities / Revision / Bundle)
+import streamlit as st
+# ...your other imports...
 
 import io, os, re, time, hashlib, random, json, glob, csv, textwrap
 from typing import List, Optional, Tuple, Dict
