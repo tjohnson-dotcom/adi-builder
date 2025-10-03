@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 ADI Builder — Lesson Activities & Questions (API-free)
-- PDF/PPTX/DOCX text extraction (pypdf + PyMuPDF plain+blocks, python-pptx, python-docx)
-- Cache parsing so UI doesn't stall on reruns (e.g., changing Week)
-- Optional Deep scan for long/odd PDFs
-- TF-IDF MCQ generator (+ optional spaCy/WordNet if available)
-- Bloom-aligned activities
-- .docx exports for MCQs and Activities
-- Green banding and active verb pills
+Look & feel: green banding + active verb pills (unchanged).
+Improvements:
+- Bounded parsing with progress (PDF: pypdf + PyMuPDF plain+blocks), Deep scan toggle
+- No re-parse on Week change (session-keyed)
+- Stronger MCQ generator: cleaner distractors, relaxed sentence rules, top-up to N
+- .docx downloads for MCQs & Activities
 """
 
 from __future__ import annotations
 
 import io
 import re
+import time
 import random
 import hashlib
 from dataclasses import dataclass
@@ -48,6 +48,7 @@ def _init():
     ss.setdefault("act_minutes", 10)
     ss.setdefault("use_sample", False)
     ss.setdefault("use_extracted", False)
+    ss.setdefault("acts", [])
 
 _init()
 
@@ -72,51 +73,93 @@ MED_VERBS  = ["apply", "demonstrate", "solve", "illustrate", "classify", "compar
 HIGH_VERBS = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Extraction (improved) + cache wrapper
+# Extraction with budgets + progress; robust fallbacks
 # ──────────────────────────────────────────────────────────────────────────────
-def extract_text_from_upload(name: str, data: bytes, max_pages: Optional[int] = 40) -> Tuple[str, List[str]]:
+def extract_text_from_upload(
+    name: str,
+    data: bytes,
+    max_pages: Optional[int] = 40,
+    time_budget_sec: int = 25,
+    progress_cb=None,  # callable(done, total) or None
+) -> Tuple[str, List[str]]:
     """
-    Return (text, notes). Tries pypdf → PyMuPDF (plain + blocks); PPTX; DOCX.
-    max_pages limits PDF pages to keep UI responsive (None = all pages).
+    Returns (text, notes). Stops within time_budget_sec and up to max_pages.
+    Detects 'image-only' PDFs by low text density and exits early with guidance.
     """
     notes, txt = [], ""
     lower = name.lower()
     bio = io.BytesIO(data)
+    t0 = time.time()
+
+    def timed_out():
+        return (time.time() - t0) > time_budget_sec
 
     if lower.endswith(".pdf"):
-        # 1) pypdf
+        total = None
+        pages_done = 0
+        # 1) pypdf — page-by-page to respect budgets
         try:
             from pypdf import PdfReader
             reader = PdfReader(io.BytesIO(data))
             total = len(reader.pages)
-            end = total if max_pages is None else min(total, max_pages)
-            txt = "\n".join([(reader.pages[i].extract_text() or "") for i in range(end)])
-            notes.append("pypdf" + (f" ({end}/{total} pages)" if end < total else ""))
+            limit = total if max_pages is None else min(total, max_pages)
+            out = []
+            for i in range(limit):
+                if timed_out():
+                    notes.append("pypdf timeout")
+                    break
+                page_txt = reader.pages[i].extract_text() or ""
+                out.append(page_txt)
+                pages_done += 1
+                if progress_cb and total:
+                    progress_cb(pages_done, total)
+            txt = "\n".join(out)
+            notes.append(f"pypdf ({pages_done}/{total or limit} pages)")
         except Exception as e:
             notes.append(f"pypdf fail: {e!s}")
 
-        # 2) PyMuPDF (often richer)
+        # 2) PyMuPDF — richer extraction, still bounded
         try:
             import fitz  # PyMuPDF
             doc = fitz.open(stream=data, filetype="pdf")
-            total = len(doc)
-            end = total if max_pages is None else min(total, max_pages)
+            total = total or len(doc)
+            limit = len(doc) if max_pages is None else min(len(doc), max_pages)
 
-            plain = "\n".join(doc[i].get_text("text") for i in range(end))
+            plain_parts, block_parts = [], []
+            pages_done2 = 0
 
             def page_blocks(p):
                 blocks = p.get_text("blocks") or []
-                blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))  # y then x
+                blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
                 return "\n".join(b[4] for b in blocks if isinstance(b[4], str))
 
-            by_blocks = "\n".join(page_blocks(doc[i]) for i in range(end))
+            for i in range(limit):
+                if timed_out():
+                    notes.append("PyMuPDF timeout")
+                    break
+                pg = doc[i]
+                plain_parts.append(pg.get_text("text"))
+                block_parts.append(page_blocks(pg))
+                pages_done2 += 1
+                if progress_cb and total:
+                    progress_cb(pages_done + pages_done2, total)
 
-            pick = max([txt, plain, by_blocks], key=lambda s: len((s or "").strip()))
+            plain = "\n".join(plain_parts)
+            blocks = "\n".join(block_parts)
+            pick = max([txt, plain, blocks], key=lambda s: len((s or "").strip()))
             if len((pick or "").strip()) > len((txt or "").strip()):
                 txt = pick
-            notes.append("PyMuPDF" + (f" ({end}/{total} pages)" if end < total else ""))
+            notes.append(f"PyMuPDF ({pages_done2}/{total} pages)")
         except Exception as e:
             notes.append(f"fitz fail: {e!s}")
+
+        # Image-only heuristic: low characters per page across several pages
+        pages_scanned = (pages_done or 0) + (locals().get("pages_done2", 0) or 0)
+        if pages_scanned:
+            density = len((txt or "").strip()) / max(pages_scanned, 1)
+            if density < 80 and pages_scanned >= 10:
+                notes.append("Likely image-only PDF (no selectable text). Try DOCX/PPTX or OCR.")
+                txt = txt.strip()
 
     elif lower.endswith(".pptx"):
         try:
@@ -127,18 +170,15 @@ def extract_text_from_upload(name: str, data: bytes, max_pages: Optional[int] = 
             def shape_text(sh):
                 parts = []
                 try:
-                    # text frames
                     if hasattr(sh, "has_text_frame") and sh.has_text_frame and sh.text_frame:
                         for p in sh.text_frame.paragraphs:
                             parts.append(" ".join(r.text for r in p.runs) or p.text)
-                    # tables
                     if hasattr(sh, "table") and sh.table:
                         for row in sh.table.rows:
                             for cell in row.cells:
                                 if cell.text:
                                     parts.append(cell.text)
-                    # group shapes recurse
-                    if hasattr(sh, "shapes"):
+                    if hasattr(sh, "shapes"):  # group shapes
                         for s in sh.shapes:
                             nested = shape_text(s)
                             if nested:
@@ -147,11 +187,16 @@ def extract_text_from_upload(name: str, data: bytes, max_pages: Optional[int] = 
                     pass
                 return "\n".join([p for p in parts if p])
 
+            total = len(prs.slides)
+            done = 0
             for slide in prs.slides:
                 for s in slide.shapes:
                     t = shape_text(s)
                     if t:
                         chunks.append(t)
+                done += 1
+                if progress_cb and total:
+                    progress_cb(done, total)
             txt = "\n".join(chunks)
             notes.append("python-pptx")
         except Exception as e:
@@ -169,11 +214,6 @@ def extract_text_from_upload(name: str, data: bytes, max_pages: Optional[int] = 
         notes.append("Unsupported type")
 
     return txt or "", notes
-
-@st.cache_data(show_spinner=False)
-def cached_extract_text(sig: str, name: str, data: bytes, max_pages: Optional[int]) -> Tuple[str, List[str]]:
-    """Cache wrapper so reruns (e.g., changing Week) don't trigger heavy parse again."""
-    return extract_text_from_upload(name, data, max_pages=max_pages)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Keyword helpers (API-free, optional libs)
@@ -273,28 +313,25 @@ def near_miss(term: str) -> List[str]:
         out.update([t[:-1], t+"s", t.replace("ization","isation"), t.replace("isation","ization")])
     return list(out)[:3]
 
-DEFAULT_GLOSSARY = {
-    "turboprop": ["turbofan","turbojet","piston engine"],
-    "reduction gearbox": ["free turbine","variable pitch hub","planetary gearset"],
-    "detonation": ["deflagration","combustion","burn rate"],
-    "propeller pitch": ["blade angle","RPM","thrust lever"],
-}
-
 def make_distractors(term: str, pool: List[str]) -> List[str]:
+    def ok(tok: str) -> bool:
+        t = tok.strip()
+        return t and t.isalpha() and 3 <= len(t) <= 20 and t.lower() != term.lower()
     d = set()
-    for x in antonyms(term): d.add(x)
-    for x in near_miss(term): d.add(x)
+    for x in antonyms(term):
+        if ok(x): d.add(x)
+    for x in near_miss(term):
+        if ok(x): d.add(x)
     for x in pool:
-        if x.lower() != term.lower() and len(x.split()) <= 4:
+        if ok(x) and len(x.split()) <= 3:
             d.add(x)
         if len(d) >= 6:
             break
-    out = [x for x in d if 1 <= len(x.split()) <= 6][:6]
-    return out[:3]
+    return list(d)[:3]
 
 def lint_item(stem: str, options: List[str], ans_idx: int) -> List[str]:
     issues = []
-    if not stem or len(stem.split()) < 6: issues.append("Stem too short.")
+    if not stem or len(stem.split()) < 5: issues.append("Stem too short.")
     if any("all of the above" in o.lower() or "none of the above" in o.lower() for o in options):
         issues.append("Avoid 'All/None of the above'.")
     if any(len(o.split()) > 12 for o in options): issues.append("Option too long.")
@@ -303,7 +340,7 @@ def lint_item(stem: str, options: List[str], ans_idx: int) -> List[str]:
     return issues
 
 # ──────────────────────────────────────────────────────────────────────────────
-# MCQ generator
+# MCQ generator (relaxed rules + top-up)
 # ──────────────────────────────────────────────────────────────────────────────
 @dataclass
 class MCQ:
@@ -316,29 +353,61 @@ def build_mcqs(text: str, n: int, bloom_focus: str) -> List[MCQ]:
     text = (text or "").strip()
     if not text:
         return []
-    keyterms = extract_keyterms(text, top_k=25)
-    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if 50 <= len(s) <= 220][:400]
+    keyterms = extract_keyterms(text, top_k=40)
+
+    # Accept normal sentences or bullet-ish items
+    candidates = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n-\s+|\n•\s+", text)]
+    sents = [s for s in candidates if 35 <= len(s) <= 260][:600]
     random.shuffle(sents)
-    mcqs = []
+
+    mcqs: List[MCQ] = []
+    used_stems = set()
+
+    # Main cloze loop
     for s in sents:
         term = next((k for k in keyterms if re.search(rf"\b{re.escape(k)}\b", s, re.I)), None)
         if not term:
             continue
-        cloze = re.sub(rf"\b{re.escape(term)}\b", "_____", s, flags=re.I, count=1)
+        cloze = re.sub(rf"\b{re.escape(term)}\b", "_____", s, flags=re.I, count=1).strip()
+        if cloze.lower() in used_stems:
+            continue
         distractors = make_distractors(term, [k for k in keyterms if k.lower()!=term.lower()])
         if len(distractors) < 3:
-            extra = [k for k in keyterms if k.lower()!=term.lower()][:6]
-            for e in extra:
-                if len(distractors) >= 3: break
-                distractors.append(e)
+            continue
         opts = distractors + [term]
         random.shuffle(opts)
         ans = opts.index(term)
-        if not lint_item(cloze, opts, ans):
+        issues = lint_item(cloze, opts, ans)
+        if not issues:
             mcqs.append(MCQ(cloze, opts, ans, bloom_focus))
+            used_stems.add(cloze.lower())
+        if len(mcqs) >= n:
+            return mcqs
+
+    # Top-up: definition-style items if we’re short
+    ctx = re.sub(r"\s+", " ", text)[:4000]
+    defs = []
+    for k in keyterms:
+        m = re.search(rf"\b{k}\b\s+(is|are|means|refers to)\s+([^\.]{{10,120}})\.", ctx, re.I)
+        if m:
+            defs.append((k, m.group(0)))
+        if len(defs) >= n:
+            break
+
+    for k, sentence in defs:
         if len(mcqs) >= n:
             break
-    return mcqs
+        stem = sentence.replace(k, "_____")
+        distractors = make_distractors(k, [t for t in keyterms if t.lower()!=k.lower()])
+        if len(distractors) < 3:
+            continue
+        opts = distractors + [k]
+        random.shuffle(opts)
+        ans = opts.index(k)
+        if not lint_item(stem, opts, ans):
+            mcqs.append(MCQ(stem, opts, ans, bloom_focus))
+
+    return mcqs[:n]
 
 def mcqs_docx(mcqs: List[MCQ]) -> bytes:
     try:
@@ -358,7 +427,7 @@ def mcqs_docx(mcqs: List[MCQ]) -> bytes:
     return bio.getvalue()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Activities generator
+# Activities generator + export
 # ──────────────────────────────────────────────────────────────────────────────
 TEMPLATES = {
     "Low":[
@@ -413,7 +482,7 @@ def activities_docx(acts: List[dict]) -> bytes:
     return bio.getvalue()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI
+# UI — Sidebar (upload with progress + budgets; selectors)
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("Upload (optional)")
@@ -427,26 +496,52 @@ with st.sidebar:
     deep = st.checkbox(
         "Deep scan (all pages, slower)",
         value=False,
-        help="If off, we scan only the first ~40 pages for speed.",
+        help="If off, scans first ~40 pages for speed. Deep scan has a longer time budget.",
     )
 
     if up is not None:
         data = up.getvalue()
-        # include deep/quick in the cache key to keep results separate
         sig = file_sig(up.name, data) + ("-deep" if deep else "-quick")
+
         if sig != st.session_state.last_file_sig:
-            with st.spinner("Parsing file…"):
-                text, notes = cached_extract_text(sig, up.name, data, max_pages=None if deep else 40)
-            st.session_state.last_file_sig = sig
-            st.session_state.file_name = up.name
-            st.session_state.extracted_text = text or ""
-            st.session_state.use_extracted = bool((text or "").strip())
-            if st.session_state.use_extracted:
-                st.toast(f"Uploaded & parsed: {up.name}", icon="✅")
-            else:
-                st.toast(f"Uploaded: {up.name} (no embedded text found — try DOCX/PPTX or Deep scan)", icon="⚠️")
-            if notes:
-                st.caption(" • ".join(notes))
+            with st.status("Parsing file…", expanded=True) as status:
+                prog = st.progress(0)
+
+                def update_progress(done, total):
+                    try:
+                        prog.progress(min(int(done / max(total, 1) * 100), 100))
+                    except Exception:
+                        pass
+
+                max_pages = None if deep else 40
+                time_budget = 120 if deep else 25
+
+                text, notes = extract_text_from_upload(
+                    up.name,
+                    data,
+                    max_pages=max_pages,
+                    time_budget_sec=time_budget,
+                    progress_cb=update_progress,
+                )
+
+                st.session_state.last_file_sig = sig
+                st.session_state.file_name = up.name
+                st.session_state.extracted_text = text or ""
+                st.session_state.use_extracted = bool((text or "").strip())
+
+                if st.session_state.use_extracted:
+                    status.update(label="Parsed successfully ✅", state="complete")
+                    st.toast(f"Uploaded & parsed: {up.name}", icon="✅")
+                else:
+                    status.update(label="Parsed with issues ⚠️", state="error")
+                    st.toast(
+                        "No selectable text found (likely scanned). "
+                        "Try DOCX/PPTX or export a text-based PDF.",
+                        icon="⚠️",
+                    )
+
+                if notes:
+                    st.caption(" • ".join(notes))
 
     st.markdown("---")
     st.subheader("Course context")
@@ -464,7 +559,9 @@ with st.sidebar:
     st.session_state.act_count   = st.selectbox("How many?",        [1,2,3,4], index=[1,2,3,4].index(st.session_state.act_count))
     st.session_state.act_minutes = st.selectbox("Time each (mins)", [5,10,15,20,30], index=[5,10,15,20,30].index(st.session_state.act_minutes))
 
-# Header banner
+# ──────────────────────────────────────────────────────────────────────────────
+# Header banner (unchanged styling)
+# ──────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="background:#244e34;color:#fff;border-radius:14px;padding:16px 20px;margin-top:6px;margin-bottom:8px;">
   <div style="font-weight:700;font-size:18px;">ADI Builder — Lesson Activities & Questions</div>
@@ -484,7 +581,7 @@ with tabs[0]:
 
     st.checkbox("Use sample text (quick test)", value=st.session_state.use_sample, key="use_sample")
 
-    # If parsed text exists, show a helper to insert it
+    # insert parsed text helper
     if st.session_state.extracted_text:
         colA, colB = st.columns([1,2])
         with colA:
@@ -493,7 +590,7 @@ with tabs[0]:
             if st.button("Insert extracted text"):
                 st.session_state.source_text = st.session_state.extracted_text[:15000]
 
-    # Seed textarea from extracted or sample once
+    # seed source text if requested
     if st.session_state.use_extracted and not st.session_state.source_text:
         st.session_state.source_text = st.session_state.extracted_text[:15000]
     if st.session_state.use_sample and not st.session_state.source_text:
@@ -505,7 +602,7 @@ with tabs[0]:
 
     st.text_area("Source text (editable)", key="source_text", height=240, placeholder="Paste or jot key notes, vocab, facts here…")
 
-    # Styles: green rows + active verb pills
+    # Styles: green rows + active verb pills (unchanged)
     row_bg = {"Low":"#e7f2ea", "Medium":"#ecf4e7", "High":"#eef3e8"}[focus]
     st.markdown(f"""
     <style>
@@ -563,7 +660,7 @@ with tabs[1]:
     focus = bloom_from_week(st.session_state.week)
     st.markdown(f"**Bloom focus:** {focus}")
     if st.button("🧩 Generate activities"):
-        st.session_state["acts"] = build_activities(
+        st.session_state.acts = build_activities(
             st.session_state.topic, focus, st.session_state.act_count, st.session_state.act_minutes
         )
     acts = st.session_state.get("acts", [])
