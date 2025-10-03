@@ -1,5 +1,5 @@
-# app.py (ADI Builder — green-locked UI + compact selects + MCQs/Activities + ZIP + polish)
-# Requires (pin in requirements.txt):
+# app.py (ADI Builder — verb ✓ highlight + extracted-text toggle + safe generate enable)
+# Pins:
 #   streamlit==1.37.1
 #   python-docx==1.1.2
 #   pypdf==4.2.0
@@ -17,7 +17,10 @@ from docx.shared import Pt, Inches
 from pypdf import PdfReader
 from pptx import Presentation
 
-# Optional PDF fallback (pdfminer.six)
+try:
+    from pdfminer_high_level import extract_text as _missing  # guard if wrong import is cached
+except Exception:
+    pass
 try:
     from pdfminer.high_level import extract_text as pdfminer_extract_text
 except Exception:
@@ -42,19 +45,6 @@ def _logo_b64():
         return None
 
 logo_b64 = _logo_b64()
-
-# ---------------- Tiny state helpers (remember via URL) ----------------
-def _save_qp(**kwargs):
-    try:
-        st.query_params.update({k: str(v) for k, v in kwargs.items() if v is not None})
-    except Exception:
-        pass
-
-def _read_qp_int(key, default):
-    try:
-        return int(st.query_params.get(key, default))
-    except Exception:
-        return default
 
 # ---------------- CSS ----------------
 st.markdown(
@@ -85,9 +75,9 @@ st.markdown(
     font-weight: 700; border: 1px solid #d3cec3; margin-top: 6px;
     box-shadow: 0 1px 0 rgba(0,0,0,.04);
   }}
-  .week-low    {{ background:#dff0e6; color:#193626; border-color:#c6e0ce; }}
-  .week-medium {{ background:#f8e9c6; color:#3a321b; border-color:#ead39d; }}
-  .week-high   {{ background:#e8e7ff; color:#27245a; border-color:#d0cef7; }}
+  .week-low    {{ background:#e7f3ec; color:#193626; border-color:#cfe5d6; }}
+  .week-medium {{ background:#f8f2db; color:#3a321b; border-color:#ead39d; }}
+  .week-high   {{ background:#ecebff; color:#27245a; border-color:#d0cef7; }}
 
   /* Pills */
   .pill {{
@@ -122,7 +112,7 @@ st.markdown(
   .adi-logo--mono {{ filter: brightness(0) invert(1) contrast(1.1); }}
   @media (min-width: 1200px) {{ .adi-logo {{ height: 34px; }} }}
 
-  /* **Global green lock** (overrides any cached red) */
+  /* Global green lock */
   :root, .stApp {{
     --theme-primaryColor:{ADI_GREEN} !important;
     --primary-color:{ADI_GREEN} !important;
@@ -143,6 +133,12 @@ st.markdown(
   [data-testid="stSkeleton"] div[role="progressbar"],
   [data-testid="stProgressBar"] div[role="progressbar"] {{ background:{ADI_GREEN}!important; }}
   header[tabindex="-1"] {{ border-top-color:{ADI_GREEN}!important; }}
+
+  /* Tier row highlight (scoped) */
+  .tier {{ padding:10px; border-radius:14px; margin:-4px 0 8px 0; }}
+  .tier.low.tier-active    {{ background:#e7f3ec; border:1px solid #cfe5d6; box-shadow:0 0 0 2px rgba(36,90,52,.10) inset; }}
+  .tier.medium.tier-active {{ background:#f8f2db; border:1px solid #ead39d; box-shadow:0 0 0 2px rgba(200,168,90,.15) inset; }}
+  .tier.high.tier-active   {{ background:#ecebff; border:1px solid #d0cef7; box-shadow:0 0 0 2px rgba(39,36,90,.10) inset; }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -303,7 +299,7 @@ def acts_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
     )
     for i, a in enumerate(acts, 1):
         doc.add_paragraph(f"{i}. {a['title']}")
-        doc.add_paragraph(f"Time: {a.get('minutes', 10)} minutes")  # show timing
+        doc.add_paragraph(f"Time: {a.get('minutes', 10)} minutes")
         doc.add_paragraph(f"Objective: {a['objective']}")
         doc.add_paragraph("Steps:")
         for s in a["steps"]:
@@ -314,7 +310,6 @@ def acts_docx(acts: list[dict], topic: str, lesson: int, week: int) -> bytes:
         doc.add_paragraph("")
     bio = BytesIO(); doc.save(bio); return bio.getvalue()
 
-# ZIP helper for combined download
 def make_zip(files: list[tuple[str, bytes]]) -> bytes:
     bio = BytesIO()
     with zipfile.ZipFile(bio, "w", zipfile.ZIP_DEFLATED) as z:
@@ -322,7 +317,7 @@ def make_zip(files: list[tuple[str, bytes]]) -> bytes:
             z.writestr(name, data)
     return bio.getvalue()
 
-# ---------------- Extraction (cached) ----------------
+# ---------------- Extraction ----------------
 def _truncate(t: str, n: int = 12000) -> str:
     t = re.sub(r"\s+\n", "\n", t)
     return t[:n]
@@ -367,11 +362,7 @@ def extract_upload(name: str, data: bytes) -> str:
     if ext in (".pptx", ".ppt"): return extract_pptx(data)
     return ""
 
-@st.cache_data(show_spinner=False, ttl=3600)
-def extract_text_from_upload_cached(filename: str, data: bytes) -> str:
-    return extract_upload(filename, data)
-
-# ---------------- Sidebar (upload + compact select for MCQ count) ----------------
+# ---------------- Sidebar ----------------
 with st.sidebar:
     if "uploaded_file_bytes" not in st.session_state:
         st.session_state.update(dict(
@@ -386,16 +377,15 @@ with st.sidebar:
     if upl is not None and upl.name != st.session_state.uploaded_filename:
         data = upl.getvalue()
         size_mb = len(data) / (1024*1024)
-        HARD = 200.0
-        if size_mb > HARD:
-            st.error(f"File is {size_mb:.1f} MB. Please upload ≤ {HARD:.0f} MB.")
+        if size_mb > 200.0:
+            st.error(f"File is {size_mb:.1f} MB. Please upload ≤ 200 MB.")
             st.stop()
 
         st.session_state.uploaded_file_bytes = data
         st.session_state.uploaded_filename = upl.name
         st.session_state.uploaded_size = len(data)
 
-        extracted = extract_text_from_upload_cached(upl.name, data)
+        extracted = extract_upload(upl.name, data)
         st.session_state.extracted_text = extracted
         st.session_state.use_extracted_auto = bool(extracted.strip())
 
@@ -419,20 +409,17 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Course context")
-    lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=_read_qp_int("lesson", 1)-1)
-    week   = st.selectbox("Week",   options=list(range(1, 15)), index=_read_qp_int("week", 7)-1)
-    _save_qp(lesson=lesson, week=week)
+    lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
+    week   = st.selectbox("Week",   options=list(range(1, 15)), index=6)
 
-    # Compact select for MCQ count
     st.markdown("---")
     st.markdown("### Number of MCQs")
     target_n = st.selectbox(
         "How many questions?",
         options=[5, 10, 15, 20, 30],
-        index=[5,10,15,20,30].index(_read_qp_int("mcq", 5)),
+        index=[5,10,15,20,30].index(st.session_state.get("mcq_count_select", 5)),
         key="mcq_count_select",
     )
-    _save_qp(mcq=target_n)
     st.caption("Typical handout: 10–15")
 
 # ---------------- Header ----------------
@@ -453,7 +440,11 @@ st.markdown(
 
 if st.session_state.uploaded_file_bytes:
     chars = len(st.session_state.extracted_text)
-    st.info(f"📄 **{st.session_state.uploaded_filename}** uploaded and parsed ({chars} characters extracted).", icon="✅")
+    st.info(
+        f"📄 **{st.session_state.uploaded_filename}** uploaded"
+        + (f" and parsed ({chars} characters extracted)." if chars else " (no selectable text; paste or use DOCX/PPTX)."),
+        icon="✅" if chars else "⚠️",
+    )
 
 # ---------------- Tabs ----------------
 tab1, tab2, tab3 = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
@@ -463,21 +454,22 @@ with tab1:
 
     c1, c2 = st.columns([2, 1])
     with c1:
-        topic = st.text_input(
-            "Topic / Outcome (optional)",
-            value=st.query_params.get("topic",""),
-            placeholder="Module description, knowledge & skills outcomes",
-        )
+        topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
         st.session_state["topic_last"] = topic
-        _save_qp(topic=topic)
     with c2:
         focus = focus_for_week(week)
         badge = {"Low":"week-low","Medium":"week-medium","High":"week-high"}[focus]
         st.markdown("**Bloom focus (auto)**")
         st.markdown(f'<span class="week-badge {badge}">Week {week}: {focus}</span>', unsafe_allow_html=True)
 
-    use_sample = st.checkbox("Use sample text (for a quick test)")
-    use_extracted = st.session_state.get("use_extracted_auto", False)
+    colS, colE = st.columns([1,1])
+    with colS:
+        use_sample = st.checkbox("Use sample text (for a quick test)")
+    with colE:
+        has_extract = bool(st.session_state.extracted_text.strip())
+        use_extracted = False
+        if has_extract:
+            use_extracted = st.checkbox("Use extracted text (from upload)")
 
     sample_text = (
         "Photosynthesis is the process by which green plants convert light energy into chemical energy, "
@@ -486,14 +478,15 @@ with tab1:
         "uses these molecules to fix carbon into sugars."
     )
 
-    default_src = sample_text if use_sample else (
-        st.session_state.extracted_text if (use_extracted and st.session_state.extracted_text) else ""
+    default_src = (
+        sample_text if use_sample else
+        (st.session_state.extracted_text if (use_extracted and has_extract) else "")
     )
 
     src = st.text_area("Source text (editable)", height=200, value=default_src,
                        placeholder="Paste or jot key notes, vocab, facts here...")
 
-    if st.session_state.uploaded_file_bytes and not src.strip():
+    if st.session_state.uploaded_file_bytes and not (src.strip() or has_extract):
         st.caption("We’ve uploaded your file. If this is empty, the PDF may be scanned. Try DOCX/PPTX or paste text.")
 
     # Verb toggles + reseed on week change
@@ -507,83 +500,64 @@ with tab1:
             st.session_state.verb_states[v] = True
         st.session_state.last_week = week
 
-    def pills(title: str, verbs: list[str]):
+    # ---- Pills with tier highlight + ✓ when active ----
+    def pills(title: str, verbs: list[str], tier_key: str, is_active: bool):
+        st.markdown(
+            f'<div class="tier {tier_key} {"tier-active" if is_active else ""}">', 
+            unsafe_allow_html=True
+        )
         st.write(f"**{title}**")
         cols = st.columns(6)
         for i, v in enumerate(verbs):
             active = st.session_state.verb_states.get(v, False)
-            if cols[i % 6].button(v, key=f"pill-{v}", use_container_width=True):
+            label = f"✓ {v}" if active else v
+            if cols[i % 6].button(label, key=f"pill-{v}", use_container_width=True):
                 st.session_state.verb_states[v] = not active
-            # Style without re-run
-            st.markdown(
-                f"""
-                <script>
-                  const el = window.parent.document.querySelector('button[k="pill-{v}"]') ||
-                             window.parent.document.querySelector('button[data-testid="pill-{v}"]');
-                  if (el) {{
-                    el.classList.add('pill');
-                    {'el.classList.add("active");' if active else 'el.classList.remove("active");'}
-                  }}
-                </script>
-                """,
-                unsafe_allow_html=True,
-            )
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    pills("LOW (Weeks 1–4): Remember / Understand", LOW)
-    pills("MEDIUM (Weeks 5–9): Apply / Analyse", MED)
-    pills("HIGH (Weeks 10–14): Evaluate / Create", HIGH)
+    pills("LOW (Weeks 1–4): Remember / Understand", LOW, "low",    focus == "Low")
+    pills("MEDIUM (Weeks 5–9): Apply / Analyse",     MED, "medium", focus == "Medium")
+    pills("HIGH (Weeks 10–14): Evaluate / Create",   HIGH, "high",  focus == "High")
 
-    c1b, c2b = st.columns([1,1])
-    gen   = c1b.button("✨ Generate MCQs", type="primary",
-                       disabled=not ((src or "").strip() or st.session_state.extracted_text.strip()))
-    regen = c2b.button("↻ Regenerate", disabled=not st.session_state.get("mcqs"))
+    cL, cM, cH = st.columns(3)
+    if cL.button("LOW", use_container_width=True):
+        st.session_state.verb_states = {v: (v in LOW) for v in st.session_state.verb_states}
+    if cM.button("MEDIUM", use_container_width=True):
+        st.session_state.verb_states = {v: (v in MED) for v in st.session_state.verb_states}
+    if cH.button("HIGH", use_container_width=True):
+        st.session_state.verb_states = {v: (v in HIGH) for v in st.session_state.verb_states}
 
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
-    if gen or regen:
-        text = (src or "").strip() or st.session_state.extracted_text.strip()
-        seed = random.randint(0, 10_000) if regen else 42
-        st.session_state.mcqs = gen_mcqs(text, n=st.session_state.get("mcq_count_select", 5),
-                                         verbs=chosen_verbs, seed=seed)
-        st.toast("MCQs generated" if gen else "MCQs regenerated", icon="✨")
+
+    # Enable generate if text OR sample OR extracted chosen
+    can_generate = bool((src or "").strip() or use_sample or (use_extracted and has_extract))
+    gen = st.button("✨ Generate MCQs", type="primary", disabled=not can_generate)
+
+    if gen:
+        text = (src or "").strip()
+        if not text and use_sample:
+            text = sample_text
+        if not text and (use_extracted and has_extract):
+            text = st.session_state.extracted_text
+        st.session_state.mcqs = gen_mcqs(text, n=st.session_state.get("mcq_count_select", 5), verbs=chosen_verbs, seed=42)
+        st.toast("MCQs generated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
     if mcqs:
         st.markdown("---")
         st.markdown("### Generated MCQs")
+        letters = ["A", "B", "C", "D"]
         for q in mcqs:
             st.write(f"**Q{q['index']}.** {q['stem']}")
-            letters = ["A", "B", "C", "D"]
             for i, opt in enumerate(q["options"]):
                 st.write(f"- {letters[i]}. {opt}")
             st.caption(f"Answer: **{letters[q['answer']]}**  •  Bloom: **{q['bloom']}**")
-
-        # DOCX
         st.download_button(
             "⬇️ Export to Word (DOCX)",
             data=mcqs_docx(mcqs, st.session_state.get("topic_last",""), lesson, week),
             file_name=f"ADI_MCQs_L{lesson}_W{week}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-
-        # Copy to clipboard
-        flat = []
-        for q in mcqs:
-            letters = ["A","B","C","D"]
-            flat.append(f"Q{q['index']}. {q['stem']}")
-            flat += [f"  {letters[i]}. {opt}" for i,opt in enumerate(q["options"])]
-            flat.append(f"Answer: {letters[q['answer']]} (Bloom: {q['bloom']})\n")
-        clip = "\n".join(flat)
-        st.button("📋 Copy MCQs to clipboard", key="copy_mcqs")
-        st.markdown(f"""
-        <script>
-        const btn = window.parent.document.querySelector('button[data-testid="copy_mcqs"]');
-        if (btn) {{
-          btn.onclick = async () => {{
-            await navigator.clipboard.writeText({clip!r});
-          }};
-        }}
-        </script>
-        """, unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -630,21 +604,21 @@ with tab2:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
-        # Combined ZIP when both exist
-        mcqs_zip = st.session_state.get("mcqs", [])
-        if mcqs_zip:
-            mcq_doc = mcqs_docx(mcqs_zip, st.session_state.get("topic_last",""), lesson, week)
-            acts_doc = acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week)
-            zip_bytes = make_zip([
-                (f"ADI_MCQs_L{lesson}_W{week}.docx", mcq_doc),
-                (f"ADI_Activities_L{lesson}_W{week}.docx", acts_doc),
-            ])
-            st.download_button(
-                "⬇️ Download MCQs + Activities (ZIP)",
-                data=zip_bytes,
-                file_name=f"ADI_Pack_L{lesson}_W{week}.zip",
-                mime="application/zip",
-            )
+    # Combined ZIP when both exist
+    mcqs_zip = st.session_state.get("mcqs", [])
+    if mcqs_zip and acts:
+        mcq_doc = mcqs_docx(mcqs_zip, st.session_state.get("topic_last",""), lesson, week)
+        acts_doc = acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week)
+        zip_bytes = make_zip([
+            (f"ADI_MCQs_L{lesson}_W{week}.docx", mcq_doc),
+            (f"ADI_Activities_L{lesson}_W{week}.docx", acts_doc),
+        ])
+        st.download_button(
+            "⬇️ Download MCQs + Activities (ZIP)",
+            data=zip_bytes,
+            file_name=f"ADI_Pack_L{lesson}_W{week}.zip",
+            mime="application/zip",
+        )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
