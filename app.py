@@ -1,60 +1,47 @@
-# app.py  — ADI Builder (Lessons, MCQs, Activities, Revision)
-# ---------------------------------------------------------------------
-# Zero-API, on-prem friendly. Uses NLTK + TF-IDF + simple heuristics.
-# Includes:
-#  - Polished ADI UI with ADI green accents and shaded LOW/MED/HIGH rows
-#  - Stable upload parsing (PDF/PPTX/DOCX) with "Deep scan" + timeouts
-#  - Bloom focus auto-band + verb pill selection, highlighted
-#  - MCQ generator (quality > previous: TF-IDF key phrases, POS filters,
-#    basic distractors via WordNet + near-miss templates, seed per teacher)
-#  - Skills Activities & Revision prompts
-#  - Downloads: DOCX, GIFT, Moodle XML; Course Pack JSON
-#  - Rerun shim for new Streamlit versions (fixes experimental_rerun crash)
+# app.py — ADI Builder (Lessons, MCQs, Activities, Revision)
+# Zero-API, on-prem friendly. Streamlit 1.3x compatible.
+# UI: ADI green header, shaded LOW/MED/HIGH bands, large pill-style verbs.
+# Features: Robust parsing (PDF/DOCX/PPTX), MCQs, Activities, Revision,
+# DOCX + GIFT + Moodle XML downloads, optional Course Pack JSON.
 
 import os
 import io
 import json
 import time
-import math
 import random
-import zipfile
 import hashlib
-from datetime import datetime, date
+from datetime import datetime
 
 import streamlit as st
 
-# ---- Streamlit rerun compatibility shim (fixes your crash) -----------
+# ---- Streamlit rerun compatibility (fixes experimental_rerun crash) ---
 if not hasattr(st, "experimental_rerun"):
     st.experimental_rerun = st.rerun
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 # Parsing libs
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 from pptx import Presentation
 
-# NLP / features
+# NLP
 import nltk
 from nltk.corpus import wordnet as wn
 from nltk import word_tokenize, pos_tag
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 # Ensure NLTK data
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
-    nltk.download("punkt")
-try:
-    nltk.data.find("taggers/averaged_perceptron_tagger")
-except LookupError:
-    nltk.download("averaged_perceptron_tagger")
-try:
-    nltk.data.find("corpora/wordnet")
-except LookupError:
-    nltk.download("wordnet")
+for pkg, dl in [
+    ("tokenizers/punkt", "punkt"),
+    ("taggers/averaged_perceptron_tagger", "averaged_perceptron_tagger"),
+    ("corpora/wordnet", "wordnet"),
+]:
+    try:
+        nltk.data.find(pkg)
+    except LookupError:
+        nltk.download(dl)
 
-# ----------------- Look & Theme ---------------------------------------
-# Use config.toml in .streamlit for permanent theme.
+# ----------------- Theme / CSS -----------------------------------------
 ADI_GREEN = "#245a34"
 SHADE_LOW = "rgba(36,90,52,0.06)"
 SHADE_MED = "rgba(36,90,52,0.08)"
@@ -63,81 +50,86 @@ SHADE_HIGH = "rgba(36,90,52,0.06)"
 st.set_page_config(
     page_title="ADI Builder — Lesson Activities & Questions",
     page_icon="🧰",
-    layout="wide"
+    layout="wide",
 )
 
 CUSTOM_CSS = f"""
 <style>
-/* Top banner */
+/* Banner */
 .adi-banner {{
-  background: {ADI_GREEN};
-  color: #fff;
-  border-radius: 10px;
-  padding: 16px 18px;
-  font-weight: 600;
+  background:{ADI_GREEN}; color:#fff; border-radius:10px; padding:16px 18px; font-weight:600;
 }}
-/* Tabs underline accent */
-.stTabs [data-baseweb="tab"] {{
-  font-weight: 600;
-}}
+/* Tabs accent */
 .stTabs [data-baseweb="tab-highlight"] {{
   background: linear-gradient(90deg,{ADI_GREEN} 0%, {ADI_GREEN} 100%);
 }}
-/* Shaded bands for Bloom tiers */
-.band-low {{ background: {SHADE_LOW}; border-radius: 10px; padding: 10px 14px; }}
-.band-med {{ background: {SHADE_MED}; border-radius: 10px; padding: 10px 14px; }}
-.band-high{{ background: {SHADE_HIGH}; border-radius: 10px; padding: 10px 14px; }}
 
-/* Verb pills */
-.pill {{
-  display:inline-block; padding:8px 18px; margin:8px 10px 4px 0;
-  border-radius: 999px; border:1px solid #e8e8e8; background:#f8f8f7; color:#333;
-  user-select:none;
-}}
-.pill.selected {{
-  background: {ADI_GREEN}; color: #fff; border-color:{ADI_GREEN};
-}}
-/* Light tag */
+/* Shaded Bloom bands */
+.band-low  {{ background:{SHADE_LOW};  border-radius:10px; padding:10px 14px; }}
+.band-med  {{ background:{SHADE_MED};  border-radius:10px; padding:10px 14px; }}
+.band-high {{ background:{SHADE_HIGH}; border-radius:10px; padding:10px 14px; }}
+
+/* Informational chips */
 .badge {{
   display:inline-block; background:#e5d4a3; color:#3b2f14; padding:5px 10px; border-radius:999px; font-size:12px;
 }}
-/* Success box */
-.parse-ok {{ border-left:4px solid {ADI_GREEN}; background:#f1f7f3; padding:10px 12px; border-radius:6px; }}
-.parse-warn {{ border-left:4px solid #c07d00; background:#fff9e8; padding:10px 12px; border-radius:6px; }}
+
+/* Parse result boxes */
+.parse-ok   {{ border-left:4px solid {ADI_GREEN}; background:#f1f7f3; padding:10px 12px; border-radius:6px; }}
+.parse-warn {{ border-left:4px solid #c07d00;  background:#fff9e8; padding:10px 12px; border-radius:6px; }}
+
+/* ===== Verb pills (checkbox-as-pill) ===== */
+.verb-wrap {{ margin: 6px 0 2px 0; }}
+div[data-testid="stCheckbox"].adi-verb {{
+  display:inline-block; margin:8px 10px 4px 0;
+}}
+div[data-testid="stCheckbox"].adi-verb > label {{
+  display:inline-block;
+  border:1px solid #e8e8e8;
+  background:#f8f8f7;
+  color:#333;
+  padding:10px 18px;
+  border-radius:999px;
+  font-weight:500;
+  cursor:pointer;
+  transition:all .12s ease-in-out;
+}}
+div[data-testid="stCheckbox"].adi-verb > div {{ display:none; }} /* hide default box */
+div[data-testid="stCheckbox"].adi-verb > label:hover {{ background:#efefee; }}
+div[data-testid="stCheckbox"].adi-verb input:checked + label {{
+  background:{ADI_GREEN}; color:#fff; border-color:{ADI_GREEN};
+}}
+
+/* Bigger action buttons */
+.stButton > button[kind="primary"], .stButton > button {{
+  border-radius:10px; padding:10px 16px; font-weight:600;
+}}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# ----------------- Helpers --------------------------------------------
-
+# ----------------- Small helpers ---------------------------------------
 def stable_seed(*parts, jitter_minutes=0):
-    """Build a reproducible but instructor-separable random seed."""
     base = "|".join(map(str, parts))
     if jitter_minutes:
-        now_bucket = int(time.time() // (60 * jitter_minutes))
-        base = f"{base}|{now_bucket}"
+        base += f"|{int(time.time()//(60*jitter_minutes))}"
     return int(hashlib.sha256(base.encode("utf-8")).hexdigest()[:10], 16)
 
 def split_chunks(text, max_chars=1200):
-    chunks, cur = [], []
-    count = 0
+    chunks, cur, n = [], [], 0
     for line in text.splitlines():
-        if not line.strip():
-            line = " "
-        if count + len(line) > max_chars and cur:
-            chunks.append(" ".join(cur))
-            cur, count = [line], len(line)
+        line = line if line.strip() else " "
+        if n + len(line) > max_chars and cur:
+            chunks.append(" ".join(cur)); cur, n = [line], len(line)
         else:
-            cur.append(line)
-            count += len(line)
-    if cur:
-        chunks.append(" ".join(cur))
+            cur.append(line); n += len(line)
+    if cur: chunks.append(" ".join(cur))
     return chunks
 
 def tfidf_keyphrases(text, top_k=25):
     docs = split_chunks(text, 1000)
     vect = TfidfVectorizer(ngram_range=(1,2), max_features=5000, stop_words="english")
-    X = vect.fit_transform(docs if len(docs) > 1 else docs + [" "])
+    X = vect.fit_transform(docs if len(docs)>1 else docs+[" "])
     scores = X.toarray().sum(axis=0)
     terms = vect.get_feature_names_out()
     ranked = sorted(zip(terms, scores), key=lambda x: x[1], reverse=True)
@@ -146,23 +138,14 @@ def tfidf_keyphrases(text, top_k=25):
 def noun_verb_terms(text, limit=40):
     toks = word_tokenize(text)
     tagged = pos_tag(toks)
-    keep = [w for (w,p) in tagged if p.startswith("NN") or p.startswith("VB")]
-    # de-duplicate keeping order
-    seen, out = set(), []
+    keep = [w for (w,p) in tagged if (p.startswith("NN") or p.startswith("VB")) and w.isalpha() and len(w)>2]
+    out, seen = [], set()
     for w in keep:
         lw = w.lower()
-        if lw.isalpha() and lw not in seen and len(lw) > 2:
+        if lw not in seen:
             seen.add(lw); out.append(lw)
-        if len(out) >= limit:
-            break
+        if len(out) >= limit: break
     return out
-
-def synonyms(word):
-    syns = set()
-    for s in wn.synsets(word):
-        for l in s.lemmas():
-            syns.add(l.name().replace("_"," "))
-    return [s for s in syns if s.lower() != word.lower()]
 
 def antonyms(word):
     ants = set()
@@ -173,188 +156,136 @@ def antonyms(word):
     return list(ants)
 
 def plausible_distractors(answer, pool):
-    # wordnet antonyms + near neighbors from pool
-    ds = set()
-    for a in antonyms(answer):
-        ds.add(a)
-    # near-miss: similar length words from pool
+    ds = set(antonyms(answer))
     alen = len(answer)
     for w in pool:
-        if w.lower() == answer.lower(): 
-            continue
-        if abs(len(w) - alen) <= 2:
-            ds.add(w)
-        if len(ds) >= 12:
-            break
-    out = [d for d in ds if d.lower()!=answer.lower()][:12]
-    return out
+        if w.lower()==answer.lower(): continue
+        if abs(len(w)-alen)<=2: ds.add(w)
+        if len(ds)>=12: break
+    return [d for d in ds if d.lower()!=answer.lower()][:12]
 
 def build_mcq_from_fact(fact, distractor_bank, rng):
-    """Very simple stem & choices from a short fact/phrase."""
     base = fact.strip().rstrip(".")
-    if len(base.split()) < 3:
+    if len(base.split())<3:
         base = f"Which of the following best matches: '{base}'?"
-
     answer = fact.strip()
     distractors = plausible_distractors(answer, distractor_bank)
     rng.shuffle(distractors)
     choices = [answer] + distractors[:3]
     rng.shuffle(choices)
     key = "ABCD"[choices.index(answer)]
-    return {
-        "stem": base,
-        "choices": choices,
-        "key": key
-    }
+    return {"stem": base, "choices": choices, "key": key}
 
 def text_to_docx(title, mcqs=None, activities=None, revision=None):
     doc = DocxDocument()
     doc.add_heading(title, level=1)
-
     if mcqs:
         doc.add_heading("Multiple-choice questions", level=2)
-        for i, q in enumerate(mcqs, 1):
+        for i,q in enumerate(mcqs,1):
             doc.add_paragraph(f"{i}. {q['stem']}")
-            for li, opt in zip("ABCD", q["choices"]):
-                doc.add_paragraph(f"{li}. {opt}", style=None)
-            doc.add_paragraph(f"Answer: {q['key']}")
-            doc.add_paragraph("")
-
+            for li,opt in zip("ABCD", q["choices"]):
+                doc.add_paragraph(f"{li}. {opt}")
+            doc.add_paragraph(f"Answer: {q['key']}"); doc.add_paragraph("")
     if activities:
         doc.add_heading("Skills Activities", level=2)
-        for i, a in enumerate(activities, 1):
-            p = doc.add_paragraph(f"{i}. {a['title']} ({a['minutes']} min)")
+        for i,a in enumerate(activities,1):
+            doc.add_paragraph(f"{i}. {a['title']} ({a['minutes']} min)")
             doc.add_paragraph(a["task"])
-            if a.get("materials"):
-                doc.add_paragraph("Materials: " + ", ".join(a["materials"]))
-            if a.get("deliverable"):
-                doc.add_paragraph("Deliverable: " + a["deliverable"])
+            if a.get("materials"): doc.add_paragraph("Materials: "+", ".join(a["materials"]))
+            if a.get("deliverable"): doc.add_paragraph("Deliverable: "+a["deliverable"])
             doc.add_paragraph("")
-
     if revision:
         doc.add_heading("Revision", level=2)
-        for i, r in enumerate(revision, 1):
-            doc.add_paragraph(f"{i}. {r}")
-
-    bio = io.BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio
+        for i,r in enumerate(revision,1): doc.add_paragraph(f"{i}. {r}")
+    bio = io.BytesIO(); doc.save(bio); bio.seek(0); return bio
 
 def mcqs_to_gift(mcqs):
     lines = []
     for q in mcqs:
         stem = q["stem"].replace("\n"," ").strip()
         lines.append(f"::{stem}:: {stem} {{")
-        for li, opt in zip("ABCD", q["choices"]):
-            if li == q["key"]:
-                lines.append(f" = {opt}")
-            else:
-                lines.append(f" ~ {opt}")
+        for li,opt in zip("ABCD", q["choices"]):
+            lines.append((" = " if li==q["key"] else " ~ ")+opt)
         lines.append("}")
     return "\n".join(lines)
 
 def mcqs_to_moodle_xml(mcqs, quiz_name="ADI Quiz"):
-    # a very small compliant subset
     from xml.sax.saxutils import escape
-    lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<quiz>']
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>','<quiz>']
     for q in mcqs:
-        lines.append("<question type=\"multichoice\">")
+        lines.append('<question type="multichoice">')
         lines.append(f"<name><text>{escape(q['stem'][:60])}</text></name>")
         lines.append(f"<questiontext format=\"html\"><text><![CDATA[{escape(q['stem'])}]]></text></questiontext>")
         lines.append("<shuffleanswers>1</shuffleanswers><single>true</single>")
-        lines.append("<answer fraction=\"100\"><text>{}</text></answer>".format(
-            escape(q["choices"]["ABCD".index(q["key"])])
-        ))
-        for li, opt in zip("ABCD", q["choices"]):
-            if li == q["key"]: 
-                continue
-            lines.append("<answer fraction=\"0\"><text>{}</text></answer>".format(escape(opt)))
+        # correct
+        lines.append(f"<answer fraction=\"100\"><text>{escape(q['choices']['ABCD'.index(q['key'])])}</text></answer>")
+        # distractors
+        for li,opt in zip("ABCD", q["choices"]):
+            if li==q["key"]: continue
+            lines.append(f"<answer fraction=\"0\"><text>{escape(opt)}</text></answer>")
         lines.append("</question>")
     lines.append("</quiz>")
     return "\n".join(lines)
 
-# ----------------- Parsing --------------------------------------------
-
+# ----------------- Parsing ---------------------------------------------
 def parse_pdf(file_buf, deep=False, max_pages=60, timeout_s=20):
-    """Returns (text, meta dict)"""
-    start = time.time()
-    text = []
-    parsed = 0
+    start = time.time(); text=[]; parsed=0
     with fitz.open(stream=file_buf.read(), filetype="pdf") as d:
         total = d.page_count
-        step = 1 if deep else max(1, total // max_pages)
+        step = 1 if deep else max(1, total//max_pages)
         for i in range(0, total, step):
-            if time.time() - start > timeout_s:
-                break
+            if time.time()-start > timeout_s: break
             try:
-                page = d.load_page(i)
-                text.append(page.get_text("text"))
-                parsed += 1
-            except Exception:
-                continue
+                text.append(d.load_page(i).get_text("text")); parsed += 1
+            except Exception: continue
     return "\n".join(text), {"pages_scanned": parsed, "total_pages": total}
 
 def parse_docx(file_buf):
-    doc = DocxDocument(file_buf)
-    text = []
-    for p in doc.paragraphs:
-        text.append(p.text)
-    for table in doc.tables:
-        for row in table.rows:
-            text.append(" ".join(cell.text for cell in row.cells))
-    return "\n".join(text)
+    doc = DocxDocument(file_buf); out=[]
+    for p in doc.paragraphs: out.append(p.text)
+    for t in doc.tables:
+        for r in t.rows: out.append(" ".join(c.text for c in r.cells))
+    return "\n".join(out)
 
 def parse_pptx(file_buf):
-    prs = Presentation(file_buf)
-    text = []
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if hasattr(shape, "text"):
-                text.append(shape.text)
-    return "\n".join(text)
+    prs = Presentation(file_buf); out=[]
+    for s in prs.slides:
+        for sh in s.shapes:
+            if hasattr(sh,"text"): out.append(sh.text)
+    return "\n".join(out)
 
-# ----------------- Generators -----------------------------------------
-
+# ----------------- Generators ------------------------------------------
 def generate_mcqs(source_text, num_qs, seed_tuple):
-    rng = random.Random(stable_seed(*seed_tuple, jitter_minutes=0))
+    rng = random.Random(stable_seed(*seed_tuple))
     phrases = tfidf_keyphrases(source_text, top_k=max(30, num_qs*4))
     nv_terms = noun_verb_terms(source_text, limit=60)
     bank = list({*phrases, *nv_terms})
     if len(bank) < num_qs*2:
-        # fall back: split sentences
         bank.extend([s.strip() for s in source_text.split(".") if len(s.split())>3])
-
-    # build stems from best phrases/sentences
     rng.shuffle(bank)
-    mcqs = []
+    mcqs=[]
     for cand in bank:
         q = build_mcq_from_fact(cand, bank, rng)
-        # basic safety: short choices
-        if any(len(c.split())>20 for c in q["choices"]):
+        if any(len(c.split())>20 for c in q["choices"]):  # keep snappy
             continue
         mcqs.append(q)
-        if len(mcqs) >= num_qs:
-            break
+        if len(mcqs) >= num_qs: break
     return mcqs
 
 def generate_activities(topic, verbs, minutes_list, source_text):
-    acts = []
+    acts=[]; mats = ["whiteboard","markers","laptop","handout"]
     scaffolds = {
-        "LOW": "Quick-check recall: Using your notes, {} for {}.",
-        "MED": "Pair task: {} and apply it to a short scenario about {}.",
+        "LOW":  "Quick-check recall: Using your notes, {} for {}.",
+        "MED":  "Pair task: {} and apply it to a short scenario about {}.",
         "HIGH": "Mini project: {} to design/justify an approach for {}."
     }
-    mats = ["whiteboard", "markers", "laptop", "handout"]
     for minutes in minutes_list:
-        level = "LOW" if minutes <=15 else ("MED" if minutes <=30 else "HIGH")
-        verb = verbs.get(level, ["identify","apply","design"])[0]
-        title = f"{verb.title()} — {minutes} min"
-        task = scaffolds[level].format(verb, topic or "this lesson")
+        level = "LOW" if minutes<=15 else ("MED" if minutes<=30 else "HIGH")
+        verb = (verbs.get(level) or ["identify","apply","design"])[0]
         acts.append({
-            "title": title,
+            "title": f"{verb.title()} — {minutes} min",
             "minutes": minutes,
-            "task": task,
+            "task": scaffolds[level].format(verb, topic or "this lesson"),
             "materials": mats[:2] if level!="HIGH" else mats,
             "deliverable": "1-slide summary" if level!="HIGH" else "Short design brief"
         })
@@ -372,8 +303,7 @@ def generate_revision(topic, source_text, k=6):
     ]
     return prompts[:k]
 
-# ----------------- UI --------------------------------------------------
-
+# ----------------- UI pieces -------------------------------------------
 def header():
     st.markdown(f"""
     <div class="adi-banner">
@@ -382,10 +312,6 @@ def header():
     </div>
     """, unsafe_allow_html=True)
 
-def verb_pill(label, selected=False, key=None):
-    css = "pill selected" if selected else "pill"
-    st.markdown(f"""<span class="{css}">{label}</span>""", unsafe_allow_html=True)
-
 def band(title, level_key):
     css = {"LOW":"band-low","MED":"band-med","HIGH":"band-high"}[level_key]
     st.markdown(f"""<div class="{css}"><b>{title}</b>""", unsafe_allow_html=True)
@@ -393,53 +319,47 @@ def band(title, level_key):
 def endband():
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Session defaults
-if "parsed_text" not in st.session_state:
-    st.session_state.parsed_text = ""
-if "parse_meta" not in st.session_state:
-    st.session_state.parse_meta = {}
+# ----------------- State -----------------------------------------------
+if "parsed_text" not in st.session_state: st.session_state.parsed_text = ""
+if "parse_meta" not in st.session_state:  st.session_state.parse_meta = {}
 if "selected_verbs" not in st.session_state:
     st.session_state.selected_verbs = {"LOW":[], "MED":[], "HIGH":[]}
 
+# ----------------- Layout ----------------------------------------------
 header()
 tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 
-# Sidebar — Upload + context
+# Sidebar
 with st.sidebar:
     st.subheader("Upload (optional)")
     upload = st.file_uploader("Drag and drop file here", type=["pdf","docx","pptx"], label_visibility="collapsed")
-    deep = st.checkbox("Deep scan (all pages, slower)", value=True, help="For large PDFs scans more pages with timeouts")
+    deep = st.checkbox("Deep scan (all pages, slower)", value=True, help="Scans more pages with timeouts")
     if upload is not None:
-        parse_stat = st.empty()
+        stat = st.empty()
         try:
-            if upload.type == "application/pdf" or upload.name.lower().endswith(".pdf"):
+            if upload.name.lower().endswith(".pdf"):
                 with st.spinner("Parsing PDF..."):
-                    # copy buffer
                     fb = io.BytesIO(upload.getbuffer())
                     text, meta = parse_pdf(fb, deep=deep, timeout_s=35 if deep else 15)
             elif upload.name.lower().endswith(".docx"):
                 with st.spinner("Parsing Word..."):
-                    fb = io.BytesIO(upload.getbuffer())
-                    text = parse_docx(fb); meta = {}
+                    fb = io.BytesIO(upload.getbuffer()); text = parse_docx(fb); meta={}
             else:
                 with st.spinner("Parsing PowerPoint..."):
-                    fb = io.BytesIO(upload.getbuffer())
-                    text = parse_pptx(fb); meta = {}
-
-            st.session_state.parsed_text = text
-            st.session_state.parse_meta = meta
-            parse_stat.markdown(
+                    fb = io.BytesIO(upload.getbuffer()); text = parse_pptx(fb); meta={}
+            st.session_state.parsed_text = text; st.session_state.parse_meta = meta
+            stat.markdown(
                 f"""<div class="parse-ok"><b>Parsed successfully</b><br/>
                 <small>{meta.get('pages_scanned','')} / {meta.get('total_pages','')} pages (PDF) · Source length: {len(text):,} chars</small></div>""",
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
         except Exception as e:
             st.warning(f"Could not parse file: {e}")
 
     st.subheader("Course context")
-    lesson = st.selectbox("Lesson", list(range(1, 15)), index=0)
-    week = st.selectbox("Week", list(range(1, 15)), index=0)
-    topic = st.text_input("Topic / outcome", placeholder="Module description, knowledge & skills outcomes")
+    lesson = st.selectbox("Lesson", list(range(1,15)), index=0)
+    week   = st.selectbox("Week",   list(range(1,15)), index=0)
+    topic  = st.text_input("Topic / outcome", placeholder="Module description, knowledge & skills outcomes")
 
     st.subheader("Number of MCQs")
     num_mcqs = st.selectbox("How many questions?", [5,10,15,20,30], index=1)
@@ -453,23 +373,24 @@ with st.sidebar:
     st.subheader("Export")
     export_pack = st.checkbox("Include Course Pack JSON", value=False)
 
-# Bloom focus indicator:
+# Focus tier
 focus_map = {1:"LOW",2:"LOW",3:"LOW",4:"LOW",5:"MED",6:"MED",7:"MED",8:"MED",9:"MED",10:"HIGH",11:"HIGH",12:"HIGH",13:"HIGH",14:"HIGH"}
-focus_tier = focus_map.get(week, "LOW")
+focus_tier = focus_map.get(week,"LOW")
 st.write(f"**Bloom focus (auto)**  <span class='badge'>Week {week}: {focus_tier.title()}</span>", unsafe_allow_html=True)
 
-# Editable source box
+# Source
 with tabs[0]:
     st.caption("Paste or jot key notes, vocab, facts here…")
     src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=180, label_visibility="collapsed")
 
-# Bloom verbs & highlighting
+# Verb data
 VERBS = {
     "LOW":["define","identify","list","recall","describe","label"],
     "MED":["apply","demonstrate","solve","illustrate","classify","compare"],
     "HIGH":["evaluate","synthesize","design","justify","critique","create"]
 }
 
+# -------- Verb band renderer (checkbox-as-pill) --------
 def render_verb_band(level):
     title = {
         "LOW":"LOW (Weeks 1–4): Remember / Understand",
@@ -477,40 +398,45 @@ def render_verb_band(level):
         "HIGH":"HIGH (Weeks 10–14): Evaluate / Create"
     }[level]
     band(title, level)
-    cols = st.columns(6)
-    for i, v in enumerate(VERBS[level]):
-        selected = v in st.session_state.selected_verbs[level]
-        with cols[i%6]:
-            if st.button(v.title(), key=f"{level}_{v}"):
-                if selected:
-                    st.session_state.selected_verbs[level].remove(v)
-                else:
-                    st.session_state.selected_verbs[level].append(v)
-        # show static pill state (visual)
-        verb_pill(v, selected=selected, key=f"pill_{level}_{v}")
+    st.markdown('<div class="verb-wrap">', unsafe_allow_html=True)
+    for v in VERBS[level]:
+        key = f"verb_{level}_{v}"
+        default = v in st.session_state.selected_verbs[level]
+        # We wrap the checkbox in a container Streamlit renders; our CSS styles it as a pill.
+        checked = st.checkbox(v.title(), value=default, key=key, label_visibility="visible")
+        # add the class to the last rendered checkbox node via HTML (Streamlit doesn't expose classes directly)
+        st.markdown(
+            "<script>(function(){const els=[...window.parent.document.querySelectorAll('div[data-testid=\"stCheckbox\"]')];"
+            "if(els.length){els[els.length-1].classList.add('adi-verb');}})();</script>",
+            unsafe_allow_html=True
+        )
+        if checked and v not in st.session_state.selected_verbs[level]:
+            st.session_state.selected_verbs[level].append(v)
+        if not checked and v in st.session_state.selected_verbs[level]:
+            st.session_state.selected_verbs[level].remove(v)
+    st.markdown('</div>', unsafe_allow_html=True)
     endband()
 
 render_verb_band("LOW")
 render_verb_band("MED")
 render_verb_band("HIGH")
 
-# Subtle highlight of the *current* focus tier
+# Subtle outline for current focus tier (JS)
 st.markdown(
     f"""<script>
-const tier = "{focus_tier}";
-for (const el of window.parent.document.querySelectorAll('.band-low,.band-med,.band-high')) {{
-  if ((tier==='LOW'  && el.classList.contains('band-low')) ||
-      (tier==='MED'  && el.classList.contains('band-med')) ||
-      (tier==='HIGH' && el.classList.contains('band-high'))) {{
-      el.style.boxShadow = 'inset 0 0 0 2px "{ADI_GREEN}"';
+const tier="{focus_tier}";
+for(const el of window.parent.document.querySelectorAll('.band-low,.band-med,.band-high')){{
+  if((tier==='LOW' && el.classList.contains('band-low'))||
+     (tier==='MED' && el.classList.contains('band-med'))||
+     (tier==='HIGH'&& el.classList.contains('band-high'))){{
+       el.style.boxShadow='inset 0 0 0 2px {ADI_GREEN}';
   }}
 }}
 </script>""",
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# ----------------- Actions --------------------------------------------
-
+# Actions
 colL, colR = st.columns([1,1])
 with colL:
     gen_btn = st.button("✨ Generate MCQs", type="primary", use_container_width=True)
@@ -522,116 +448,94 @@ if gen_btn or regen_btn:
         st.warning("Please add source text (or upload a file) to generate MCQs.")
     else:
         tier_verbs = {
-            "LOW": st.session_state.selected_verbs["LOW"] or VERBS["LOW"],
-            "MED": st.session_state.selected_verbs["MED"] or VERBS["MED"],
-            "HIGH": st.session_state.selected_verbs["HIGH"] or VERBS["HIGH"]
+            "LOW":  st.session_state.selected_verbs["LOW"]  or VERBS["LOW"],
+            "MED":  st.session_state.selected_verbs["MED"]  or VERBS["MED"],
+            "HIGH": st.session_state.selected_verbs["HIGH"] or VERBS["HIGH"],
         }
         seed_parts = (instructor or "anon", week, lesson, topic or "topic")
         mcqs = generate_mcqs(src, num_mcqs, seed_parts)
-
-        # Activities (use chosen verbs; map to durations)
         acts = generate_activities(topic, tier_verbs, act_times, src)
+        rev  = generate_revision(topic or "this lesson", src)
+        st.session_state["last_mcqs"]=mcqs
+        st.session_state["last_acts"]=acts
+        st.session_state["last_rev"]=rev
 
-        # Revision
-        rev = generate_revision(topic or "this lesson", src)
-
-        st.session_state["last_mcqs"] = mcqs
-        st.session_state["last_acts"] = acts
-        st.session_state["last_rev"]  = rev
-
-# ----------------- Output panes ---------------------------------------
-
+# Output
 mcqs_out = st.session_state.get("last_mcqs", [])
 acts_out = st.session_state.get("last_acts", [])
-rev_out  = st.session_state.get("last_rev", [])
+rev_out  = st.session_state.get("last_rev",  [])
 
-st.divider()
-st.subheader("Preview")
-
-col1, col2 = st.columns([1.2, 0.8], gap="large")
+st.divider(); st.subheader("Preview")
+col1, col2 = st.columns([1.2,0.8], gap="large")
 
 with col1:
     st.markdown("#### MCQs")
     if not mcqs_out:
         st.info("No questions yet. Click **Generate MCQs** to create a set.")
     else:
-        for i, q in enumerate(mcqs_out, 1):
+        for i,q in enumerate(mcqs_out,1):
             st.markdown(f"**{i}. {q['stem']}**")
             st.markdown("<ul>"+ "".join([f"<li>{li}. {opt}</li>" for li,opt in zip('ABCD', q['choices'])]) +"</ul>", unsafe_allow_html=True)
             st.caption(f"Answer: **{q['key']}**")
 
 with col2:
     st.markdown("#### Activities")
-    if not acts_out:
-        st.info("Pick durations in the sidebar to propose activities.")
+    if not acts_out: st.info("Pick durations in the sidebar to propose activities.")
     else:
-        for a in acts_out:
-            st.markdown(f"- **{a['title']}** – {a['task']}")
+        for a in acts_out: st.markdown(f"- **{a['title']}** – {a['task']}")
     st.markdown("#### Revision")
-    if not rev_out:
-        st.info("Revision prompts will appear here.")
+    if not rev_out: st.info("Revision prompts will appear here.")
     else:
         st.markdown("<ul>"+ "".join([f"<li>{r}</li>" for r in rev_out]) +"</ul>", unsafe_allow_html=True)
 
-# ----------------- Downloads ------------------------------------------
-
-st.divider()
-st.subheader("Download")
-
+# Downloads
+st.divider(); st.subheader("Download")
 title = f"ADI_{week:02d}_W{week}_L{lesson}_{(topic or 'Lesson').strip().replace(' ','_')}"
-dl_cols = st.columns([1,1,1,1])
+dl = st.columns([1,1,1,1])
 
-with dl_cols[0]:
+with dl[0]:
     if mcqs_out:
         docx_buf = text_to_docx(title, mcqs_out, acts_out, rev_out)
-        st.download_button("📄 Download DOCX", data=docx_buf, file_name=f"{title}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
-    else:
-        st.button("📄 Download DOCX", disabled=True, use_container_width=True)
+        st.download_button("📄 Download DOCX", data=docx_buf, file_name=f"{title}.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           use_container_width=True)
+    else: st.button("📄 Download DOCX", disabled=True, use_container_width=True)
 
-with dl_cols[1]:
+with dl[1]:
     if mcqs_out:
         gift = mcqs_to_gift(mcqs_out)
-        st.download_button("🎯 Download GIFT", data=gift, file_name=f"{title}.gift", mime="text/plain", use_container_width=True)
-    else:
-        st.button("🎯 Download GIFT", disabled=True, use_container_width=True)
+        st.download_button("🎯 Download GIFT", data=gift, file_name=f"{title}.gift",
+                           mime="text/plain", use_container_width=True)
+    else: st.button("🎯 Download GIFT", disabled=True, use_container_width=True)
 
-with dl_cols[2]:
+with dl[2]:
     if mcqs_out:
         xml = mcqs_to_moodle_xml(mcqs_out, quiz_name=title)
-        st.download_button("🧩 Moodle XML", data=xml, file_name=f"{title}.xml", mime="application/xml", use_container_width=True)
-    else:
-        st.button("🧩 Moodle XML", disabled=True, use_container_width=True)
+        st.download_button("🧩 Moodle XML", data=xml, file_name=f"{title}.xml",
+                           mime="application/xml", use_container_width=True)
+    else: st.button("🧩 Moodle XML", disabled=True, use_container_width=True)
 
-with dl_cols[3]:
+with dl[3]:
     if export_pack and (mcqs_out or acts_out or rev_out):
         pack = {
-            "meta": {
-                "title": title, "week": week, "lesson": lesson,
-                "topic": topic, "generated_at": datetime.utcnow().isoformat() + "Z",
-                "instructor": instructor
-            },
-            "mcqs": mcqs_out,
-            "activities": acts_out,
-            "revision": rev_out
+            "meta":{"title":title,"week":week,"lesson":lesson,"topic":topic,
+                    "generated_at":datetime.utcnow().isoformat()+"Z","instructor":instructor},
+            "mcqs":mcqs_out,"activities":acts_out,"revision":rev_out
         }
         js = json.dumps(pack, ensure_ascii=False, indent=2)
-        st.download_button("📦 Course Pack JSON", data=js, file_name=f"{title}_pack.json", mime="application/json", use_container_width=True)
-    else:
-        st.button("📦 Course Pack JSON", disabled=True, use_container_width=True)
+        st.download_button("📦 Course Pack JSON", data=js, file_name=f"{title}_pack.json",
+                           mime="application/json", use_container_width=True)
+    else: st.button("📦 Course Pack JSON", disabled=True, use_container_width=True)
 
-# ----------------- Skills Activities & Revision tabs -------------------
-
+# Tabs 2 & 3 mirrors
 with tabs[1]:
-    st.caption("Activities reflect durations you chose in the sidebar.")
+    st.caption("Activities reflect durations chosen in the sidebar.")
     if acts_out:
         for a in acts_out:
             st.markdown(f"- **{a['title']}** – {a['task']}  \n  _Deliverable: {a['deliverable']}_")
-    else:
-        st.info("Pick durations and click Generate on the MCQ tab first.")
+    else: st.info("Pick durations and click Generate on the MCQ tab first.")
 
 with tabs[2]:
     if rev_out:
         st.markdown("<ol>"+ "".join([f"<li>{r}</li>" for r in rev_out]) +"</ol>", unsafe_allow_html=True)
-    else:
-        st.info("Generate once from the MCQ tab to populate revision prompts.")
-
+    else: st.info("Generate once from the MCQ tab to populate revision prompts.")
