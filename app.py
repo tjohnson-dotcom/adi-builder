@@ -394,7 +394,22 @@ with st.sidebar:
                 st.toast(f"Uploaded: {up.name} (no embedded text found)", icon="⚠️")
             if notes:
                 st.caption(" • ".join(notes))
+# --- UI helpers / styles (replace your existing <style> block with this) ---
+row_bg = {"Low":"#e7f2ea", "Medium":"#ecf4e7", "High":"#eef3e8"}[focus]
 
+st.markdown(f"""
+<style>
+  .row {{ background:{row_bg}; border:1px solid #e2e7df; border-radius:12px; padding:10px 12px; margin:10px 0; }}
+  .title {{ font-weight:700; margin:6px 0 2px; color:#2d4737; }}
+  .chip {{ display:inline-block; padding:10px 22px; margin:8px 10px 4px 0; border-radius:999px;
+           background:#f6f6f4; border:1px solid #e2e7df; color:#2a2a2a; }}
+  /* Active “pill” for the chosen taxonomy */
+  .chip.active {{ background:#2d6a4f; color:#ffffff; border-color:#2d6a4f; }}
+</style>
+""", unsafe_allow_html=True)
+
+
+    
     st.markdown("---")
     st.subheader("Course context")
     st.session_state.lesson = st.selectbox("Lesson", list(range(1,15)), index=st.session_state.lesson-1)
@@ -459,7 +474,24 @@ with tabs[0]:
             with cols[i % 6]:
                 st.markdown(f"<div class='chip'>{v}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
+# Which verb set is active for the current Bloom focus?
+active_set = {"Low": set(LOW_VERBS), "Medium": set(MED_VERBS), "High": set(HIGH_VERBS)}[focus]
 
+def verb_row(title, verbs, highlight=False):
+    st.markdown(f"<div class='row'><div class='title'>{title}</div>", unsafe_allow_html=True)
+    cols = st.columns(6)
+    for i, v in enumerate(verbs):
+        klass = "chip active" if (highlight and v in active_set) else "chip"
+        with cols[i % 6]:
+            st.markdown(f"<div class='{klass}'>{v}</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# Call rows like this (note the True/False flag for highlighting):
+verb_row("LOW (Weeks 1–4): Remember / Understand", LOW_VERBS, highlight=(focus=="Low"))
+verb_row("MEDIUM (Weeks 5–9): Apply / Analyse",    MED_VERBS, highlight=(focus=="Medium"))
+verb_row("HIGH (Weeks 10–14): Evaluate / Create",  HIGH_VERBS, highlight=(focus=="High"))
+
+    
     verb_row("LOW (Weeks 1–4): Remember / Understand", LOW_VERBS)
     verb_row("MEDIUM (Weeks 5–9): Apply / Analyse",    MED_VERBS)
     verb_row("HIGH (Weeks 10–14): Evaluate / Create",  HIGH_VERBS)
