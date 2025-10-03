@@ -1,4 +1,4 @@
-# app.py (ADI Builder — green-locked UI + compact selects + MCQs/Activities + ZIP export)
+# app.py (ADI Builder — green-locked UI + compact selects + MCQs/Activities + ZIP + polish)
 # Requires (pin in requirements.txt):
 #   streamlit==1.37.1
 #   python-docx==1.1.2
@@ -42,6 +42,19 @@ def _logo_b64():
         return None
 
 logo_b64 = _logo_b64()
+
+# ---------------- Tiny state helpers (remember via URL) ----------------
+def _save_qp(**kwargs):
+    try:
+        st.query_params.update({k: str(v) for k, v in kwargs.items() if v is not None})
+    except Exception:
+        pass
+
+def _read_qp_int(key, default):
+    try:
+        return int(st.query_params.get(key, default))
+    except Exception:
+        return default
 
 # ---------------- CSS ----------------
 st.markdown(
@@ -309,7 +322,7 @@ def make_zip(files: list[tuple[str, bytes]]) -> bytes:
             z.writestr(name, data)
     return bio.getvalue()
 
-# ---------------- Extraction ----------------
+# ---------------- Extraction (cached) ----------------
 def _truncate(t: str, n: int = 12000) -> str:
     t = re.sub(r"\s+\n", "\n", t)
     return t[:n]
@@ -354,6 +367,10 @@ def extract_upload(name: str, data: bytes) -> str:
     if ext in (".pptx", ".ppt"): return extract_pptx(data)
     return ""
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def extract_text_from_upload_cached(filename: str, data: bytes) -> str:
+    return extract_upload(filename, data)
+
 # ---------------- Sidebar (upload + compact select for MCQ count) ----------------
 with st.sidebar:
     if "uploaded_file_bytes" not in st.session_state:
@@ -378,7 +395,7 @@ with st.sidebar:
         st.session_state.uploaded_filename = upl.name
         st.session_state.uploaded_size = len(data)
 
-        extracted = extract_upload(upl.name, data)
+        extracted = extract_text_from_upload_cached(upl.name, data)
         st.session_state.extracted_text = extracted
         st.session_state.use_extracted_auto = bool(extracted.strip())
 
@@ -402,8 +419,9 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Course context")
-    lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=0)
-    week   = st.selectbox("Week",   options=list(range(1, 15)), index=6)
+    lesson = st.selectbox("Lesson", options=list(range(1, 6)), index=_read_qp_int("lesson", 1)-1)
+    week   = st.selectbox("Week",   options=list(range(1, 15)), index=_read_qp_int("week", 7)-1)
+    _save_qp(lesson=lesson, week=week)
 
     # Compact select for MCQ count
     st.markdown("---")
@@ -411,9 +429,10 @@ with st.sidebar:
     target_n = st.selectbox(
         "How many questions?",
         options=[5, 10, 15, 20, 30],
-        index=[5,10,15,20,30].index(st.session_state.get("mcq_count_select", 5)),
+        index=[5,10,15,20,30].index(_read_qp_int("mcq", 5)),
         key="mcq_count_select",
     )
+    _save_qp(mcq=target_n)
     st.caption("Typical handout: 10–15")
 
 # ---------------- Header ----------------
@@ -444,8 +463,13 @@ with tab1:
 
     c1, c2 = st.columns([2, 1])
     with c1:
-        topic = st.text_input("Topic / Outcome (optional)", placeholder="Module description, knowledge & skills outcomes")
-        st.session_state["topic_last"] = topic  # remember for Downloads/Activities
+        topic = st.text_input(
+            "Topic / Outcome (optional)",
+            value=st.query_params.get("topic",""),
+            placeholder="Module description, knowledge & skills outcomes",
+        )
+        st.session_state["topic_last"] = topic
+        _save_qp(topic=topic)
     with c2:
         focus = focus_for_week(week)
         badge = {"Low":"week-low","Medium":"week-medium","High":"week-high"}[focus]
@@ -490,6 +514,7 @@ with tab1:
             active = st.session_state.verb_states.get(v, False)
             if cols[i % 6].button(v, key=f"pill-{v}", use_container_width=True):
                 st.session_state.verb_states[v] = not active
+            # Style without re-run
             st.markdown(
                 f"""
                 <script>
@@ -508,21 +533,18 @@ with tab1:
     pills("MEDIUM (Weeks 5–9): Apply / Analyse", MED)
     pills("HIGH (Weeks 10–14): Evaluate / Create", HIGH)
 
-    cL, cM, cH = st.columns(3)
-    if cL.button("LOW", use_container_width=True):
-        st.session_state.verb_states = {v: (v in LOW) for v in st.session_state.verb_states}
-    if cM.button("MEDIUM", use_container_width=True):
-        st.session_state.verb_states = {v: (v in MED) for v in st.session_state.verb_states}
-    if cH.button("HIGH", use_container_width=True):
-        st.session_state.verb_states = {v: (v in HIGH) for v in st.session_state.verb_states}
+    c1b, c2b = st.columns([1,1])
+    gen   = c1b.button("✨ Generate MCQs", type="primary",
+                       disabled=not ((src or "").strip() or st.session_state.extracted_text.strip()))
+    regen = c2b.button("↻ Regenerate", disabled=not st.session_state.get("mcqs"))
 
-    gen = st.button("✨ Generate MCQs", type="primary", disabled=not ((src or "").strip() or st.session_state.extracted_text.strip()))
     chosen_verbs = [v for v, on in st.session_state.verb_states.items() if on]
-
-    if gen:
+    if gen or regen:
         text = (src or "").strip() or st.session_state.extracted_text.strip()
-        st.session_state.mcqs = gen_mcqs(text, n=st.session_state.get("mcq_count_select", 5), verbs=chosen_verbs, seed=42)
-        st.toast("MCQs generated", icon="✨")
+        seed = random.randint(0, 10_000) if regen else 42
+        st.session_state.mcqs = gen_mcqs(text, n=st.session_state.get("mcq_count_select", 5),
+                                         verbs=chosen_verbs, seed=seed)
+        st.toast("MCQs generated" if gen else "MCQs regenerated", icon="✨")
 
     mcqs = st.session_state.get("mcqs", [])
     if mcqs:
@@ -534,12 +556,34 @@ with tab1:
             for i, opt in enumerate(q["options"]):
                 st.write(f"- {letters[i]}. {opt}")
             st.caption(f"Answer: **{letters[q['answer']]}**  •  Bloom: **{q['bloom']}**")
+
+        # DOCX
         st.download_button(
             "⬇️ Export to Word (DOCX)",
             data=mcqs_docx(mcqs, st.session_state.get("topic_last",""), lesson, week),
             file_name=f"ADI_MCQs_L{lesson}_W{week}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+        # Copy to clipboard
+        flat = []
+        for q in mcqs:
+            letters = ["A","B","C","D"]
+            flat.append(f"Q{q['index']}. {q['stem']}")
+            flat += [f"  {letters[i]}. {opt}" for i,opt in enumerate(q["options"])]
+            flat.append(f"Answer: {letters[q['answer']]} (Bloom: {q['bloom']})\n")
+        clip = "\n".join(flat)
+        st.button("📋 Copy MCQs to clipboard", key="copy_mcqs")
+        st.markdown(f"""
+        <script>
+        const btn = window.parent.document.querySelector('button[data-testid="copy_mcqs"]');
+        if (btn) {{
+          btn.onclick = async () => {{
+            await navigator.clipboard.writeText({clip!r});
+          }};
+        }}
+        </script>
+        """, unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -586,21 +630,21 @@ with tab2:
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
-    # Combined ZIP when both exist
-    mcqs_zip = st.session_state.get("mcqs", [])
-    if mcqs_zip and acts:
-        mcq_doc = mcqs_docx(mcqs_zip, st.session_state.get("topic_last",""), lesson, week)
-        acts_doc = acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week)
-        zip_bytes = make_zip([
-            (f"ADI_MCQs_L{lesson}_W{week}.docx", mcq_doc),
-            (f"ADI_Activities_L{lesson}_W{week}.docx", acts_doc),
-        ])
-        st.download_button(
-            "⬇️ Download MCQs + Activities (ZIP)",
-            data=zip_bytes,
-            file_name=f"ADI_Pack_L{lesson}_W{week}.zip",
-            mime="application/zip",
-        )
+        # Combined ZIP when both exist
+        mcqs_zip = st.session_state.get("mcqs", [])
+        if mcqs_zip:
+            mcq_doc = mcqs_docx(mcqs_zip, st.session_state.get("topic_last",""), lesson, week)
+            acts_doc = acts_docx(acts, topic2 or st.session_state.get("topic_last",""), lesson, week)
+            zip_bytes = make_zip([
+                (f"ADI_MCQs_L{lesson}_W{week}.docx", mcq_doc),
+                (f"ADI_Activities_L{lesson}_W{week}.docx", acts_doc),
+            ])
+            st.download_button(
+                "⬇️ Download MCQs + Activities (ZIP)",
+                data=zip_bytes,
+                file_name=f"ADI_Pack_L{lesson}_W{week}.zip",
+                mime="application/zip",
+            )
 
     st.markdown('</div>', unsafe_allow_html=True)
 
