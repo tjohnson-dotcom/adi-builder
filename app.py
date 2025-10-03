@@ -3,6 +3,14 @@
 # API-free generators + Hybrid Course Packs + LMS Importer + Lesson Plan ingestor
 # Instructor-aware variation (3-way partition) + Simple Mode (MCQs / Activities / Revision / Bundle)
 import streamlit as st
+# ---- Streamlit rerun compatibility shim ----
+# Newer Streamlit uses st.rerun(), older code sometimes calls st.experimental_rerun().
+# This alias keeps both working without changing the rest of the app.
+if not hasattr(st, "experimental_rerun"):
+    st.experimental_rerun = st.rerun  # create alias if missing
+# -------------------------------------------
+
+
 # ...your other imports...
 
 import io, os, re, time, hashlib, random, json, glob, csv, textwrap
