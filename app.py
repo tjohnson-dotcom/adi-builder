@@ -2,27 +2,34 @@
 # -*- coding: utf-8 -*-
 """
 ADI Builder — Lesson Activities & Questions (API-free, tight build)
-- PDF/PPTX/DOCX text extraction (graceful fallbacks)
-- MCQ generation via TF-IDF (+ optional spaCy/WordNet if available)
+- PDF/PPTX/DOCX text extraction (pypdf + PyMuPDF "text" + "blocks", python-pptx, python-docx)
+- MCQ generation via TF-IDF (+ optional spaCy noun chunks & WordNet antonyms if present)
 - Bloom-aligned activities by topic/week/lesson
 - .docx exports for MCQs and Activities
-- Upload toast, row highlighting, minimal deps
+- Upload toast, green row highlights, and active verb pills
 """
 
-import io, re, random, hashlib
+import io
+import re
+import random
+import hashlib
 from dataclasses import dataclass
 from typing import List, Tuple
 
 import streamlit as st
 
-# -------------------- Page setup --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Page setup
+# ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="ADI Builder — Lesson Activities & Questions",
     page_icon="✅",
     layout="wide",
 )
 
-# -------------------- Session init --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Session init
+# ──────────────────────────────────────────────────────────────────────────────
 def _init():
     ss = st.session_state
     ss.setdefault("last_file_sig", None)
@@ -37,26 +44,36 @@ def _init():
     ss.setdefault("act_minutes", 10)
     ss.setdefault("use_sample", False)
     ss.setdefault("use_extracted", False)
+
 _init()
 
-# -------------------- Small helpers --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Small helpers
+# ──────────────────────────────────────────────────────────────────────────────
 def file_sig(name: str, data: bytes) -> str:
     h = hashlib.sha256()
-    h.update(name.encode()); h.update(data)
+    h.update(name.encode())
+    h.update(data)
     return h.hexdigest()
 
 def bloom_from_week(week: int) -> str:
-    if week <= 4: return "Low"
-    if week <= 9: return "Medium"
+    if week <= 4:
+        return "Low"
+    if week <= 9:
+        return "Medium"
     return "High"
 
-LOW_VERBS  = ["define","identify","list","recall","describe","label"]
-MED_VERBS  = ["apply","demonstrate","solve","illustrate","classify","compare"]
-HIGH_VERBS = ["evaluate","synthesize","design","justify","critique","create"]
+LOW_VERBS  = ["define", "identify", "list", "recall", "describe", "label"]
+MED_VERBS  = ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"]
+HIGH_VERBS = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
 
-# -------------------- Extraction --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Extraction (improved)
+# ──────────────────────────────────────────────────────────────────────────────
 def extract_text_from_upload(name: str, data: bytes) -> Tuple[str, List[str]]:
-    """Return (text, notes). Tries pypdf → PyMuPDF; PPTX; DOCX."""
+    """
+    Return (text, notes). Tries pypdf → PyMuPDF (plain + blocks); PPTX; DOCX.
+    """
     notes, txt = [], ""
     lower = name.lower()
     bio = io.BytesIO(data)
@@ -71,17 +88,30 @@ def extract_text_from_upload(name: str, data: bytes) -> Tuple[str, List[str]]:
         except Exception as e:
             notes.append(f"pypdf fail: {e!s}")
 
-        # 2) PyMuPDF fallback (often extracts more)
-        if len((txt or "").strip()) < 100:
-            try:
-                import fitz  # PyMuPDF
-                doc = fitz.open(stream=data, filetype="pdf")
-                maybe = "\n".join(pg.get_text("text") for pg in doc)
-                if len(maybe.strip()) > len(txt.strip()):
-                    txt = maybe
-                notes.append("PyMuPDF")
-            except Exception as e:
-                notes.append(f"fitz fail: {e!s}")
+        # 2) PyMuPDF fallbacks (often richer)
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=data, filetype="pdf")
+
+            # (a) plain text
+            plain = "\n".join(pg.get_text("text") for pg in doc)
+
+            # (b) blocks: glue spans in reading order (helps odd layouts)
+            def page_blocks(p):
+                blocks = p.get_text("blocks") or []
+                # each block: (x0,y0,x1,y1, "text", block_no, block_type, ...)
+                blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))  # sort by y then x
+                return "\n".join(b[4] for b in blocks if isinstance(b[4], str))
+
+            by_blocks = "\n".join(page_blocks(pg) for pg in doc)
+
+            # choose richer text
+            pick = max([txt, plain, by_blocks], key=lambda s: len((s or "").strip()))
+            if len((pick or "").strip()) > len((txt or "").strip()):
+                txt = pick
+            notes.append("PyMuPDF")
+        except Exception as e:
+            notes.append(f"fitz fail: {e!s}")
 
     elif lower.endswith(".pptx"):
         try:
@@ -135,8 +165,9 @@ def extract_text_from_upload(name: str, data: bytes) -> Tuple[str, List[str]]:
 
     return txt or "", notes
 
-# -------------------- Keyword helpers (API-free) --------------------
-# Optional libs with graceful fallbacks
+# ──────────────────────────────────────────────────────────────────────────────
+# Keyword helpers (API-free, optional libs)
+# ──────────────────────────────────────────────────────────────────────────────
 try:
     import nltk
     from nltk.corpus import wordnet as wn
@@ -171,7 +202,7 @@ def tfidf_phrases(text: str, top_k=15) -> List[str]:
         return []
     sents = [s for s in re.split(r"(?<=[.!?])\s+", text) if len(s) > 30][:200]
     docs = sents if len(sents) >= 3 else [text]
-    vec = TfidfVectorizer(ngram_range=(1,2), stop_words="english", max_features=4000)
+    vec = TfidfVectorizer(ngram_range=(1, 2), stop_words="english", max_features=4000)
     X = vec.fit_transform(docs)
     scores = X.mean(axis=0).A1
     vocab = vec.get_feature_names_out()
@@ -192,11 +223,12 @@ def spacy_chunks(text: str, top_k=20) -> List[str]:
         for t in doc:
             if t.pos_ == "VERB" and t.lemma_.isalpha() and t.lemma_.lower() not in STOP:
                 cand.append(t.lemma_.lower())
-        # dedupe, preserve order
+        # dedupe in order
         seen, out = set(), []
         for c in cand:
             if c not in seen:
-                seen.add(c); out.append(c)
+                seen.add(c)
+                out.append(c)
             if len(out) >= top_k:
                 break
         return out
@@ -204,15 +236,15 @@ def spacy_chunks(text: str, top_k=20) -> List[str]:
         return []
 
 def extract_keyterms(text: str, top_k=20) -> List[str]:
-    text = re.sub(r"\s+"," ", (text or "")).strip()
+    text = re.sub(r"\s+", " ", (text or "")).strip()
     if not text:
         return []
     keys = spacy_chunks(text, top_k) + tfidf_phrases(text, top_k)
-    # dedupe + stop
     seen, out = set(), []
     for k in keys:
         if k not in seen and k.lower() not in STOP:
-            seen.add(k); out.append(k)
+            seen.add(k)
+            out.append(k)
         if len(out) >= top_k:
             break
     return out or ["concept", "process", "component", "system"]
@@ -224,27 +256,29 @@ def antonyms(word: str) -> List[str]:
     for syn in wn.synsets(word):
         for lem in syn.lemmas():
             for a in lem.antonyms():
-                ants.add(a.name().replace("_"," "))
+                ants.add(a.name().replace("_", " "))
     return list(ants)[:3]
 
 def near_miss(term: str) -> List[str]:
     out = set()
     t = term.strip()
     if len(t) > 4:
-        out.update([t[:-1], t+"s", t.replace("ization","isation"), t.replace("isation","ization")])
+        out.update([t[:-1], t + "s", t.replace("ization", "isation"), t.replace("isation", "ization")])
     return list(out)[:3]
 
 DEFAULT_GLOSSARY = {
-    "turboprop": ["turbofan","turbojet","piston engine"],
-    "reduction gearbox": ["free turbine","variable pitch hub","planetary gearset"],
-    "detonation": ["deflagration","combustion","burn rate"],
-    "propeller pitch": ["blade angle","RPM","thrust lever"],
+    "turboprop": ["turbofan", "turbojet", "piston engine"],
+    "reduction gearbox": ["free turbine", "variable pitch hub", "planetary gearset"],
+    "detonation": ["deflagration", "combustion", "burn rate"],
+    "propeller pitch": ["blade angle", "RPM", "thrust lever"],
 }
 
 def make_distractors(term: str, pool: List[str]) -> List[str]:
     d = set()
-    for x in antonyms(term): d.add(x)
-    for x in near_miss(term): d.add(x)
+    for x in antonyms(term):
+        d.add(x)
+    for x in near_miss(term):
+        d.add(x)
     for x in pool:
         if x.lower() != term.lower() and len(x.split()) <= 4:
             d.add(x)
@@ -255,15 +289,21 @@ def make_distractors(term: str, pool: List[str]) -> List[str]:
 
 def lint_item(stem: str, options: List[str], ans_idx: int) -> List[str]:
     issues = []
-    if not stem or len(stem.split()) < 6: issues.append("Stem too short.")
+    if not stem or len(stem.split()) < 6:
+        issues.append("Stem too short.")
     if any("all of the above" in o.lower() or "none of the above" in o.lower() for o in options):
         issues.append("Avoid 'All/None of the above'.")
-    if any(len(o.split()) > 12 for o in options): issues.append("Option too long.")
-    if len(set(o.lower() for o in options)) < len(options): issues.append("Duplicate options.")
-    if not (0 <= ans_idx < 4): issues.append("Bad answer index.")
+    if any(len(o.split()) > 12 for o in options):
+        issues.append("Option too long.")
+    if len(set(o.lower() for o in options)) < len(options):
+        issues.append("Duplicate options.")
+    if not (0 <= ans_idx < 4):
+        issues.append("Bad answer index.")
     return issues
 
-# -------------------- MCQ generator --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# MCQ generator
+# ──────────────────────────────────────────────────────────────────────────────
 @dataclass
 class MCQ:
     stem: str
@@ -284,11 +324,12 @@ def build_mcqs(text: str, n: int, bloom_focus: str) -> List[MCQ]:
         if not term:
             continue
         cloze = re.sub(rf"\b{re.escape(term)}\b", "_____", s, flags=re.I, count=1)
-        distractors = make_distractors(term, [k for k in keyterms if k.lower()!=term.lower()])
+        distractors = make_distractors(term, [k for k in keyterms if k.lower() != term.lower()])
         if len(distractors) < 3:
-            extra = [k for k in keyterms if k.lower()!=term.lower()][:6]
+            extra = [k for k in keyterms if k.lower() != term.lower()][:6]
             for e in extra:
-                if len(distractors) >= 3: break
+                if len(distractors) >= 3:
+                    break
                 distractors.append(e)
         opts = distractors + [term]
         random.shuffle(opts)
@@ -316,19 +357,27 @@ def mcqs_docx(mcqs: List[MCQ]) -> bytes:
     doc.save(bio)
     return bio.getvalue()
 
-# -------------------- Activities generator --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Activities generator
+# ──────────────────────────────────────────────────────────────────────────────
 TEMPLATES = {
-    "Low":[
-        ("Vocabulary Snap", ["Match key terms to definitions.","Peer-check.","Whole-class reveal."], ["Term cards","Timer"], "Recall via matching."),
-        ("3-2-1 Recall", ["Write 3 facts, 2 terms, 1 question.","Pair-share.","Collect exemplars."], ["Paper","Pens"], "Recall & form questions.")
+    "Low": [
+        ("Vocabulary Snap", ["Match key terms to definitions.", "Peer-check.", "Whole-class reveal."],
+         ["Term cards", "Timer"], "Recall via matching."),
+        ("3-2-1 Recall", ["Write 3 facts, 2 terms, 1 question.", "Pair-share.", "Collect exemplars."],
+         ["Paper", "Pens"], "Recall & form questions."),
     ],
-    "Medium":[
-        ("Worked Example → Variation", ["Demo a worked example.","Pairs adapt parameters.","Swap & check."], ["Example sheet"], "Apply method to variants."),
-        ("Classify & Justify", ["Groups sort examples.","One-sentence justification each.","Gallery walk."], ["Cut strips or slides"], "Classification with reasoning.")
+    "Medium": [
+        ("Worked Example → Variation", ["Demo a worked example.", "Pairs adapt parameters.", "Swap & check."],
+         ["Example sheet"], "Apply method to variants."),
+        ("Classify & Justify", ["Groups sort examples.", "One-sentence justification each.", "Gallery walk."],
+         ["Cut strips or slides"], "Classification with reasoning."),
     ],
-    "High":[
-        ("Mini-Case Critique", ["Read short case.","Propose a decision + justification.","Group synthesize best response."], ["Case handout"], "Evaluate options vs criteria."),
-        ("Design a Quick Fix", ["Teams draft an improvement.","Note assumptions & risks.","2-min pitch."], ["A3 paper"], "Create and justify design choices.")
+    "High": [
+        ("Mini-Case Critique", ["Read short case.", "Propose a decision + justification.", "Group synthesize best response."],
+         ["Case handout"], "Evaluate options vs criteria."),
+        ("Design a Quick Fix", ["Teams draft an improvement.", "Note assumptions & risks.", "2-min pitch."],
+         ["A3 paper"], "Create and justify design choices."),
     ],
 }
 
@@ -355,7 +404,7 @@ def activities_docx(acts: List[dict]) -> bytes:
         return b""
     doc = docx.Document()
     doc.add_heading("Skills Activities", level=1)
-    for i,a in enumerate(acts,1):
+    for i, a in enumerate(acts, 1):
         doc.add_heading(f"{i}. {a['title']} — {a['minutes']} mins", level=2)
         doc.add_paragraph(f"Objective: {a['objective']}")
         doc.add_paragraph("Steps:")
@@ -369,12 +418,14 @@ def activities_docx(acts: List[dict]) -> bytes:
     doc.save(bio)
     return bio.getvalue()
 
-# -------------------- UI --------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# UI
+# ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("Upload (optional)")
     up = st.file_uploader(
         "Drag and drop file here",
-        type=["pdf","pptx","docx"],
+        type=["pdf", "pptx", "docx"],
         accept_multiple_files=False,
         label_visibility="collapsed",
     )
@@ -394,48 +445,43 @@ with st.sidebar:
                 st.toast(f"Uploaded: {up.name} (no embedded text found)", icon="⚠️")
             if notes:
                 st.caption(" • ".join(notes))
-# --- UI helpers / styles (replace your existing <style> block with this) ---
-row_bg = {"Low":"#e7f2ea", "Medium":"#ecf4e7", "High":"#eef3e8"}[focus]
 
-st.markdown(f"""
-<style>
-  .row {{ background:{row_bg}; border:1px solid #e2e7df; border-radius:12px; padding:10px 12px; margin:10px 0; }}
-  .title {{ font-weight:700; margin:6px 0 2px; color:#2d4737; }}
-  .chip {{ display:inline-block; padding:10px 22px; margin:8px 10px 4px 0; border-radius:999px;
-           background:#f6f6f4; border:1px solid #e2e7df; color:#2a2a2a; }}
-  /* Active “pill” for the chosen taxonomy */
-  .chip.active {{ background:#2d6a4f; color:#ffffff; border-color:#2d6a4f; }}
-</style>
-""", unsafe_allow_html=True)
-
-
-    
     st.markdown("---")
     st.subheader("Course context")
-    st.session_state.lesson = st.selectbox("Lesson", list(range(1,15)), index=st.session_state.lesson-1)
-    st.session_state.week   = st.selectbox("Week",   list(range(1,15)), index=st.session_state.week-1)
-    st.session_state.topic  = st.text_input("Topic / outcome", value=st.session_state.topic, placeholder="Module description, knowledge & skills outcomes")
+    st.session_state.lesson = st.selectbox("Lesson", list(range(1, 15)), index=st.session_state.lesson - 1)
+    st.session_state.week = st.selectbox("Week", list(range(1, 15)), index=st.session_state.week - 1)
+    st.session_state.topic = st.text_input(
+        "Topic / outcome", value=st.session_state.topic, placeholder="Module description, knowledge & skills outcomes"
+    )
 
     st.markdown("---")
     st.subheader("Number of MCQs")
-    st.session_state.mcq_count = st.selectbox("How many questions?", [5,10,15,20,30], index=[5,10,15,20,30].index(st.session_state.mcq_count))
+    st.session_state.mcq_count = st.selectbox(
+        "How many questions?", [5, 10, 15, 20, 30], index=[5, 10, 15, 20, 30].index(st.session_state.mcq_count)
+    )
     st.caption("Typical handout: 10–15")
 
     st.markdown("---")
     st.subheader("Activities")
-    st.session_state.act_count   = st.selectbox("How many?",        [1,2,3,4], index=[1,2,3,4].index(st.session_state.act_count))
-    st.session_state.act_minutes = st.selectbox("Time each (mins)", [5,10,15,20,30], index=[5,10,15,20,30].index(st.session_state.act_minutes))
+    st.session_state.act_count = st.selectbox("How many?", [1, 2, 3, 4], index=[1, 2, 3, 4].index(st.session_state.act_count))
+    st.session_state.act_minutes = st.selectbox(
+        "Time each (mins)", [5, 10, 15, 20, 30], index=[5, 10, 15, 20, 30].index(st.session_state.act_minutes)
+    )
 
 # Header banner
-st.markdown("""
+st.markdown(
+    """
 <div style="background:#244e34;color:#fff;border-radius:14px;padding:16px 20px;margin-top:6px;margin-bottom:8px;">
   <div style="font-weight:700;font-size:18px;">ADI Builder — Lesson Activities & Questions</div>
   <div style="opacity:.85;font-size:12px;">Sleek, professional and engaging. Print-ready handouts for your instructors.</div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 tabs = st.tabs(["Knowledge MCQs", "Skills Activities"])
 
+# ── MCQs tab ──────────────────────────────────────────────────────────────────
 with tabs[0]:
     focus = bloom_from_week(st.session_state.week)
     st.markdown(
@@ -445,7 +491,16 @@ with tabs[0]:
 
     st.checkbox("Use sample text (quick test)", value=st.session_state.use_sample, key="use_sample")
 
-    # Seed textarea once from extracted/sample
+    # If parsed text exists, show a helper to insert it
+    if st.session_state.extracted_text:
+        colA, colB = st.columns([1, 2])
+        with colA:
+            st.caption(f"Extracted from upload: ~{len(st.session_state.extracted_text):,} chars")
+        with colB:
+            if st.button("Insert extracted text"):
+                st.session_state.source_text = st.session_state.extracted_text[:15000]
+
+    # Seed textarea from extracted or sample once
     if st.session_state.use_extracted and not st.session_state.source_text:
         st.session_state.source_text = st.session_state.extracted_text[:15000]
     if st.session_state.use_sample and not st.session_state.source_text:
@@ -457,44 +512,35 @@ with tabs[0]:
 
     st.text_area("Source text (editable)", key="source_text", height=240, placeholder="Paste or jot key notes, vocab, facts here…")
 
-    # Row highlight by Bloom focus
-    row_bg = {"Low":"#e8f2ec","Medium":"#eef1e8","High":"#f0efe8"}[focus]
-    st.markdown(f"""
-    <style>
-      .row {{ background:{row_bg};border:1px solid #e6e3dd;border-radius:12px;padding:8px 10px;margin:8px 0; }}
-      .chip {{ display:inline-block;padding:10px 22px;margin:6px 10px 10px 0;border-radius:28px;background:#f6f6f4;border:1px solid #e6e3dd; }}
-      .title {{ font-weight:700;margin:6px 0; }}
-    </style>
-    """, unsafe_allow_html=True)
+    # Styles: green rows + active verb pills
+    row_bg = {"Low": "#e7f2ea", "Medium": "#ecf4e7", "High": "#eef3e8"}[focus]
+    st.markdown(
+        f"""
+<style>
+  .row {{ background:{row_bg}; border:1px solid #e2e7df; border-radius:12px; padding:10px 12px; margin:10px 0; }}
+  .title {{ font-weight:700; margin:6px 0 2px; color:#2d4737; }}
+  .chip {{ display:inline-block; padding:10px 22px; margin:8px 10px 4px 0; border-radius:999px;
+           background:#f6f6f4; border:1px solid #e2e7df; color:#2a2a2a; }}
+  .chip.active {{ background:#2d6a4f; color:#ffffff; border-color:#2d6a4f; }}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
 
-    def verb_row(title, verbs):
+    active_set = {"Low": set(LOW_VERBS), "Medium": set(MED_VERBS), "High": set(HIGH_VERBS)}[focus]
+
+    def verb_row(title, verbs, highlight=False):
         st.markdown(f"<div class='row'><div class='title'>{title}</div>", unsafe_allow_html=True)
         cols = st.columns(6)
         for i, v in enumerate(verbs):
+            klass = "chip active" if (highlight and v in active_set) else "chip"
             with cols[i % 6]:
-                st.markdown(f"<div class='chip'>{v}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='{klass}'>{v}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-# Which verb set is active for the current Bloom focus?
-active_set = {"Low": set(LOW_VERBS), "Medium": set(MED_VERBS), "High": set(HIGH_VERBS)}[focus]
 
-def verb_row(title, verbs, highlight=False):
-    st.markdown(f"<div class='row'><div class='title'>{title}</div>", unsafe_allow_html=True)
-    cols = st.columns(6)
-    for i, v in enumerate(verbs):
-        klass = "chip active" if (highlight and v in active_set) else "chip"
-        with cols[i % 6]:
-            st.markdown(f"<div class='{klass}'>{v}</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# Call rows like this (note the True/False flag for highlighting):
-verb_row("LOW (Weeks 1–4): Remember / Understand", LOW_VERBS, highlight=(focus=="Low"))
-verb_row("MEDIUM (Weeks 5–9): Apply / Analyse",    MED_VERBS, highlight=(focus=="Medium"))
-verb_row("HIGH (Weeks 10–14): Evaluate / Create",  HIGH_VERBS, highlight=(focus=="High"))
-
-    
-    verb_row("LOW (Weeks 1–4): Remember / Understand", LOW_VERBS)
-    verb_row("MEDIUM (Weeks 5–9): Apply / Analyse",    MED_VERBS)
-    verb_row("HIGH (Weeks 10–14): Evaluate / Create",  HIGH_VERBS)
+    verb_row("LOW (Weeks 1–4): Remember / Understand", LOW_VERBS, highlight=(focus == "Low"))
+    verb_row("MEDIUM (Weeks 5–9): Apply / Analyse", MED_VERBS, highlight=(focus == "Medium"))
+    verb_row("HIGH (Weeks 10–14): Evaluate / Create", HIGH_VERBS, highlight=(focus == "High"))
 
     can_go = bool((st.session_state.source_text or "").strip())
     c1, _ = st.columns(2)
@@ -522,6 +568,7 @@ verb_row("HIGH (Weeks 10–14): Evaluate / Create",  HIGH_VERBS, highlight=(focu
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 )
 
+# ── Activities tab ────────────────────────────────────────────────────────────
 with tabs[1]:
     focus = bloom_from_week(st.session_state.week)
     st.markdown(f"**Bloom focus:** {focus}")
