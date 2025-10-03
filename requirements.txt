@@ -2,6 +2,6 @@ streamlit
 pypdf
 python-pptx
 python-docx
-pymupdf           # optional but improves PDF extraction
-scikit-learn      # TF-IDF keywords (strong boost)
-nltk              # for WordNet antonyms (optional but small)
+pymupdf
+scikit-learn
+nltk
