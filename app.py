@@ -1,24 +1,23 @@
-# app.py — ADI Builder (Lesson Activities & Questions)
-# Streamlit single-file app; API-free generators; stable pill UI
+# app.py — ADI Builder (stable baseline, API-free)
+# Look: ADI green bar, shaded LOW/MED/HIGH bands, highlight pills
+# Features: Upload (PDF/PPTX/DOCX), Deep scan, MCQ + MSQ, Activities, Revision
+# Exports: DOCX, GIFT, Moodle XML, Course Pack JSON
+# No experimental_rerun. No NLTK downloads (safe for Render).
 
-import os
-import io
-import re
-import json
-import zipfile
+import io, os, re, json, math, random, hashlib
 from datetime import datetime
-from collections import defaultdict
+from typing import List, Dict, Tuple
 
 import streamlit as st
 
-# --- Optional parsers (graceful if missing) ---
+# ---------- optional deps guarded ----------
 try:
-    import fitz  # PyMuPDF (fast & robust)
+    import fitz  # PyMuPDF
 except Exception:
     fitz = None
 
 try:
-    from pypdf import PdfReader  # fallback
+    from pypdf import PdfReader
 except Exception:
     PdfReader = None
 
@@ -29,659 +28,598 @@ except Exception:
 
 try:
     import docx  # python-docx
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 except Exception:
     docx = None
-
-# --- NLP / classic ML (API-free) ---
-try:
-    import nltk
-    from nltk.corpus import wordnet as wn
-    from nltk.corpus import stopwords
-    from nltk.tokenize import sent_tokenize, word_tokenize
-except Exception:
-    nltk = None
 
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
 except Exception:
     TfidfVectorizer = None
 
-
-# ==========================
-# Theme / constants
-# ==========================
+# ---------- brand / policy ----------
 ADI_GREEN = "#245a34"
 ADI_GREEN_SOFT = "#e9f2ec"
-ADI_GOLD = "#d2bf85"
-BORDER = "#eaeaea"
-TEXT_MUTED = "#6c6c6c"
+BORDER = "#ececec"
+TEXT_SUBTLE = "#667085"
 
-VERBS = {
-    "LOW":  ["define", "identify", "list", "recall", "describe", "label"],
-    "MED":  ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"],
-    "HIGH": ["evaluate", "synthesize", "design", "justify", "critique", "create"],
+BLOOM = {
+    "LOW" : ["define","identify","list","recall","describe","label"],
+    "MED" : ["apply","demonstrate","solve","illustrate","classify","compare"],
+    "HIGH": ["evaluate","synthesize","design","justify","critique","create"],
 }
+WEEK_FOCUS = {"LOW": range(1,5), "MED": range(5,10), "HIGH": range(10,15)}
 
-WEEK_FOCUS = {
-    "LOW":  list(range(1, 5)),
-    "MED":  list(range(5, 10)),
-    "HIGH": list(range(10, 15)),
-}
+# ---------- utils ----------
+def clean_text(t: str) -> str:
+    return re.sub(r"\s+", " ", t or "").strip()
 
-# ==========================
-# Helpers
-# ==========================
-def _safe_init_nltk():
-    """Initialize NLTK data if available; avoid crashing on hosted FS."""
-    if not nltk:
-        return
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        try:
-            nltk.download("punkt", quiet=True)
-        except Exception:
-            pass
-    try:
-        nltk.data.find("tokenizers/punkt_tab")
-    except Exception:
-        # new punkt tables in recent nltk
-        try:
-            nltk.download("punkt_tab", quiet=True)
-        except Exception:
-            pass
-    try:
-        nltk.data.find("corpora/stopwords")
-    except LookupError:
-        try:
-            nltk.download("stopwords", quiet=True)
-        except Exception:
-            pass
-    try:
-        nltk.data.find("corpora/wordnet")
-    except LookupError:
-        try:
-            nltk.download("wordnet", quiet=True)
-        except Exception:
-            pass
-
-def _rerun():
-    try:
-        st.rerun()
-    except Exception:
-        pass
-
-def week_to_focus(week:int)->str:
-    if week in WEEK_FOCUS["LOW"]:
-        return "LOW"
-    if week in WEEK_FOCUS["MED"]:
-        return "MED"
+def week_to_focus(week: int) -> str:
+    if week in WEEK_FOCUS["LOW"]:  return "LOW"
+    if week in WEEK_FOCUS["MED"]:  return "MED"
     return "HIGH"
 
-def clean_text(t: str) -> str:
-    t = re.sub(r"\s+", " ", t)
-    return t.strip()
+def seeded_rng(seed_items: List[str]) -> random.Random:
+    base = "|".join(map(str, seed_items)) + "|" + datetime.utcnow().strftime("%Y%m%d%H")
+    h = hashlib.sha256(base.encode()).hexdigest()
+    return random.Random(int(h[:16], 16))
 
-# ==========================
-# Text Extraction
-# ==========================
-def extract_text_from_pdf(file_bytes: bytes, deep: bool = False) -> str:
-    # Prefer PyMuPDF
+def split_sentences(txt: str) -> List[str]:
+    # simple sentence splitter (no NLTK)
+    txt = txt.replace("\n", " ")
+    parts = re.split(r"(?<=[.!?])\s+", txt)
+    return [p.strip() for p in parts if len(p.strip()) > 30]
+
+def top_keywords(text: str, k: int = 12) -> List[str]:
+    words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9\-]{2,}", text)]
+    if not words:
+        return []
+    if TfidfVectorizer:
+        try:
+            vec = TfidfVectorizer(stop_words="english", max_features=max(100, k*5))
+            X = vec.fit_transform([text])
+            inds = X.toarray().argsort()[0][::-1]
+            feats = vec.get_feature_names_out()
+            uniq = []
+            for i in inds:
+                w = feats[i]
+                if w not in uniq:
+                    uniq.append(w)
+                if len(uniq) >= k:
+                    break
+            return uniq
+        except:
+            pass
+    # fallback: simple frequency
+    from collections import Counter
+    stop = set("""
+        the of and to a in is for on as by with from at this that be are or it an if
+        into about under over between more most each other which whose than may can
+        would should could also have has had were been being you we they them their
+        our us its such these those not no yes do does did done using use used
+    """.split())
+    freq = Counter([w for w in words if w not in stop])
+    return [w for (w, _) in freq.most_common(k)]
+
+# ---------- parsing ----------
+def extract_pdf(data: bytes, deep: bool) -> str:
+    # try PyMuPDF
     if fitz:
         try:
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
-            pages = range(len(doc)) if deep else range(min(8, len(doc)))
-            chunks = []
+            doc = fitz.open(stream=data, filetype="pdf")
+            pages = range(len(doc)) if deep else range(min(12, len(doc)))
+            out = []
             for i in pages:
                 try:
-                    chunks.append(doc[i].get_text("text"))
-                except Exception:
+                    out.append(doc[i].get_text("text") or "")
+                except:
                     pass
             doc.close()
-            return clean_text(" ".join(chunks))
-        except Exception:
+            return clean_text(" ".join(out))
+        except:
             pass
-    # Fallback pypdf
+    # fallback pypdf
     if PdfReader:
         try:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            pages = range(len(reader.pages)) if deep else range(min(8, len(reader.pages)))
-            chunks = []
+            r = PdfReader(io.BytesIO(data))
+            pages = range(len(r.pages)) if deep else range(min(12, len(r.pages)))
+            out = []
             for i in pages:
                 try:
-                    chunks.append(reader.pages[i].extract_text() or "")
-                except Exception:
+                    out.append(r.pages[i].extract_text() or "")
+                except:
                     pass
-            return clean_text(" ".join(chunks))
-        except Exception:
+            return clean_text(" ".join(out))
+        except:
             pass
     return ""
 
-def extract_text_from_pptx(file_bytes: bytes) -> str:
-    if not Presentation:
-        return ""
+def extract_pptx(data: bytes) -> str:
+    if not Presentation: return ""
     try:
-        prs = Presentation(io.BytesIO(file_bytes))
+        prs = Presentation(io.BytesIO(data))
         texts = []
-        for slide in prs.slides:
-            for shp in slide.shapes:
+        for s in prs.slides:
+            for shp in s.shapes:
                 if hasattr(shp, "text") and shp.text:
                     texts.append(shp.text)
-                if shp.shape_type == 1 and hasattr(shp, "table"):  # table
-                    tbl = shp.table
-                    for r in tbl.rows:
+                if getattr(shp, "table", None):
+                    for r in shp.table.rows:
                         for c in r.cells:
-                            if c.text:
-                                texts.append(c.text)
+                            if c.text: texts.append(c.text)
         return clean_text(" ".join(texts))
-    except Exception:
+    except:
         return ""
 
-def extract_text_from_docx(file_bytes: bytes) -> str:
-    if not docx:
-        return ""
+def extract_docx(data: bytes) -> str:
+    if not docx: return ""
     try:
-        document = docx.Document(io.BytesIO(file_bytes))
-        texts = []
-        for p in document.paragraphs:
-            texts.append(p.text)
-        for table in document.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    texts.append(cell.text)
+        d = docx.Document(io.BytesIO(data))
+        texts = [p.text for p in d.paragraphs]
+        for t in d.tables:
+            for r in t.rows:
+                for c in r.cells:
+                    texts.append(c.text)
         return clean_text(" ".join(texts))
-    except Exception:
+    except:
         return ""
 
-def extract_text(uploaded_file, deep_scan: bool) -> str:
-    bytes_data = uploaded_file.read()
-    name = uploaded_file.name.lower()
-    if name.endswith(".pdf"):
-        return extract_text_from_pdf(bytes_data, deep=deep_scan)
-    if name.endswith(".pptx") or name.endswith(".ppt"):
-        return extract_text_from_pptx(bytes_data)
-    if name.endswith(".docx"):
-        return extract_text_from_docx(bytes_data)
+def extract_any(upload, deep: bool) -> str:
+    data = upload.read()
+    name = upload.name.lower()
+    if name.endswith(".pdf"):  return extract_pdf(data, deep)
+    if name.endswith((".ppt",".pptx")): return extract_pptx(data)
+    if name.endswith((".doc",".docx")): return extract_docx(data)
     return ""
 
-# ==========================
-# Generation (API-free)
-# ==========================
-def key_phrases_tfidf(text: str, topk: int = 25) -> list:
-    if not text or not TfidfVectorizer:
-        return []
-    sents = re.split(r"(?<=[.!?])\s+", text)
-    sents = [s for s in sents if len(s.split()) >= 5]
-    if len(sents) == 0:
-        sents = [text]
+# ---------- session-state init to avoid ValueAssignmentNotAllowed ----------
+def ensure_verb_state(level: str, verbs: List[str]):
+    for v in verbs:
+        k = f"sel_{level}_{v}"
+        if k not in st.session_state:
+            st.session_state[k] = False
 
-    vec = TfidfVectorizer(ngram_range=(1, 3), max_features=3000, stop_words="english")
-    try:
-        X = vec.fit_transform(sents)
-    except Exception:
-        return []
-    vocab = vec.get_feature_names_out()
-    scores = X.sum(axis=0).A1
-    pairs = list(zip(vocab, scores))
-    pairs.sort(key=lambda x: x[1], reverse=True)
-    phrases = [p for p, _ in pairs[:topk]]
-    # keep meaningful ones
-    phrases = [p for p in phrases if len(p.split()) <= 5 and len(p) > 2]
-    return phrases
+# ---------- question generation ----------
+def make_distractors(correct: str, vocab: List[str], rng: random.Random, n: int = 3) -> List[str]:
+    # near-miss distractors from vocab; ensure different from correct
+    pool = [w for w in vocab if w.lower() != correct.lower()]
+    rng.shuffle(pool)
+    outs = []
+    for w in pool:
+        if len(outs) >= n: break
+        # small tweaks to create plausible wording
+        if len(w) > 3 and w not in outs:
+            outs.append(w.capitalize())
+    # pad if needed
+    while len(outs) < n:
+        outs.append(correct[::-1].capitalize())
+    return outs[:n]
 
-def sentence_pool(text: str) -> list:
-    if not nltk:
-        return [text]
-    try:
-        sents = sent_tokenize(text)
-    except Exception:
-        sents = re.split(r"(?<=[.!?])\s+", text)
-    sents = [clean_text(s) for s in sents if len(s.split()) >= 6]
-    return sents[:800]
-
-def make_distractors(term: str, all_phrases: list, k: int = 3) -> list:
-    cands = []
-    # wordnet synonyms/related (soft)
-    if nltk and wn:
-        for syn in wn.synsets(term):
-            for l in syn.lemmas():
-                w = l.name().replace("_", " ")
-                if w.lower() != term.lower() and w.isalpha():
-                    cands.append(w)
-    # fallback: near phrases
-    for p in all_phrases:
-        if p.lower() != term.lower() and len(p.split()) <= 3:
-            cands.append(p)
-    # simple uniqueness
-    uniq = []
-    for x in cands:
-        if x.lower() not in [u.lower() for u in uniq] and x.lower() != term.lower():
-            uniq.append(x)
-        if len(uniq) >= 12:
-            break
-    return uniq[:k] if len(uniq) >= k else uniq
-
-def generate_mcqs(text: str, verbs: list, n_q: int = 10) -> list:
+def synthesize_mcqs(sentences: List[str], vocab: List[str], verbs: List[str],
+                    n_q: int, topic: str, allow_multi: bool, rng: random.Random):
     """
-    Super-light MCQ generator: pick key phrases, find host sentences,
-    mask the phrase, build distractors.
+    Build a mix of MCQs (single) and MSQs (multi select) from sentences & keywords.
     """
-    if not text:
-        return []
-    phrases = key_phrases_tfidf(text, topk=80)
-    sents = sentence_pool(text)
-    out = []
-    used = set()
-    i = 0
-    for ph in phrases:
-        if len(out) >= n_q:
+    items = []
+    if not sentences:
+        sentences = [f"{topic} involves several key principles and terminology relevant to the course."]
+    if not vocab:
+        vocab = top_keywords(" ".join(sentences), 20)
+
+    rng.shuffle(sentences)
+    picked = sentences[: max(10, n_q*3)]
+
+    for s in picked:
+        # choose a verb to steer the stem
+        verb = rng.choice(verbs or ["identify"])
+        # choose a keyword as the "focus" concept
+        focus = rng.choice(vocab) if vocab else "concept"
+        stem = f"{verb.capitalize()} the best answer related to '{focus}': {s}"
+        # decide MSQ or MCQ
+        is_msq = allow_multi and (rng.random() < 0.35)
+        # choose correct(s)
+        if is_msq:
+            # two correct options
+            corrects = rng.sample(vocab[: min(8,len(vocab))] or [focus], k=min(2, max(1, len(vocab[:8]))))
+            distract = []
+            for c in corrects:
+                distract += make_distractors(c, vocab, rng, n=1)
+            # ensure total 4–5 options
+            while len(corrects) + len(distract) < 4:
+                distract += make_distractors(focus, vocab, rng, n=1)
+            # sample to 5 options max
+            all_opts = list(set(corrects + distract))
+            rng.shuffle(all_opts)
+            options = all_opts[:5]
+            correct_idx = [options.index(c) for c in options if c in corrects]
+            items.append({
+                "type":"msq",
+                "stem": stem,
+                "options": options,
+                "answer_index": correct_idx,
+                "verb": verb
+            })
+        else:
+            correct = rng.choice(vocab) if vocab else focus
+            distract = make_distractors(correct, vocab, rng, n=3)
+            options = [correct.capitalize()] + distract
+            rng.shuffle(options)
+            items.append({
+                "type":"mcq",
+                "stem": stem,
+                "options": options,
+                "answer_index": options.index(correct.capitalize()),
+                "verb": verb
+            })
+        if len(items) >= n_q:
             break
-        # find a sentence containing the phrase
-        host = None
-        for s in sents:
-            if ph.lower() in s.lower():
-                host = s
-                break
-        if not host:
-            continue
-        # Avoid repeats
-        if host in used:
-            continue
-        used.add(host)
 
-        # cloze
-        blank = re.sub(re.escape(ph), "_____", host, flags=re.I)
-        opts = make_distractors(ph, phrases, k=3)
-        if len(opts) < 3:
-            continue
-        choices = opts + [ph]
-        # shuffle deterministically
-        order = [3, 0, 2, 1] if i % 2 == 0 else [1, 3, 0, 2]
-        choices = [choices[j % len(choices)] for j in order]
-        answer = ph
+    # final shuffle
+    rng.shuffle(items)
+    return items[:n_q]
 
-        verb = verbs[i % len(verbs)] if verbs else None
-        stem = f"({verb}) {blank}" if verb else blank
-
-        out.append({
-            "stem": stem,
-            "choices": choices,
-            "answer": answer
-        })
-        i += 1
-    return out[:n_q]
-
-def generate_activities(text: str, verbs: list, mins: int = 20, n: int = 3) -> list:
-    """Template activities seeded by verbs & key terms."""
-    phrases = key_phrases_tfidf(text, topk=30) or ["key concept"]
-    templates = [
-        "In pairs, ({verb}) and present a 5-slide summary on: **{key}**.",
-        "Small groups: ({verb}) a worked example applying **{key}**. Include assumptions and checks.",
-        "Individually: ({verb}) a short troubleshooting guide for **{key}** with 3 common pitfalls.",
-        "Lab corner: ({verb}) and record results for **{key}**; compare with spec/standard.",
-        "Whiteboard: ({verb}) a flow/logic map that explains **{key}** end-to-end.",
-    ]
-    acts = []
-    for i in range(min(n, len(templates))):
-        verb = verbs[i % len(verbs)] if verbs else "demonstrate"
-        key = phrases[(i * 3) % len(phrases)]
-        acts.append({
-            "title": f"{verb.title()} — {key}",
-            "time": mins,
-            "detail": templates[i].format(verb=verb, key=key)
-        })
-    return acts
-
-def generate_revision(text: str, week: int, n: int = 5) -> list:
-    """Short-answer prompts from top key phrases."""
-    phrases = key_phrases_tfidf(text, topk=20) or []
-    prompts = []
-    stems = [
-        "Explain the purpose of **{k}** in this week’s context.",
-        "List the critical parameters that affect **{k}** and justify each briefly.",
-        "Give a worked example involving **{k}** and show your checks.",
-        "Compare **{k}** versus an alternative; when is each preferred?",
-        "Describe a failure or defect related to **{k}** and how to detect it.",
-    ]
-    for i in range(n):
-        if not phrases:
-            break
-        k = phrases[(i*2) % len(phrases)]
-        prompts.append(stems[i % len(stems)].format(k=k))
-    return prompts
-
-# ==========================
-# Exporters (DOCX / GIFT / Moodle XML)
-# ==========================
-def export_docx(mcqs, activities, revision) -> bytes:
+# ---------- exports ----------
+def export_docx(questions: List[Dict]) -> bytes:
     if not docx:
         return b""
     d = docx.Document()
-    d.add_heading("ADI — Lesson Activities & Questions", level=1)
-    d.add_paragraph(f"Generated: {datetime.now():%Y-%m-%d %H:%M}")
-    d.add_heading("MCQs", level=2)
-    for i, q in enumerate(mcqs, 1):
-        d.add_paragraph(f"{i}. {q['stem']}")
-        letters = "abcd"
-        for j, c in enumerate(q["choices"]):
-            d.add_paragraph(f"   {letters[j].upper()}) {c}")
-        d.add_paragraph(f"   Answer: {q['answer']}")
-    d.add_heading("Activities", level=2)
-    for a in activities:
-        d.add_paragraph(f"• {a['title']}  —  {a['time']} mins")
-        d.add_paragraph(f"  {a['detail']}")
-    d.add_heading("Revision", level=2)
-    for r in revision:
-        d.add_paragraph(f"• {r}")
+    head = d.add_paragraph("ADI Knowledge MCQs / MSQs")
+    head.runs[0].font.size = Pt(14)
+    head.runs[0].bold = True
+    d.add_paragraph("")
+
+    for i,q in enumerate(questions, 1):
+        p = d.add_paragraph(f"{i}. {q['stem']}")
+        p_format = p.paragraph_format
+        p_format.space_after = Pt(6)
+        letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        if q["type"] == "mcq":
+            for j,opt in enumerate(q["options"]):
+                d.add_paragraph(f"   {letters[j]}. {opt}")
+            d.add_paragraph(f"   Answer: {letters[q['answer_index']]}")
+        else:
+            for j,opt in enumerate(q["options"]):
+                d.add_paragraph(f"   {letters[j]}. {opt}")
+            idxs = sorted(q["answer_index"])
+            d.add_paragraph("   Answers: " + ", ".join(letters[k] for k in idxs))
+        d.add_paragraph("")
+
     bio = io.BytesIO()
     d.save(bio)
     return bio.getvalue()
 
-def export_gift(mcqs) -> bytes:
-    lines = []
-    for q in mcqs:
-        stem = q["stem"].replace("\n", " ")
-        correct = q["answer"]
-        opts = q["choices"]
-        # GIFT format
-        lines.append(f"::Q:: {stem} {{")
-        for o in opts:
-            if o.strip().lower() == correct.strip().lower():
-                lines.append(f"={o}")
-            else:
-                lines.append(f"~{o}")
-        lines.append("}")
-    return "\n".join(lines).encode("utf-8")
+def export_gift(questions: List[Dict]) -> str:
+    # GIFT supports multiple correct with partial credit using %xx%
+    out = []
+    for q in questions:
+        stem = q["stem"].replace("\n"," ")
+        if q["type"] == "mcq":
+            opts = []
+            for i,opt in enumerate(q["options"]):
+                mark = "=" if i == q["answer_index"] else "~"
+                opts.append(f"{mark}{opt}")
+            out.append(f"::{q['verb']}::{stem}{{\n" + "\n".join(opts) + "\n}\n")
+        else:
+            # MSQ: split credit equally
+            corr = set(q["answer_index"])
+            n_correct = max(1, len(corr))
+            each = int(100/n_correct)
+            opts = []
+            for i,opt in enumerate(q["options"]):
+                if i in corr:
+                    opts.append(f"~%{each}%{opt}")
+                else:
+                    opts.append(f"~%0%{opt}")
+            out.append(f"::{q['verb']}::{stem}{{\n" + "\n".join(opts) + "\n}\n")
+    return "\n".join(out)
 
-def export_moodle_xml(mcqs) -> bytes:
-    # Minimal Moodle XML (multichoice)
-    from xml.sax.saxutils import escape
-    parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<quiz>']
-    for i, q in enumerate(mcqs, 1):
-        parts.append("<question type='multichoice'>")
-        parts.append(f"<name><text>Q{i}</text></name>")
-        parts.append(f"<questiontext format='html'><text><![CDATA[{escape(q['stem'])}]]></text></questiontext>")
-        parts.append("<shuffleanswers>true</shuffleanswers>")
-        parts.append("<single>true</single>")
-        correct = q["answer"].strip().lower()
-        for opt in q["choices"]:
-            is_right = (opt.strip().lower() == correct)
-            frac = "100" if is_right else "0"
-            parts.append(f"<answer fraction='{frac}' format='html'><text><![CDATA[{escape(opt)}]]></text></answer>")
+def export_moodle_xml(questions: List[Dict]) -> str:
+    def esc(s): 
+        return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>','<quiz>']
+    for q in questions:
+        if q["type"] == "mcq":
+            parts.append("<question type=\"multichoice\">")
+            parts.append("<single>true</single>")
+        else:
+            parts.append("<question type=\"multichoice\">")
+            parts.append("<single>false</single>")
+        parts.append("<name><text>"+esc(q["verb"])+"</text></name>")
+        parts.append("<questiontext format=\"html\"><text>"+esc(q["stem"])+"</text></questiontext>")
+        if q["type"] == "mcq":
+            for i,opt in enumerate(q["options"]):
+                fr = 100 if i==q["answer_index"] else 0
+                parts.append(f"<answer fraction=\"{fr}\"><text>{esc(opt)}</text></answer>")
+        else:
+            corr = set(q["answer_index"])
+            n_corr = max(1, len(corr))
+            each = int(100/n_corr)
+            for i,opt in enumerate(q["options"]):
+                fr = each if i in corr else 0
+                parts.append(f"<answer fraction=\"{fr}\"><text>{esc(opt)}</text></answer>")
         parts.append("</question>")
     parts.append("</quiz>")
-    return "\n".join(parts).encode("utf-8")
+    return "\n".join(parts)
 
-# ==========================
-# UI — CSS
-# ==========================
-CUSTOM_CSS = f"""
-<style>
-/* Page polish */
-.block-container {{ padding-top: 1.0rem; }}
-header, footer {{ display:none; }}
-/* ADI brand header */
-.adi-banner {{
-  background:{ADI_GREEN}; color:#fff; padding:16px 18px; border-radius:10px;
-  font-weight:700; letter-spacing:.2px; box-shadow: 0 1px 0 rgba(0,0,0,.04) inset;
-}}
-.adi-sub {{ font-size:.85rem; opacity:.88; font-weight:500; }}
+def export_course_pack(course_code: str, instructor: str, lesson: int, week: int,
+                       topic: str, questions: List[Dict], activities: List[Dict], revision: List[str]) -> bytes:
+    pack = {
+        "course": course_code,
+        "instructor": instructor,
+        "lesson": lesson,
+        "week": week,
+        "topic": topic,
+        "generated_at": datetime.utcnow().isoformat()+"Z",
+        "questions": questions,
+        "activities": activities,
+        "revision": revision,
+    }
+    return json.dumps(pack, indent=2).encode()
 
-/* Tabs ribbon */
-div[data-baseweb="tab-highlight"] > div {{
-  border-bottom: 1px solid {BORDER};
-}}
+# ---------- activities / revision (light but stable) ----------
+def generate_activities(selected_verbs: List[str], duration: int, rng: random.Random) -> List[Dict]:
+    bank = {
+        "apply":     "Small group problem where learners apply {topic} to a realistic scenario.",
+        "demonstrate":"Pairs demonstrate a procedure or workflow related to {topic}; peers give feedback.",
+        "solve":     "Timed challenge: Solve a quantitative/logic task derived from {topic}.",
+        "illustrate":"Sketch / diagram the process for {topic}, label key steps.",
+        "classify":  "Sort mixed examples/non-examples of {topic} into correct categories.",
+        "compare":   "Tabletop compare/contrast activity with {topic} alternatives and trade-offs.",
+        "evaluate":  "Critique a short case; defend judgments using criteria aligned to {topic}.",
+        "synthesize":"Combine two ideas from {topic} into a single improved method; present.",
+        "design":    "Design a component/process meeting constraints that relate to {topic}.",
+        "justify":   "Justify a chosen approach to {topic} against two alternatives.",
+        "critique":  "Peer-review artifacts; annotate strengths/risks for {topic}.",
+        "create":    "Build a prototype or draft SOP related to {topic} and test with peers.",
+        "define":    "Team builds a concept map of {topic} terms.",
+        "identify":  "Speed-round: identify correct terms/tools from images for {topic}.",
+        "list":      "List-do: generate a checklist for operators using {topic}.",
+        "recall":    "Flashcard relay on key {topic} facts.",
+        "describe":  "Write a 5-sentence explanation of {topic} for a new recruit.",
+        "label":     "Label parts/blocks in a provided {topic} diagram.",
+    }
+    rng.shuffle(selected_verbs)
+    verbs = selected_verbs[: min(3, len(selected_verbs))] or ["apply"]
+    acts = []
+    for v in verbs:
+        desc = bank.get(v, "Group task aligned to {topic}.").format(topic=st.session_state.get("topic","the topic"))
+        acts.append({"verb": v, "duration_min": duration, "description": desc})
+    return acts
 
-/* Input background */
-textarea, .stTextInput input {{
-  background:#f4f4f2 !important; border:1px solid {BORDER} !important;
-}}
+def generate_revision(selected_verbs: List[str], rng: random.Random) -> List[str]:
+    prompts = {
+        "define":    "Make a 12-term glossary from today’s lesson; add 1-sentence definitions.",
+        "identify":  "Snap 3 photos of tools/components used in lab; annotate use & one risk.",
+        "list":      "Create a 10-step checklist for the weekly lab linked to the lesson.",
+        "recall":    "Write a 6-point crib sheet of facts to memorize for next session.",
+        "describe":  "Describe a real-world use-case for the technique you learned.",
+        "label":     "Print a diagram and label every part; bring to next class.",
+        "apply":     "Solve two variant problems similar to today’s example; show workings.",
+        "demonstrate":"Record a short screen capture demonstrating the software step.",
+        "solve":     "Attempt the practice set 1-A; mark uncertainties.",
+        "illustrate":"Draw a neat block diagram of the workflow you followed.",
+        "classify":  "Collect 6 examples from manuals and classify them into categories.",
+        "compare":   "Write a paragraph comparing two methods covered today.",
+        "evaluate":  "Review a short case; write 5 bullet judgments with reasons.",
+        "synthesize":"Combine two techniques from today into a single procedure.",
+        "design":    "Sketch an improved fixture/tool to reduce error; annotate.",
+        "justify":   "Write a justification for selecting one process over another.",
+        "critique":  "Annotate a peer submission; highlight two strengths & one risk.",
+        "create":    "Draft a one-page SOP capturing today’s process.",
+    }
+    rng.shuffle(selected_verbs)
+    sel = selected_verbs[:3] or ["recall","apply","design"]
+    return [prompts.get(v, "Review notes and summarise in five bullet points.") for v in sel]
 
-/* Shaded bands */
-.band {{
-  background:#f7f8f7; border:1px solid {BORDER}; border-radius:10px; padding:14px 14px 6px 14px; margin-top:12px;
-}}
-.band.low   {{ background:#fafbf9; }}
-.band.med   {{ background:#f6fbf7; }}
-.band.high  {{ background:#f8fafc; }}
-.band-title {{ color:{TEXT_MUTED}; font-weight:700; margin-bottom:8px; }}
+# ---------- UI helpers ----------
+def header():
+    st.markdown(
+        f"""
+        <div style="background:{ADI_GREEN}; color:#fff; padding:14px 16px; border-radius:12px;">
+            <div style="font-weight:700; font-size:18px;">ADI Builder — Lesson Activities & Questions</div>
+            <div style="opacity:.85; font-size:12px;">Sleek, professional and engaging. Print-ready handouts for your instructors.</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-/* Focus outline for current week band */
-.band.focus {{ outline:3px solid {ADI_GREEN}; outline-offset:2px; }}
+def band_title(level:str)->str:
+    return "LOW (Weeks 1–4): Remember / Understand" if level=="LOW" else \
+           "MEDIUM (Weeks 5–9): Apply / Analyse" if level=="MED" else \
+           "HIGH (Weeks 10–14): Evaluate / Create"
 
-/* Pill buttons (version-proof) */
-.pill-wrap{{ display:flex; flex-wrap:wrap; gap:10px; margin:8px 0 2px 0; }}
-.pill {{
-  display:inline-block; border:1px solid #e8e8e8; background:#f8f8f7; color:#333;
-  padding:10px 18px; border-radius:999px; font-weight:600; cursor:pointer;
-  transition:all .12s; user-select:none;
-}}
-.pill:hover{{ background:#efefee; }}
-.pill.selected{{ background:{ADI_GREEN}; color:#fff; border-color:{ADI_GREEN}; }}
+def verb_pill(level: str, verb: str):
+    key = f"sel_{level}_{verb}"
+    selected = st.session_state.get(key, False)
+    pill_bg = "#dfece6" if selected else "#f6f6f6"
+    style = f"background:{pill_bg}; border:1px solid {BORDER}; border-radius:999px; padding:8px 16px; display:inline-block; margin:6px 10px 6px 0; color:#333; font-weight:500;"
+    # Use checkbox for state, but render the pill label ourselves
+    c1, c2 = st.columns([1,8])
+    with c1:
+        st.checkbox("", key=key, value=selected, label_visibility="collapsed")
+    with c2:
+        st.markdown(f"<div style='{style}'>{verb}</div>", unsafe_allow_html=True)
 
-/* Callouts */
-.hint {{ background:#fff9e6; border:1px solid #ffe8a3; color:#6f5a00; padding:10px 12px; border-radius:8px; }}
-.success {{ background:{ADI_GREEN_SOFT}; border:1px solid {ADI_GREEN}; color:#12391f; padding:10px 12px; border-radius:8px; }}
-</style>
-"""
+def render_band(level: str, focus: str):
+    # band highlight by week focus
+    band_bg = "#eef6f1" if level == focus else "#f9fafb"
+    st.markdown(
+        f"<div style='background:{band_bg}; border:1px solid {BORDER}; border-radius:12px; padding:10px 14px; margin:12px 0 6px; color:#0f2b1a; font-weight:700;'>{band_title(level)}</div>",
+        unsafe_allow_html=True
+    )
+    # draw pills
+    row = st.container()
+    with row:
+        for v in BLOOM[level]:
+            verb_pill(level, v)
 
-st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🧪", layout="wide")
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-_safe_init_nltk()
+def selected_verbs()->List[str]:
+    out=[]
+    for lvl, vs in BLOOM.items():
+        for v in vs:
+            if st.session_state.get(f"sel_{lvl}_{v}", False):
+                out.append(v)
+    return out
 
-# ==========================
-# Session defaults
-# ==========================
-if "selected_verbs" not in st.session_state:
-    st.session_state.selected_verbs = {"LOW": [], "MED": [], "HIGH": []}
-if "parsed_text" not in st.session_state:
-    st.session_state.parsed_text = ""
-if "upload_name" not in st.session_state:
-    st.session_state.upload_name = ""
-if "mcqs" not in st.session_state:
-    st.session_state.mcqs = []
-if "acts" not in st.session_state:
-    st.session_state.acts = []
-if "rev" not in st.session_state:
-    st.session_state.rev = []
-if "deep_scan" not in st.session_state:
-    st.session_state.deep_scan = True
+# ---------- page ----------
+st.set_page_config(page_title="ADI Builder", page_icon="🧰", layout="wide")
+header()
 
-# ==========================
-# Header
-# ==========================
-st.markdown(
-    f"""
-<div class="adi-banner">
-  ADI Builder — <span>Lesson Activities & Questions</span><br/>
-  <span class="adi-sub">Sleek, professional and engaging. Print-ready handouts for your instructors.</span>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+# Tabs
+tab_mcq, tab_act, tab_rev = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 
-tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
-
-# ==========================
-# Sidebar — upload & context
-# ==========================
 with st.sidebar:
     st.markdown("### Upload (optional)")
-    st.checkbox("Deep scan (all pages, slower)", value=st.session_state.deep_scan, key="deep_scan",
-                help="If off, we scan the first few pages (faster).")
-    up = st.file_uploader("Drag and drop file here", type=["pdf", "pptx", "docx"], label_visibility="collapsed")
-    parsed_ok = False
+    deep = st.checkbox("Deep scan (all pages, slower)", value=True, help="PDF: scan all pages with PyMuPDF/PyPDF. DOCX/PPTX read fully.")
+    up = st.file_uploader("Drag and drop file here", type=["pdf","pptx","ppt","docx","doc"])
+    parsed_text = ""
     if up is not None:
-        with st.spinner("Parsing file…"):
-            text = extract_text(up, deep_scan=st.session_state.deep_scan)
-        st.session_state.parsed_text = text
-        st.session_state.upload_name = up.name
-        if text:
-            st.markdown(f"<div class='success'>Parsed successfully <b>{up.name}</b></div>", unsafe_allow_html=True)
-            parsed_ok = True
-        else:
-            st.info("We uploaded your file but found little or no extractable text. "
-                    "Try a text-based PDF/DOCX/PPTX, or paste key notes into the box.")
-
-    st.markdown("### Course context")
-    colA, = st.columns(1)
-    lesson = colA.selectbox("Lesson", list(range(1, 15)), index=0)
-    week = st.selectbox("Week", list(range(1, 15)), index=0)
-    topic = st.text_input("Topic / outcome", placeholder="Module description, knowledge & skills outcomes")
-    n_mcq = st.selectbox("How many questions?", [5, 10, 15, 20, 30], index=1)
+        try:
+            parsed_text = extract_any(up, deep)
+            if parsed_text:
+                st.success("Parsed successfully")
+            else:
+                st.warning("No extractable text found (scanned image PDF? Try DOCX/PPTX).")
+        except Exception as e:
+            st.error(f"Parsing error: {e}")
 
     st.markdown("---")
-    st.markdown("### Download")
-    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
-    with col_d1:
-        if st.session_state.mcqs or st.session_state.acts or st.session_state.rev:
-            docx_bytes = export_docx(st.session_state.mcqs, st.session_state.acts, st.session_state.rev)
-            st.download_button("📄 Word (DOCX)", data=docx_bytes, file_name="adi_pack.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        else:
-            st.button("📄 Word (DOCX)", disabled=True)
-    with col_d2:
-        if st.session_state.mcqs:
-            gift_bytes = export_gift(st.session_state.mcqs)
-            st.download_button("🧩 GIFT", data=gift_bytes, file_name="adi_mcqs.gift", mime="text/plain")
-        else:
-            st.button("🧩 GIFT", disabled=True)
-    with col_d3:
-        if st.session_state.mcqs:
-            xml_bytes = export_moodle_xml(st.session_state.mcqs)
-            st.download_button("📦 Moodle XML", data=xml_bytes, file_name="adi_mcqs.xml", mime="application/xml")
-        else:
-            st.button("📦 Moodle XML", disabled=True)
-    with col_d4:
-        pack_json = json.dumps({
-            "lesson": lesson, "week": week, "topic": topic,
-            "mcqs": st.session_state.mcqs,
-            "activities": st.session_state.acts,
-            "revision": st.session_state.rev
-        }, ensure_ascii=False, indent=2).encode("utf-8")
-        st.download_button("🧰 Course Pack (JSON)", data=pack_json, file_name="adi_course_pack.json", mime="application/json")
+    st.markdown("### Course context")
+    lesson = st.selectbox("Lesson", list(range(1,15)), index=0)
+    week = st.selectbox("Week", list(range(1,15)), index=0)
+    topic = st.text_input("Topic / outcome", placeholder="Module description, knowledge & skills outcomes")
+    st.session_state["topic"] = topic
 
-# ==========================
-# Main switchboard
-# ==========================
-def band(title: str, level: str, focus: str):
-    cls = {"LOW": "low", "MED": "med", "HIGH": "high"}[level]
-    focus_cls = " focus" if level == focus else ""
-    st.markdown(f'<div class="band {cls}{focus_cls}"><div class="band-title">{title}</div>', unsafe_allow_html=True)
+    st.markdown("### Number of MCQs")
+    n_mcq = st.selectbox("How many questions?", [5,10,15,20,30], index=1)
 
-def endband():
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("### Activities")
+    duration = st.selectbox("Activity duration (minutes)", [5,10,15,20,30,40,50,60], index=1)
 
-def _toggle_key(level, verb):
-    return f"sel_{level}_{verb}"
+    st.markdown("---")
+    st.markdown("### Instructor filter (optional)")
+    instructor = st.text_input("Instructor name", value="")
 
-def verb_pill(level, verb):
-    k = _toggle_key(level, verb)
-    if k not in st.session_state:
-        st.session_state[k] = (verb in st.session_state.selected_verbs[level])
+    st.markdown("---")
+    st.markdown("### Export")
 
-    # render a tiny form so clicking the pill posts back reliably
-    with st.form(key=k, border=False):
-        selected = st.session_state[k]
-        cls = "pill selected" if selected else "pill"
-        st.markdown(f'<div class="{cls}">{verb.title()}</div>', unsafe_allow_html=True)
-        if st.form_submit_button(" ", use_container_width=False):
-            st.session_state[k] = not selected
-            if st.session_state[k] and verb not in st.session_state.selected_verbs[level]:
-                st.session_state.selected_verbs[level].append(verb)
-            if (not st.session_state[k]) and verb in st.session_state.selected_verbs[level]:
-                st.session_state.selected_verbs[level].remove(verb)
+# init verb state (prevents Streamlit assignment error)
+for lvl in BLOOM:
+    ensure_verb_state(lvl, BLOOM[lvl])
 
-def render_verb_band(level: str, focus: str):
-    title = {
-        "LOW":"LOW (Weeks 1–4): Remember / Understand",
-        "MED":"MEDIUM (Weeks 5–9): Apply / Analyse",
-        "HIGH":"HIGH (Weeks 10–14): Evaluate / Create"
-    }[level]
-    band(title, level, focus)
-    st.markdown('<div class="pill-wrap">', unsafe_allow_html=True)
-    for v in VERBS[level]:
-        verb_pill(level, v)
-    st.markdown('</div>', unsafe_allow_html=True)
-    endband()
+auto_focus = week_to_focus(week)
 
-focus = week_to_focus(week)
+with tab_mcq:
+    # ribbon progress area / source text box (editable)
+    st.markdown(
+        f"<div style='border:1px solid {BORDER}; border-radius:10px; padding:10px; background:#f6f7f8; color:{TEXT_SUBTLE};'>"
+        f"We've uploaded your file. If this is empty, the PDF may be scanned. Try DOCX/PPTX or paste text.</div>",
+        unsafe_allow_html=True
+    )
+    source_text = st.text_area("Source text (editable)", value=parsed_text, height=160, label_visibility="collapsed")
 
-with tabs[0]:
-    st.caption("Bloom focus (auto)")
-    st.markdown(f"<span class='hint'>Week {week}: <b>{'Low' if focus=='LOW' else 'Medium' if focus=='MED' else 'High'}</b></span>", unsafe_allow_html=True)
-    st.write("")
-    src = st.text_area("Source text (editable)", value=st.session_state.parsed_text, height=160,
-                       placeholder="Paste or jot key notes, vocab, facts here…")
+    # Bloom header + bands
+    render_band("LOW", auto_focus)
+    render_band("MED", auto_focus)
+    render_band("HIGH", auto_focus)
 
-    # Bands
-    render_verb_band("LOW", focus)
-    render_verb_band("MED", focus)
-    render_verb_band("HIGH", focus)
+    # question type selector
+    qtype = st.radio("Question types", ["Single-answer MCQ only", "Mix MCQ + MSQ (multi-select)"], horizontal=True)
 
-    # Controls
-    cols = st.columns([1,1,1,1])
-    with cols[0]:
-        gen_btn = st.button("✨ Generate MCQs", type="primary", use_container_width=True)
-    with cols[1]:
-        regen_btn = st.button("↻ Regenerate", use_container_width=True)
+    cgen, cregen = st.columns([1,1])
+    with cgen:
+        go = st.button("✨ Generate MCQs", type="primary")
+    with cregen:
+        regen = st.button("↻ Regenerate")
 
-    if gen_btn or regen_btn:
-        picked = (st.session_state.selected_verbs["LOW"] +
-                  st.session_state.selected_verbs["MED"] +
-                  st.session_state.selected_verbs["HIGH"])
-        if not src.strip():
-            st.warning("Please add source text (or upload and parse) to generate MCQs.")
-        else:
-            st.session_state.mcqs = generate_mcqs(src, picked, n_q=int(n_mcq))
+    st.markdown("---")
 
-    # Preview
-    st.markdown("#### Preview — MCQs")
-    if not st.session_state.mcqs:
-        st.info("No questions yet. Click **Generate MCQs** to create a set.")
+    if go or regen:
+        rng = seeded_rng([lesson, week, topic, instructor or ""])
+        verbs = selected_verbs()
+        if not verbs:
+            # nudge to band verbs
+            if auto_focus == "LOW": verbs = BLOOM["LOW"]
+            elif auto_focus == "MED": verbs = BLOOM["MED"]
+            else: verbs = BLOOM["HIGH"]
+        sents = split_sentences(source_text) if source_text else []
+        vocab = top_keywords(source_text, 24) if source_text else []
+        allow_multi = (qtype == "Mix MCQ + MSQ (multi-select)")
+        qs = synthesize_mcqs(sents, vocab, verbs, n_mcq, topic or "the topic", allow_multi, rng)
+        st.session_state["qs"] = qs
+
+    qs = st.session_state.get("qs", [])
+    if qs:
+        st.markdown("#### Preview")
+        for i, q in enumerate(qs, 1):
+            typ = "MSQ" if q["type"]=="msq" else "MCQ"
+            st.markdown(f"**{i}. ({typ})** {q['stem']}")
+            letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            for j,opt in enumerate(q["options"]):
+                st.markdown(f"- {letters[j]}. {opt}")
+            if q["type"]=="mcq":
+                st.caption(f"Answer: {letters[q['answer_index']]}")
+            else:
+                idxs = sorted(q["answer_index"])
+                st.caption("Answers: " + ", ".join(letters[k] for k in idxs))
+
+        # downloads
+        st.markdown("#### Download")
+        colA, colB, colC, colD = st.columns(4)
+        with colA:
+            docx_bytes = export_docx(qs)
+            st.download_button("Word (DOCX)", data=docx_bytes, file_name="adi_mcqs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        with colB:
+            gift_text = export_gift(qs)
+            st.download_button("GIFT", data=gift_text, file_name="adi_mcqs.gift", mime="text/plain")
+        with colC:
+            moodle_xml = export_moodle_xml(qs)
+            st.download_button("Moodle XML", data=moodle_xml, file_name="adi_mcqs.xml", mime="application/xml")
+        with colD:
+            # course pack now (questions only for this tab)
+            pack = export_course_pack(st.session_state.get("course",""), instructor, lesson, week, topic, qs, [], [])
+            st.download_button("Course Pack (JSON)", data=pack, file_name="course_pack.json", mime="application/json")
     else:
-        for i, q in enumerate(st.session_state.mcqs, 1):
-            st.markdown(f"**{i}. {q['stem']}**")
-            cols = st.columns(4)
-            letters = ["A", "B", "C", "D"]
-            for j, c in enumerate(q["choices"]):
-                cols[j].write(f"{letters[j]}) {c}")
-            st.markdown(f"<span style='color:{TEXT_MUTED}'>Answer: <b>{q['answer']}</b></span>", unsafe_allow_html=True)
-            st.divider()
+        st.info("Please select verbs and click **Generate MCQs**.")
 
-with tabs[1]:
-    st.markdown("### Skills Activities")
-    colA, colB = st.columns([1,1])
-    with colA:
-        minutes = st.selectbox("Activity time (mins)", [10, 15, 20, 30, 45, 60], index=2)
-    with colB:
-        n_acts = st.selectbox("How many activities?", [2,3,4,5], index=1)
+with tab_act:
+    st.markdown("#### Activities")
+    verbs = selected_verbs()
+    rng = seeded_rng([lesson, week, topic, instructor or ""])
+    acts = generate_activities(verbs, duration, rng)
+    st.session_state["acts"] = acts
 
-    do_acts = st.button("🛠️ Propose activities", type="primary")
-    if do_acts:
-        src_text = st.session_state.parsed_text or src
-        picked = (st.session_state.selected_verbs["LOW"] +
-                  st.session_state.selected_verbs["MED"] +
-                  st.session_state.selected_verbs["HIGH"]) or ["apply","demonstrate","evaluate"]
-        st.session_state.acts = generate_activities(src_text, picked, mins=int(minutes), n=int(n_acts))
+    for i,a in enumerate(acts, 1):
+        st.markdown(f"**{i}. ({a['verb']}, {a['duration_min']} min)** {a['description']}")
 
-    if not st.session_state.acts:
-        st.info("Click **Propose activities** to populate this section.")
-    else:
-        for a in st.session_state.acts:
-            st.markdown(f"**{a['title']}** — {a['time']} mins")
-            st.write(a["detail"])
-            st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        pack = export_course_pack(st.session_state.get("course",""), instructor, lesson, week, topic,
+                                  st.session_state.get("qs", []), acts, [])
+        st.download_button("Download Course Pack (JSON)", data=pack, file_name="course_pack.json", mime="application/json")
 
-with tabs[2]:
-    st.markdown("### Revision")
-    n_rev = st.selectbox("How many prompts?", [3,4,5,6,8], index=2)
-    do_rev = st.button("🧠 Build revision prompts", type="primary")
-    if do_rev:
-        src_text = st.session_state.parsed_text or src
-        st.session_state.rev = generate_revision(src_text, week, n=int(n_rev))
+with tab_rev:
+    st.markdown("#### Revision")
+    rng = seeded_rng([lesson, week, topic, instructor or ""])
+    verbs = selected_verbs()
+    rev = generate_revision(verbs, rng)
+    st.session_state["rev"] = rev
+    for i,r in enumerate(rev,1):
+        st.markdown(f"**{i}.** {r}")
 
-    if not st.session_state.rev:
-        st.info("Click **Build revision prompts** to populate this section.")
-    else:
-        for r in st.session_state.rev:
-            st.markdown(f"• {r}")
+    col1, col2 = st.columns(2)
+    with col1:
+        pack = export_course_pack(st.session_state.get("course",""), instructor, lesson, week, topic,
+                                  st.session_state.get("qs", []), st.session_state.get("acts", []), rev)
+        st.download_button("Download Course Pack (JSON)", data=pack, file_name="course_pack.json", mime="application/json")
+
+# ---------- footer hint ----------
+st.markdown(
+    f"<div style='margin-top:18px; color:{TEXT_SUBTLE}; font-size:12px;'>"
+    f"Tip: Change Week to auto-highlight Bloom band. Select verbs as rounded pills, then Generate.</div>",
+    unsafe_allow_html=True
+)
+
