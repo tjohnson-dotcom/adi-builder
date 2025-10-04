@@ -1,12 +1,38 @@
-[README_DEPLOY.md](https://github.com/user-attachments/files/22633411/README_DEPLOY.md)
-# ADI Builder — Render deploy (v2.5.6)
+ADI Builder — Lesson Activities & Questions
 
-## Build
-pip install -r requirements.txt
+Sleek, professional, ADI-branded handouts and slides for instructors.
+Generate MCQs (validated & mixed Bloom), Skills Activities, Revision prompts, and a Print Summary. Export to DOCX and ADI-branded PPTX.
 
-## Start
-streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --browser.gatherUsageStats=false --server.headless=true
+✨ Features
 
-## Notes
-- Python 3.11 is recommended.
-- Uploads up to 200MB.
+ADI branding (hero banner, colors, logo)
+
+Bloom policy awareness (Weeks 1–4 Low, 5–9 Medium, 10–14 High)
+
+Verb chips with clear selection highlights
+
+Upload & deep-scan: TXT / DOCX / PPTX / PDF (PDF via PyMuPDF)
+
+Directory manager with ➕ / − for Courses, Cohorts, Instructors
+
+MCQ quality guardrails (no “all/none/true/false”, no T/F sets, balanced option lengths)
+
+Activities: choose minutes (5–60) and count (1–4 per lesson)
+
+Revision prompts
+
+Exports: DOCX and Smart-TV friendly PPTX
+
+Print Summary (context + latest generated content)
+
+Stable keys for downloads (avoids Streamlit duplicate-ID errors)
+
+🧩 Tech
+
+Python 3.11 (see runtime.txt)
+
+Streamlit UI (app.py)
+
+Export: python-docx, python-pptx
+
+Optional PDF parsing: pymupdf
