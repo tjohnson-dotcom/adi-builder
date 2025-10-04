@@ -1,6 +1,7 @@
 # app.py — ADI Builder (Streamlit)
-# MCQs (validated & mixed), Skills Activities, Revision
-# DOCX + ADI-branded PPTX exports, stable styling, deep-scan uploads, directory manager with +/−
+# Stable UI + outputs: MCQs (validated & mixed), Skills Activities, Revision
+# DOCX + ADI-branded PPTX, deep-scan uploads, directories with +/−
+# Now with richer Bloom band styling & pill highlights
 
 from __future__ import annotations
 import io, re, random, uuid
@@ -21,15 +22,13 @@ except Exception:
 try:
     from pptx import Presentation
     from pptx.util import Inches, Pt as PptPt
-    from pptx.enum.text import PP_ALIGN
     from pptx.dml.color import RGBColor
     from pptx.enum.shapes import MSO_SHAPE
 except Exception:
     Presentation = None
 
-# PDF support (enable via requirements.txt: pymupdf==1.24.9)
 try:
-    import fitz  # PyMuPDF
+    import fitz  # PyMuPDF for PDF parsing
 except Exception:
     fitz = None
 
@@ -42,7 +41,7 @@ TEXT_SLATE = "#1f2937"
 
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
-# ---------- Catalog defaults ----------
+# ---------- Catalog defaults (from your screenshots) ----------
 DEFAULT_COURSES = [
     "Defense Technology Practices: Experimentation, Quality Management and Inspection (GE4-EPM)",
     "Integrated Project and Materials Management in Defense Technology (GE4-IPM)",
@@ -69,14 +68,12 @@ DEFAULT_COURSES = [
     "Chemical Technology Laboratory Techniques (CT5-LAB)",
     "Chemical Process Technology (CT5-CPT)",
 ]
-
 DEFAULT_COHORTS = [
     "D1-C01", "D1-E01", "D1-E02",
     "D1-M01", "D1-M02", "D1-M03", "D1-M04", "D1-M05",
     "D2-C01",
     "D2-M01", "D2-M02", "D2-M03", "D2-M04", "D2-M05", "D2-M06",
 ]
-
 DEFAULT_INSTRUCTORS = [
     "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ","FAIZ LAZAM ALSHAMMARI",
     "DR. MASHAEL ALSHAMMARI","AHMED ALBADER","Noura Aldossari","Ahmed Gasem Alharbi",
@@ -85,7 +82,6 @@ DEFAULT_INSTRUCTORS = [
     "Gerhard Van der Poel","Khalil Razak","Mohammed Alwuthylah","Rana Ramadan",
     "Salem Saleh Subaih","Barend Daniel Esterhuizen",
 ]
-
 if "COURSES" not in st.session_state: st.session_state.COURSES = list(DEFAULT_COURSES)
 if "COHORTS" not in st.session_state: st.session_state.COHORTS = list(DEFAULT_COHORTS)
 if "INSTRS"  not in st.session_state: st.session_state.INSTRS  = list(DEFAULT_INSTRUCTORS)
@@ -94,43 +90,82 @@ if "INSTRS"  not in st.session_state: st.session_state.INSTRS  = list(DEFAULT_IN
 def inject_css():
     st.markdown(f"""
     <style>
-      .block-container {{ max-width: 1200px; padding-top: 0.75rem; }}
+      /* Overall page rhythm & spacing */
+      .block-container {{
+        max-width: 1200px;
+        padding-top: 1.4rem;  /* extra top space so header never feels cramped */
+      }}
+
+      /* Buttons */
       .stButton > button {{
           background:{ADI_GREEN}; color:#fff; border-radius:12px; border:0; padding:0.55rem 0.95rem;
           box-shadow: 0 1px 0 rgba(0,0,0,.05);
       }}
       .stButton > button:hover {{ background:{ADI_GOLD}; }}
-      .stTextInput>div>div>input, .stTextArea textarea, .stSelectbox > div > div {{
+
+      /* Inputs */
+      .stTextInput>div>div>input,
+      .stTextArea textarea,
+      .stSelectbox > div > div {{
         border-radius:10px !important; border-color:#cbd5e1 !important;
       }}
       .stTextArea textarea {{ min-height: 120px; }}
-      div[data-baseweb="tab"] button[aria-selected="true"] {{ border-bottom: 3px solid {ADI_GREEN} !important; }}
-      div[style*="ADI Builder — Lesson Activities"] {{ box-shadow: 0 4px 20px rgba(0,0,0,0.06); border-radius: 18px !important; }}
+
+      /* Tabs */
+      div[data-baseweb="tab"] button[aria-selected="true"] {{
+        border-bottom: 3px solid {ADI_GREEN} !important;
+      }}
+
+      /* Header card */
+      div[style*="ADI Builder — Lesson Activities"] {{
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        border-radius: 18px !important;
+      }}
+
+      /* Micro separator */
       .adi-title {{ height:8px; border-radius:999px; background:#eaeaea; margin:6px 0 16px 0; }}
-      .adi-chip {{ border:1px solid #d1d5db; border-radius:10px; padding:6px 10px; font-size:13px; color:#374151; background:#f9fafb; display:inline-block; }}
-      .adi-band {{ border-radius:18px; padding:14px 16px; margin:12px 0 8px 0; border:1px solid #ececec; }}
-      .adi-low  {{ background:linear-gradient(180deg, #f7fbf8 0%, #ffffff 80%); }}
-      .adi-med  {{ background:linear-gradient(180deg, #fff6ea 0%, #ffffff 80%); }}
+
+      /* Band container (Low/Medium/High) */
+      .adi-band {{
+        border-radius:18px; padding:14px 16px; margin:12px 0 10px 0;
+        border:1px solid #e6e6e6;
+      }}
+      .adi-low  {{ background:linear-gradient(180deg, #f2f9f2 0%, #ffffff 80%); }}
+      .adi-med  {{ background:linear-gradient(180deg, #fff6e8 0%, #ffffff 80%); }}
       .adi-high {{ background:linear-gradient(180deg, #eef3ff 0%, #ffffff 80%); }}
       .adi-band-cap {{ float:right; color:#6b7280; font-size:13px; }}
-      .adi-band.adi-active {{ border-color:#245a34; box-shadow:0 0 0 2px rgba(36,90,52,.14) inset; }}
-      .adi-pills {{ margin-bottom: .35rem; }}
-      .adi-pills .stCheckbox {{ display:inline-block; margin-right:.35rem; margin-bottom:.35rem; }}
+      .adi-band.adi-active {{
+        border-color:#245a34;
+        box-shadow:0 0 0 2px rgba(36,90,52,.14) inset;
+      }}
+
+      /* Verb pills (stronger outline + ADI fill when selected) */
+      .adi-pills {{ margin: 8px 0 2px 0; }}
+      .adi-pills .stCheckbox {{
+        display:inline-block; margin:4px 6px 8px 0;
+      }}
       .adi-pills .stCheckbox label {{
-        background:#f3f4f6; border:1px solid #e5e7eb; border-radius:9999px; padding:6px 12px;
-        display:inline-flex; align-items:center; gap:8px; box-shadow: 0 1px 0 rgba(0,0,0,.03);
+        border:1px solid #d1d5db; border-radius:9999px;
+        padding:6px 14px; display:inline-flex; align-items:center; gap:8px;
+        background:#fafafa; color:#374151; transition: all .15s ease-in-out;
+        box-shadow: 0 1px 0 rgba(0,0,0,.03);
+      }}
+      .adi-pills .stCheckbox label:hover {{
+        border-color:#9ca3af; background:#f3f4f6;
       }}
       .adi-pills .stCheckbox div[role="checkbox"] {{ transform: scale(0.9); }}
+
+      /* Band-tinted default */
       .adi-low  .stCheckbox label {{ background:#edf7ef; }}
       .adi-med  .stCheckbox label {{ background:#fff2e0; }}
       .adi-high .stCheckbox label {{ background:#e9f0ff; }}
-      .adi-pills .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{ font-weight:600; color:#1f2937; }}
-      .adi-low  .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{ background:#dff7e8; border-color:#7ecf9a; box-shadow:0 0 0 2px #b7ebc8 inset; }}
-      .adi-med  .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{ background:#ffe7cc; border-color:#f2a960; box-shadow:0 0 0 2px #ffd7a3 inset; }}
-      .adi-high .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{ background:#dfe8ff; border-color:#8fb3ff; box-shadow:0 0 0 2px #c7d7ff inset; }}
-      section.main > div:has(.adi-title) {{ box-shadow: 0 2px 10px rgba(0,0,0,.04); border-radius:16px; }}
-      .stExpander > details {{ border-radius:12px; border:1px solid #ececec; background:#fafafa; }}
-      .stExpander > details[open] {{ background:#fff; }}
+
+      /* Selected state: strong ADI green pill */
+      .adi-pills .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{
+        color:#fff; background:{ADI_GREEN}; border-color:{ADI_GREEN};
+        box-shadow: 0 0 0 2px rgba(36,90,52,.18) inset;
+        font-weight:600;
+      }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -172,15 +207,12 @@ def _read_upload_cached(name: str, raw: bytes) -> str:
         if name.endswith(".txt"):
             return raw.decode("utf-8", errors="ignore")
         if name.endswith(".docx") and Docx:
-            d = Docx(io.BytesIO(raw))
-            return "\n".join(p.text for p in d.paragraphs)
+            d = Docx(io.BytesIO(raw)); return "\n".join(p.text for p in d.paragraphs)
         if name.endswith(".pptx") and Presentation:
-            prs = Presentation(io.BytesIO(raw))
-            out = []
+            prs = Presentation(io.BytesIO(raw)); out=[]
             for sld in prs.slides:
                 for shp in sld.shapes:
-                    if hasattr(shp, "text"):
-                        out.append(shp.text)
+                    if hasattr(shp, "text"): out.append(shp.text)
             return "\n".join(out)
         if name.endswith(".pdf") and fitz:
             doc = fitz.open(stream=raw, filetype="pdf")
@@ -199,7 +231,7 @@ def safe_download(label:str,data:bytes,filename:str,mime:str,scope:str):
         data=data,
         file_name=filename,
         mime=mime,
-        key=f"dl_{scope}_{uuid.uuid4().hex[:8]}"  # unique keys (no duplicate ID crash)
+        key=f"dl_{scope}_{uuid.uuid4().hex[:8]}"  # unique keys => no duplicate element id
     )
 
 def build_title(prefix,course,lesson,week,topic,instr,cohort,lesson_date):
@@ -248,7 +280,7 @@ def quick_stats(txt: str) -> dict:
     freq = {}
     for w in words:
         w2 = w.lower()
-        if len(w2) <= 3:
+        if len(w2) <= 3: 
             continue
         freq[w2] = freq.get(w2, 0) + 1
     top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -273,7 +305,6 @@ def make_mcq(seed_text:str,verb:str,i:int)->MCQ:
     answer_idx=choices.index(correct)
     return MCQ(stem,choices,answer_idx,"LOW")  # bloom updated later
 
-# Mix & validation
 def allocate_mcq_mix(n:int, bloom_focus:str, selected_verbs:list[str]) -> list[dict]:
     focus = (bloom_focus or "LOW").upper()
     if focus == "LOW":
@@ -304,7 +335,7 @@ BANNED_PATTERN = re.compile(
 def _looks_true_false(options:list[str]) -> bool:
     normalized = [o.strip().lower() for o in options]
     return set(normalized) in ({"true","false"}, {"false","true"})
-def _similar_len(options:list[str], tolerance:float=0.55) -> bool:
+def _similar_len(options:list[str], tolerance:0.55.__class__=0.55) -> bool:
     lens = [max(1, len(o)) for o in options]; return (min(lens)/max(lens)) >= tolerance
 def validate_mcq_item(stem:str, options:list[str], answer_idx:int) -> tuple[bool,str]:
     if len(options) != 4: return False, "Need exactly 4 options."
@@ -322,6 +353,7 @@ def make_validated_mcq(seed_text:str, verb:str, bloom:str, i:int, attempts:int=4
         q = make_mcq(seed_text, verb, i); q.bloom = bloom
         ok, _ = validate_mcq_item(q.stem, q.choices, q.answer_idx)
         if ok: return q
+    # Fallback if validation repeatedly fails
     stem = f"{i+1}. {verb.capitalize()} the best answer based on the notes."
     correct = f"{verb.capitalize()} the main concept accurately."
     alt = [f"{verb.capitalize()} a partially correct idea from the notes.",
@@ -430,28 +462,22 @@ def revision_to_docx(items:List[str],title:str)->bytes:
     for it in items: doc.add_paragraph(it)
     b=io.BytesIO(); doc.save(b); return b.getvalue()
 
-# ---------- PPTX EXPORTERS (ADI-branded Smart-TV decks) ----------
+# ---------- PPTX (ADI-branded Smart-TV decks) ----------
 def _rgb(hex_color: str) -> RGBColor:
     hex_color = hex_color.lstrip("#")
     return RGBColor(int(hex_color[0:2],16), int(hex_color[2:4],16), int(hex_color[4:6],16))
 
 def _add_brand_header(slide, title_text: str, subtitle_text: str | None = None):
-    # Full-width green bar at top with white title; subtle stone bg
     left, top, width, height = Inches(0), Inches(0), Inches(13.33), Inches(1.0)
     bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
-    bar.fill.solid(); bar.fill.fore_color.rgb = _rgb(ADI_GREEN)
-    bar.line.fill.background()
-
+    bar.fill.solid(); bar.fill.fore_color.rgb = _rgb(ADI_GREEN); bar.line.fill.background()
     title = slide.shapes.add_textbox(Inches(0.4), Inches(0.15), Inches(12.5), Inches(0.7)).text_frame
-    title.clear()
-    p = title.paragraphs[0]; p.text = title_text; p.font.size = PptPt(28); p.font.bold = True
-    p.font.color.rgb = RGBColor(255,255,255)
-
+    title.clear(); p = title.paragraphs[0]
+    p.text = title_text; p.font.size = PptPt(28); p.font.bold = True; p.font.color.rgb = RGBColor(255,255,255)
     if subtitle_text:
         sub = slide.shapes.add_textbox(Inches(0.4), Inches(1.15), Inches(12.5), Inches(0.45)).text_frame
-        sub.clear()
-        ps = sub.paragraphs[0]; ps.text = subtitle_text; ps.font.size = PptPt(14)
-        ps.font.color.rgb = _rgb(TEXT_SLATE)
+        sub.clear(); ps = sub.paragraphs[0]
+        ps.text = subtitle_text; ps.font.size = PptPt(14); ps.font.color.rgb = _rgb(TEXT_SLATE)
 
 def _body_frame(slide):
     return slide.shapes.add_textbox(Inches(0.6), Inches(1.8), Inches(12.1), Inches(5.0)).text_frame
@@ -460,18 +486,15 @@ def mcqs_to_pptx(mcqs: List[MCQ], title: str, show_key: bool) -> bytes:
     if Presentation is None:
         st.warning("PPTX export requires python-pptx in requirements.txt"); return b""
     prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-    _add_brand_header(slide, title, "MCQ deck for classroom display")
+    slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, title, "MCQ deck for classroom display")
     for i, q in enumerate(mcqs, 1):
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        _add_brand_header(slide, f"[{q.bloom}] Question {i}")
+        slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, f"[{q.bloom}] Question {i}")
         body = _body_frame(slide); body.clear()
         p = body.paragraphs[0]; p.text = q.stem; p.font.size = PptPt(20)
         for j, c in enumerate(q.choices):
             par = body.add_paragraph(); par.text = f"{'ABCD'[j]}. {c}"; par.level = 1; par.font.size = PptPt(20)
     if show_key:
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        _add_brand_header(slide, "Answer Key")
+        slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, "Answer Key")
         body = _body_frame(slide); body.clear()
         for i, q in enumerate(mcqs, 1):
             p = body.add_paragraph(); p.text = f"{i}. {'ABCD'[q.answer_idx]}"; p.font.size = PptPt(22)
@@ -481,11 +504,9 @@ def activities_to_pptx(cards: List[dict], title: str) -> bytes:
     if Presentation is None:
         st.warning("PPTX export requires python-pptx in requirements.txt"); return b""
     prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand_header(slide, title, "Lesson activities")
+    slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, title, "Lesson activities")
     for c in cards:
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        _add_brand_header(slide, f"{c['title']}  ({c['time']} min)")
+        slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, f"{c['title']}  ({c['time']} min)")
         body = _body_frame(slide); body.clear()
         p = body.paragraphs[0]; p.text = f"Objective: {c['objective']}"; p.font.size = PptPt(20)
         p = body.add_paragraph(); p.text = f"Materials: {', '.join(c['materials'])}"; p.level = 1; p.font.size = PptPt(18)
@@ -500,11 +521,9 @@ def revision_to_pptx(items: List[str], title: str) -> bytes:
     if Presentation is None:
         st.warning("PPTX export requires python-pptx in requirements.txt"); return b""
     prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_brand_header(slide, title, "Revision prompts")
+    slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, title, "Revision prompts")
     for it in items:
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        _add_brand_header(slide, "Revision")
+        slide = prs.slides.add_slide(prs.slide_layouts[6]); _add_brand_header(slide, "Revision")
         body = _body_frame(slide); body.clear()
         p = body.paragraphs[0]; p.text = it; p.font.size = PptPt(22)
     out = io.BytesIO(); prs.save(out); return out.getvalue()
@@ -577,28 +596,40 @@ def main():
     if up and up.name.lower().endswith(".pdf") and fitz is None:
         st.warning("PDF uploaded, but PDF parsing is not enabled on this build. Add `pymupdf==1.24.9` to requirements.txt.")
 
-    # Bloom bands + pills
-    st.markdown(f'<div class="adi-band adi-low {"adi-active" if band=="LOW" else ""}">'
-                f'<span class="adi-band-cap">Remember / Understand</span><b>Low (Weeks 1–4)</b></div>', unsafe_allow_html=True)
-    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    # Bloom bands + pills (now wrapped in poppy band boxes)
+    # LOW
+    st.markdown(
+        f'<div class="adi-band adi-low {"adi-active" if band=="LOW" else ""}">'
+        f'<span class="adi-band-cap">Remember / Understand</span><b>Low (Weeks 1–4)</b>'
+        f'</div>', unsafe_allow_html=True
+    )
+    st.markdown('<div class="adi-pills adi-low">', unsafe_allow_html=True)
     low_cols = st.columns(len(LOW_VERBS)); low_sel=[]
     for c, v in zip(low_cols, LOW_VERBS):
         with c:
             if st.checkbox(v, key=f"low_{v}", value=(band=="LOW")): low_sel.append(v)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="adi-band adi-med {"adi-active" if band=="MEDIUM" else ""}">'
-                f'<span class="adi-band-cap">Apply / Analyse</span><b>Medium (Weeks 5–9)</b></div>', unsafe_allow_html=True)
-    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    # MEDIUM
+    st.markdown(
+        f'<div class="adi-band adi-med {"adi-active" if band=="MEDIUM" else ""}">'
+        f'<span class="adi-band-cap">Apply / Analyse</span><b>Medium (Weeks 5–9)</b>'
+        f'</div>', unsafe_allow_html=True
+    )
+    st.markdown('<div class="adi-pills adi-med">', unsafe_allow_html=True)
     med_cols = st.columns(len(MED_VERBS)); med_sel=[]
     for c, v in zip(med_cols, MED_VERBS):
         with c:
             if st.checkbox(v, key=f"med_{v}", value=(band=="MEDIUM")): med_sel.append(v)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="adi-band adi-high {"adi-active" if band=="HIGH" else ""}">'
-                f'<span class="adi-band-cap">Evaluate / Create</span><b>High (Weeks 10–14)</b></div>', unsafe_allow_html=True)
-    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    # HIGH
+    st.markdown(
+        f'<div class="adi-band adi-high {"adi-active" if band=="HIGH" else ""}">'
+        f'<span class="adi-band-cap">Evaluate / Create</span><b>High (Weeks 10–14)</b>'
+        f'</div>', unsafe_allow_html=True
+    )
+    st.markdown('<div class="adi-pills adi-high">', unsafe_allow_html=True)
     high_cols = st.columns(len(HIGH_VERBS)); high_sel=[]
     for c, v in zip(high_cols, HIGH_VERBS):
         with c:
@@ -606,72 +637,4 @@ def main():
     st.markdown('</div>', unsafe_allow_html=True)
 
     picks = list(dict.fromkeys(low_sel + med_sel + high_sel))
-    if not picks: st.info("Pick at least one Bloom verb block above (you can select multiple).")
-
-    # ------------------ TABS ------------------
-    tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
-
-    # === MCQs ===
-    with tabs[0]:
-        colL, colR = st.columns([1,1])
-        with colL: mcq_n = st.selectbox("How many MCQs?", [5,10,15,20,30], index=1)
-        with colR: show_key = st.checkbox("Include answer key in export", True)
-        if st.button("Generate MCQs", type="primary", key="btn_mcq"):
-            source_text = src or "Instructor-provided notes about this week’s topic."
-            qs = build_mcqs(source_text, mcq_n, picks or BAND_TO_VERBS[band], bloom_focus=band)
-            st.success(f"Generated {len(qs)} MCQs (mixed Bloom; no All/None/True/False).")
-            for q in qs:
-                st.markdown(f"**[{q.bloom}] {q.stem}**")
-                for j, copt in enumerate(q.choices):
-                    st.markdown(f"- {'ABCD'[j]}. {copt}")
-                st.markdown("<hr/>", unsafe_allow_html=True)
-            title = build_title("ADI MCQs", course, lesson, week, topic, instr, cohort, lesson_date)
-            doc = mcqs_to_docx(qs, title, show_key)
-            fname = f"adi_mcqs{'_' + sanitize_filename(course) if course else ''}.docx"
-            safe_download("⬇️ Download MCQs (.docx)", doc, fname,
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "mcqs_docx")
-            ppt = mcqs_to_pptx(qs, title, show_key)
-            if ppt:
-                fname_ppt = f"adi_mcqs{'_' + sanitize_filename(course) if course else ''}.pptx"
-                safe_download("📽️ Download MCQs (.pptx)", ppt, fname_ppt,
-                              "application/vnd.openxmlformats-officedocument.presentationml.presentation", "mcqs_pptx")
-
-    # === Activities ===
-    with tabs[1]:
-        c1, c2 = st.columns([1,1])
-        with c1: act_lessons = st.selectbox("Activities per lesson", [1,2,3,4], index=1)
-        with c2: act_time = st.slider("Minutes per activity", 5, 60, step=5, value=15)
-        act_count = act_lessons
-        if st.button("Generate Activities", key="btn_act"):
-            source_text = src or "Topic notes"
-            cards = build_activity_cards(source_text, picks or BAND_TO_VERBS[band], act_count, act_time)
-            st.success(f"Generated {len(cards)} activity card(s) — {act_time} min each.")
-            for c in cards:
-                st.markdown(f"### {c['title']}  ({c['time']} min)")
-                st.markdown(f"**Objective:** {c['objective']}")
-                st.markdown(f"**Materials:** {', '.join(c['materials'])}")
-                st.markdown("**Steps:**")
-                for sstep in c["steps"]:
-                    st.markdown(f"- {sstep}")
-                st.markdown(f"**Evidence:** {c['evidence']}")
-                st.markdown(f"**Assessment:** {', '.join(c['assessment'])}")
-                st.markdown("---")
-            title = build_title(f"ADI Activities ({act_lessons} × {act_time} min)",
-                                course, lesson, week, topic, instr, cohort, lesson_date)
-            doc = activities_to_docx(cards, title)
-            fname = f"adi_activities{'_' + sanitize_filename(course) if course else ''}.docx"
-            safe_download("⬇️ Download Activities (.docx)", doc, fname,
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "activities_docx")
-            ppt = activities_to_pptx(cards, title)
-            if ppt:
-                fname_ppt = f"adi_activities{'_' + sanitize_filename(course) if course else ''}.pptx"
-                safe_download("📽️ Download Activities (.pptx)", ppt, fname_ppt,
-                              "application/vnd.openxmlformats-officedocument.presentationml.presentation", "activities_pptx")
-
-    # === Revision ===
-    with tabs[2]:
-        rev_n = st.selectbox("How many revision items?", [6,8,10,12], index=1)
-        if st.button("Generate Revision Items", key="btn_rev"):
-            source_text = src or "Topic notes"
-            rev = build_revision(source_text, rev_n)
-            st.success
+    if not picks:
