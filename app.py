@@ -1,6 +1,7 @@
 # app.py — ADI Builder (Streamlit)
-# Stable, ADI-branded app with MCQs (answer key), Activities, Revision, Bloom visuals,
-# cached uploads, course-aware filenames, and safe download keys.
+# Stable, ADI-branded app with MCQs (answer key), Activities, Revision.
+# Finalized right-side UI (pills + band cards + Bloom chip), PDF parsing, cached uploads,
+# course-aware filenames, and unique download keys to avoid StreamlitDuplicateElementId.
 
 from __future__ import annotations
 import io, re, random
@@ -23,9 +24,15 @@ try:
 except Exception:
     Presentation = None
 
+# PDF support (enable via requirements.txt: pymupdf==1.24.9)
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
+
 # ---------- ADI Theme ----------
 ADI_GREEN = "#245a34"
-ADI_GOLD = "#C8A85A"
+ADI_GOLD  = "#C8A85A"
 ADI_STONE = "#f5f5f3"
 TEXT_MUTED = "#6b7280"
 
@@ -33,30 +40,55 @@ st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
 # ---------- CSS / Branding ----------
 def inject_css():
-    st.markdown(
-        f"""
-        <style>
-          /* Primary buttons in ADI green, hover to gold */
-          .stButton > button {{
-              background: {ADI_GREEN}; color: #fff; border-radius: 12px; border: 0;
-          }}
-          .stButton > button:hover {{ background: {ADI_GOLD}; }}
+    st.markdown(f"""
+    <style>
+      /* ---------- Global / Theme touches ---------- */
+      .stButton > button {{
+          background:{ADI_GREEN}; color:#fff; border-radius:12px; border:0; padding:0.55rem 0.95rem;
+      }}
+      .stButton > button:hover {{ background:{ADI_GOLD}; }}
+      .stTextInput>div>div>input,
+      .stTextArea textarea,
+      .stSelectbox > div > div {{ border-radius:10px !important; border-color:#cbd5e1 !important; }}
+      div[data-baseweb="tab"] button[aria-selected="true"] {{
+        border-bottom: 3px solid {ADI_GREEN} !important;
+      }}
 
-          /* Checkboxes & radios use ADI green */
-          input[type="checkbox"]:checked {{ accent-color: {ADI_GREEN}; }}
-          input[type="radio"]:checked {{ accent-color: {ADI_GREEN}; }}
+      /* ---------- Header bar (dark green rounded strip) ---------- */
+      /* The header container we render in header() already; just add the shadow/shape */
+      div[style*="ADI Builder — Lesson Activities"] {{
+        box-shadow: 0 3px 18px rgba(0,0,0,0.06);
+        border-radius: 18px !important;
+      }}
 
-          /* Active tab underline in ADI green */
-          div[data-baseweb="tab"] button[aria-selected="true"] {{
-              border-bottom: 2px solid {ADI_GREEN} !important;
-          }}
+      /* ---------- Section separators / micro UI ---------- */
+      .adi-title {{ height:8px; border-radius:999px; background:#eaeaea; margin:6px 0 14px 0; }}
+      .adi-chip {{
+        border:1px solid #d1d5db; border-radius:10px; padding:6px 10px; font-size:13px; color:#374151;
+        background:#f9fafb; display:inline-block;
+      }}
 
-          /* Subtle card utility (if needed later) */
-          .adi-card {{ background:#fafafa; border:1px solid #ececec; border-radius:14px; padding:12px 14px; }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+      /* ---------- Band cards (Low/Medium/High) ---------- */
+      .adi-band {{ border-radius:18px; padding:14px 16px; margin-top:10px; border:1px solid #eaeaea; }}
+      .adi-low  {{ background:linear-gradient(0deg,#f4fbf6,#ffffff); }}
+      .adi-med  {{ background:linear-gradient(0deg,#fff9f0,#ffffff); }}
+      .adi-high {{ background:linear-gradient(0deg,#f4f7ff,#ffffff); }}
+      .adi-band-cap {{ float:right; color:#6b7280; font-size:13px; }}
+
+      /* ---------- Pills (verb checkboxes) ---------- */
+      .adi-pills .stCheckbox label {{
+        background:#f3f4f6; border:1px solid #e5e7eb; border-radius:9999px;
+        padding:6px 12px; display:inline-flex; align-items:center; gap:8px;
+      }}
+      .adi-pills .stCheckbox div[role="checkbox"] {{ transform: scale(0.9); }}
+      .adi-low  .stCheckbox label {{ background:#edf7ef; }}
+      .adi-med  .stCheckbox label {{ background:#fff2e0; }}
+      .adi-high .stCheckbox label {{ background:#e9f0ff; }}
+
+      /* ---------- Light shadow on main content area ---------- */
+      section.main > div:has(.adi-title) {{ box-shadow: 0 2px 10px rgba(0,0,0,.04); border-radius:16px; }}
+    </style>
+    """, unsafe_allow_html=True)
 
 def header():
     logo_html = ""
@@ -103,8 +135,12 @@ def _read_upload_cached(name: str, raw: bytes) -> str:
             out = []
             for sld in prs.slides:
                 for shp in sld.shapes:
-                    if hasattr(shp, "text"): out.append(shp.text)
+                    if hasattr(shp, "text"):
+                        out.append(shp.text)
             return "\n".join(out)
+        if name.endswith(".pdf") and fitz:
+            doc = fitz.open(stream=raw, filetype="pdf")
+            return "\n".join(page.get_text("text") for page in doc)
     except Exception:
         pass
     return ""
@@ -206,122 +242,172 @@ def revision_to_docx(items:List[str],title:str)->bytes:
     for it in items: doc.add_paragraph(it)
     b=io.BytesIO(); doc.save(b); return b.getvalue()
 
-# ---------- UI helpers ----------
-def verbs_pills(label:str,verbs:List[str],key_prefix:str)->List[str]:
-    if label: st.markdown(f"**{label}**")
-    cols=st.columns(len(verbs)); picks=[]
-    for c,v in zip(cols,verbs):
-        with c:
-            if st.checkbox(v,key=f"{key_prefix}_{v}"): picks.append(v)
-    return picks
-
 # ---------- MAIN ----------
 def main():
     inject_css()
     header()
 
-    # Sidebar
+    # Sidebar (left)
     with st.sidebar:
         st.caption("Upload (optional)")
-        up=st.file_uploader("Drag & drop file",type=["txt","docx","pptx"],
-                            help="We parse .txt, .docx or .pptx",label_visibility="collapsed")
+        up = st.file_uploader(
+            "Drag & drop file",
+            type=["txt","docx","pptx","pdf"],
+            help="We parse .txt, .docx, .pptx, and .pdf",
+            label_visibility="collapsed",
+        )
+
         st.caption("Course details")
-        course=st.text_input("Course name","")
-        cohort=st.text_input("Class / Cohort","")
-        instr=st.text_input("Instructor name (optional)","")
-        lesson_date=st.date_input("Date",value=date.today())
+        course = st.text_input("Course name","")
+        cohort = st.text_input("Class / Cohort","")
+        instr  = st.text_input("Instructor name (optional)","")
+        lesson_date = st.date_input("Date", value=date.today())
+
         st.caption("Context")
-        c1,c2=st.columns(2)
-        with c1: lesson=st.selectbox("Lesson",[1,2,3,4,5],0)
-        with c2: week=st.selectbox("Week",list(range(1,15)),6)
-        topic=st.text_input("Topic / outcome","",placeholder="Module description or knowledge outcome")
-        cq,ca=st.columns(2)
-        with cq: mcq_n=st.selectbox("MCQs",[5,10,15,20],1)
-        with ca: act_n=st.selectbox("Activities",[4,6,8,10],1)
-        st.divider()
+        c1,c2 = st.columns(2)
+        with c1: lesson = st.selectbox("Lesson",[1,2,3,4,5],0)
+        with c2: week   = st.selectbox("Week", list(range(1,15)), 0)
+
         st.markdown(
-            f"<span style='color:{TEXT_MUTED};font-size:12px'>Week policy: "
-            f"<b>{policy_band(int(week))}</b> — (1–4 Low / 5–9 Medium / 10–14 High)</span>",
-            unsafe_allow_html=True)
+            f"<div style='font-size:12px;color:{TEXT_MUTED};margin-top:2px'>"
+            f"ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.</div>",
+            unsafe_allow_html=True,
+        )
 
-    # Main input
-    st.checkbox("Use sample text (quick test)",key="sample_toggle")
-    uploaded=read_text_from_upload(up)
-    if st.session_state.get("sample_toggle") and not uploaded:
-        uploaded=("CNC milling safety requires correct PPE, machine guarding, "
-                  "understanding feeds and speeds, and proper clamping of workpieces. "
-                  "Operators must verify tool paths and perform dry runs before cutting.")
-    src=st.text_area("",value=uploaded or "",height=180,
-                     placeholder="Paste or jot key notes, vocab, facts here…")
+        st.markdown("### ")
+        st.caption("Quick pick blocks")
+        st.radio("MCQs", [5,10,20,30], index=1, key="qp_mcqs", horizontal=True)
+        st.caption("")  # spacer
 
-    # Bloom level display
-    band=policy_band(int(week))
-    if band=="LOW":
-        st.markdown(f"### 🟢 LOW Bloom’s Level — *Remember / Understand*  \n"
-                    f"Weeks **1–4** focus on recall and comprehension.  \n"
-                    f"**Typical verbs:** {', '.join(LOW_VERBS)}")
-    elif band=="MEDIUM":
-        st.markdown(f"### 🟡 MEDIUM Bloom’s Level — *Apply / Analyse*  \n"
-                    f"Weeks **5–9** focus on applying and analysing concepts.  \n"
-                    f"**Typical verbs:** {', '.join(MED_VERBS)}")
-    else:
-        st.markdown(f"### 🔵 HIGH Bloom’s Level — *Evaluate / Create*  \n"
-                    f"Weeks **10–14** focus on higher-order thinking.  \n"
-                    f"**Typical verbs:** {', '.join(HIGH_VERBS)}")
+    # ---------- RIGHT PANE LOOK ----------
+    # Title bar strip
+    st.markdown('<div class="adi-title"></div>', unsafe_allow_html=True)
 
-    picks=verbs_pills("",BAND_TO_VERBS[band],key_prefix=f"verbs_{band.lower()}")
-    if not picks: st.info("Pick at least one Bloom verb (you can select multiple).")
+    # Topic / Bloom focus row
+    gc1, gc2 = st.columns([1,1])
+    with gc1:
+        st.caption("Topic / Outcome (optional)")
+        topic = st.text_input("", value="", placeholder="Module description, knowledge & skills outcomes")
+    with gc2:
+        st.caption("Bloom focus (auto)")
+        st.markdown(
+            f'<span class="adi-chip">Week {week}: '
+            f'{"Low" if policy_band(week)=="LOW" else "Medium" if policy_band(week)=="MEDIUM" else "High"}</span>',
+            unsafe_allow_html=True,
+        )
 
-    tabs=st.tabs(["Knowledge MCQs (ADI Policy)","Skills Activities","Revision"])
+    # Source (from upload) — optional
+    uploaded_text = read_text_from_upload(up)
+    with st.expander("Source (from upload) — optional", expanded=False):
+        src = st.text_area("", value=uploaded_text or "", height=140,
+                           placeholder="Any key notes extracted from your upload will appear here…")
+    if up and up.name.lower().endswith(".pdf") and fitz is None:
+        st.warning("PDF uploaded, but PDF parsing is not enabled on this build. Add `pymupdf==1.24.9` to requirements.txt.")
 
-    # --- MCQs ---
+    # Bloom’s verbs — band cards with pills
+    band = policy_band(int(week))
+
+    # LOW band
+    st.markdown(
+        f'<div class="adi-band adi-low"><span class="adi-band-cap">Remember / Understand</span>'
+        f'<b>Low (Weeks 1–4)</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    low_cols = st.columns(len(LOW_VERBS)); low_sel=[]
+    for c, v in zip(low_cols, LOW_VERBS):
+        with c:
+            if st.checkbox(v, key=f"low_{v}", value=(band=="LOW")): low_sel.append(v)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # MEDIUM band
+    st.markdown(
+        f'<div class="adi-band adi-med"><span class="adi-band-cap">Apply / Analyse</span>'
+        f'<b>Medium (Weeks 5–9)</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    med_cols = st.columns(len(MED_VERBS)); med_sel=[]
+    for c, v in zip(med_cols, MED_VERBS):
+        with c:
+            if st.checkbox(v, key=f"med_{v}", value=(band=="MEDIUM")): med_sel.append(v)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # HIGH band
+    st.markdown(
+        f'<div class="adi-band adi-high"><span class="adi-band-cap">Evaluate / Create</span>'
+        f'<b>High (Weeks 10–14)</b></div>', unsafe_allow_html=True)
+    st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
+    high_cols = st.columns(len(HIGH_VERBS)); high_sel=[]
+    for c, v in zip(high_cols, HIGH_VERBS):
+        with c:
+            if st.checkbox(v, key=f"high_{v}", value=(band=="HIGH")): high_sel.append(v)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Merge selections, preserve order & uniqueness
+    picks = list(dict.fromkeys(low_sel + med_sel + high_sel))
+    if not picks:
+        st.info("Pick at least one Bloom verb block above (you can select multiple).")
+
+    st.markdown("### ")
+    tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
+
+    # --- MCQs tab ---
     with tabs[0]:
-        if st.button("Generate MCQs",type="primary",key="btn_mcq"):
-            qs=build_mcqs(src,mcq_n,picks or BAND_TO_VERBS[band])
+        colL, colR = st.columns([1,1])
+        with colL:
+            mcq_n = st.selectbox("How many MCQs?", [5,10,15,20], index=1, key="mcq_n_sel")
+        with colR:
+            show_key = st.checkbox("Include answer key in export", True, key="ck_mcq_key")
+
+        if st.button("Generate MCQs", type="primary", key="btn_mcq"):
+            source_text = src or "Instructor-provided notes about this week’s topic."
+            qs = build_mcqs(source_text, mcq_n, picks or BAND_TO_VERBS[band])
             st.success(f"Generated {len(qs)} MCQs.")
             for q in qs:
                 st.markdown(f"**{q.stem}**")
-                for j,c in enumerate(q.choices): st.markdown(f"- {'ABCD'[j]}. {c}")
-                st.markdown("<hr/>",unsafe_allow_html=True)
-            show_key=st.checkbox("Include answer key in export",True,key="ck_mcq")
-            title=build_title("ADI MCQs",course,lesson,week,topic,instr,cohort,lesson_date)
-            doc=mcqs_to_docx(qs,title,show_key)
-            course_stub = sanitize_filename(course)
+                for j, c in enumerate(q.choices): st.markdown(f"- {'ABCD'[j]}. {c}")
+                st.markdown("<hr/>", unsafe_allow_html=True)
+            title = build_title("ADI MCQs", course="", lesson=lesson, week=week,
+                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            doc = mcqs_to_docx(qs, title, show_key)
+            course_stub = sanitize_filename("")
             fname = f"adi_mcqs{'_' + course_stub if course_stub else ''}.docx"
-            safe_download("⬇️ Download MCQs (.docx)",doc,fname,
+            safe_download("⬇️ Download MCQs (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="mcqs_tab")
 
-    # --- Activities ---
+    # --- Activities tab ---
     with tabs[1]:
-        if st.button("Generate Activities",key="btn_act"):
-            acts=build_activities(src,picks or BAND_TO_VERBS[band],act_n)
+        act_n = st.selectbox("How many activity prompts?", [4,6,8,10], index=1, key="act_n_sel")
+        if st.button("Generate Activities", key="btn_act"):
+            source_text = src or "Topic notes"
+            acts = build_activities(source_text, picks or BAND_TO_VERBS[band], act_n)
             for a in acts: st.markdown(a)
-            title=build_title("ADI Activities",course,lesson,week,topic,instr,cohort,lesson_date)
-            doc=activities_to_docx(acts,title)
-            course_stub = sanitize_filename(course)
-            fname = f"adi_activities{'_' + course_stub if course_stub else ''}.docx"
-            safe_download("⬇️ Download Activities (.docx)",doc,fname,
+            title = build_title("ADI Activities", course="", lesson=lesson, week=week,
+                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            doc = activities_to_docx(acts, title)
+            fname = f"adi_activities.docx"
+            safe_download("⬇️ Download Activities (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="activities_tab")
 
-    # --- Revision ---
+    # --- Revision tab ---
     with tabs[2]:
-        rev_n=st.selectbox("How many revision items?",[6,8,10,12],1,key="rev_n")
-        if st.button("Generate Revision Items",key="btn_rev"):
-            rev=build_revision(src,rev_n)
+        rev_n = st.selectbox("How many revision items?", [6,8,10,12], index=1, key="rev_n")
+        if st.button("Generate Revision Items", key="btn_rev"):
+            source_text = src or "Topic notes"
+            rev = build_revision(source_text, rev_n)
             for r in rev: st.markdown(r)
-            title=build_title("ADI Revision",course,lesson,week,topic,instr,cohort,lesson_date)
-            doc=revision_to_docx(rev,title)
-            course_stub = sanitize_filename(course)
-            fname = f"adi_revision{'_' + course_stub if course_stub else ''}.docx"
-            safe_download("⬇️ Download Revision (.docx)",doc,fname,
+            title = build_title("ADI Revision", course="", lesson=lesson, week=week,
+                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            doc = revision_to_docx(rev, title)
+            fname = f"adi_revision.docx"
+            safe_download("⬇️ Download Revision (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="revision_tab")
 
-    st.markdown(f"<div style='color:{TEXT_MUTED};font-size:12px;margin-top:18px'>"
-                f"ADI style — green {ADI_GREEN}, gold {ADI_GOLD}, stone bg. Keep it simple for daily use."
-                f"</div>",unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='color:{TEXT_MUTED};font-size:12px;margin-top:18px'>"
+        f"ADI style — green {ADI_GREEN}, gold {ADI_GOLD}, stone bg. Keep it simple for daily use."
+        f"</div>", unsafe_allow_html=True
+    )
 
 if __name__=="__main__":
     main()
