@@ -43,8 +43,40 @@ TEXT_SLATE = "#1f2937"
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
 # ---------- Catalog defaults ----------
-DEFAULT_COURSES = []  # bulk-import via sidebar expander
-DEFAULT_COHORTS = ["Cohort 1", "Cohort 2", "Cohort 3"]
+DEFAULT_COURSES = [
+    "Defense Technology Practices: Experimentation, Quality Management and Inspection (GE4-EPM)",
+    "Integrated Project and Materials Management in Defense Technology (GE4-IPM)",
+    "Military Vehicle and Aircraft MRO: Principles & Applications (GE4-MRO)",
+    "Computation for Chemical Technologists (CT4-COM)",
+    "Explosives Manufacturing (CT4-EMG)",
+    "Thermofluids (CT4-TFL)",
+    "Composite Manufacturing (MT4-CMG)",
+    "Computer Aided Design (MT4-CAD)",
+    "Machine Elements (MT4-MAE)",
+    "Electrical Materials (EE4-MFC)",
+    "PCB Manufacturing (EE4-PMG)",
+    "Power Circuits & Transmission (EE4-PCT)",
+    "Mechanical Product Dissection (MT5-MPD)",
+    "Assembly Technology (MT5-AST)",
+    "Aviation Maintenance (MT5-AVM)",
+    "Hydraulics and Pneumatics (MT5-HYP)",
+    "Computer Aided Design and Additive Manufacturing (MT5-CAD)",
+    "Industrial Machining (MT5-CNC)",
+    "Thermochemistry of Explosives (CT5-TCE)",
+    "Separation Technologies 1 (CT5-SET)",
+    "Explosives Plant Operations and Troubleshooting (CT5-POT)",
+    "Coating Technologies (CT5-COT)",
+    "Chemical Technology Laboratory Techniques (CT5-LAB)",
+    "Chemical Process Technology (CT5-CPT)",
+]
+
+DEFAULT_COHORTS = [
+    "D1-C01", "D1-E01", "D1-E02",
+    "D1-M01", "D1-M02", "D1-M03", "D1-M04", "D1-M05",
+    "D2-C01",
+    "D2-M01", "D2-M02", "D2-M03", "D2-M04", "D2-M05", "D2-M06",
+]
+
 DEFAULT_INSTRUCTORS = [
     "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ","FAIZ LAZAM ALSHAMMARI",
     "DR. MASHAEL ALSHAMMARI","AHMED ALBADER","Noura Aldossari","Ahmed Gasem Alharbi",
@@ -53,6 +85,7 @@ DEFAULT_INSTRUCTORS = [
     "Gerhard Van der Poel","Khalil Razak","Mohammed Alwuthylah","Rana Ramadan",
     "Salem Saleh Subaih","Barend Daniel Esterhuizen",
 ]
+
 if "COURSES" not in st.session_state: st.session_state.COURSES = list(DEFAULT_COURSES)
 if "COHORTS" not in st.session_state: st.session_state.COHORTS = list(DEFAULT_COHORTS)
 if "INSTRS"  not in st.session_state: st.session_state.INSTRS  = list(DEFAULT_INSTRUCTORS)
@@ -215,7 +248,7 @@ def quick_stats(txt: str) -> dict:
     freq = {}
     for w in words:
         w2 = w.lower()
-        if len(w2) <= 3: 
+        if len(w2) <= 3:
             continue
         freq[w2] = freq.get(w2, 0) + 1
     top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -427,11 +460,8 @@ def mcqs_to_pptx(mcqs: List[MCQ], title: str, show_key: bool) -> bytes:
     if Presentation is None:
         st.warning("PPTX export requires python-pptx in requirements.txt"); return b""
     prs = Presentation()
-    # Title slide
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
     _add_brand_header(slide, title, "MCQ deck for classroom display")
-
-    # One slide per MCQ
     for i, q in enumerate(mcqs, 1):
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         _add_brand_header(slide, f"[{q.bloom}] Question {i}")
@@ -439,14 +469,12 @@ def mcqs_to_pptx(mcqs: List[MCQ], title: str, show_key: bool) -> bytes:
         p = body.paragraphs[0]; p.text = q.stem; p.font.size = PptPt(20)
         for j, c in enumerate(q.choices):
             par = body.add_paragraph(); par.text = f"{'ABCD'[j]}. {c}"; par.level = 1; par.font.size = PptPt(20)
-
     if show_key:
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         _add_brand_header(slide, "Answer Key")
         body = _body_frame(slide); body.clear()
         for i, q in enumerate(mcqs, 1):
             p = body.add_paragraph(); p.text = f"{i}. {'ABCD'[q.answer_idx]}"; p.font.size = PptPt(22)
-
     out = io.BytesIO(); prs.save(out); return out.getvalue()
 
 def activities_to_pptx(cards: List[dict], title: str) -> bytes:
@@ -455,7 +483,6 @@ def activities_to_pptx(cards: List[dict], title: str) -> bytes:
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _add_brand_header(slide, title, "Lesson activities")
-
     for c in cards:
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         _add_brand_header(slide, f"{c['title']}  ({c['time']} min)")
@@ -467,7 +494,6 @@ def activities_to_pptx(cards: List[dict], title: str) -> bytes:
             s = body.add_paragraph(); s.text = f"{idx}. {step}"; s.level = 1; s.font.size = PptPt(18)
         p = body.add_paragraph(); p.text = f"Evidence: {c['evidence']}"; p.font.size = PptPt(18)
         p = body.add_paragraph(); p.text = f"Assessment: {', '.join(c['assessment'])}"; p.font.size = PptPt(18)
-
     out = io.BytesIO(); prs.save(out); return out.getvalue()
 
 def revision_to_pptx(items: List[str], title: str) -> bytes:
@@ -476,13 +502,11 @@ def revision_to_pptx(items: List[str], title: str) -> bytes:
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _add_brand_header(slide, title, "Revision prompts")
-
     for it in items:
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         _add_brand_header(slide, "Revision")
         body = _body_frame(slide); body.clear()
         p = body.paragraphs[0]; p.text = it; p.font.size = PptPt(22)
-
     out = io.BytesIO(); prs.save(out); return out.getvalue()
 
 # ---------- MAIN ----------
@@ -625,8 +649,7 @@ def main():
             for c in cards:
                 st.markdown(f"### {c['title']}  ({c['time']} min)")
                 st.markdown(f"**Objective:** {c['objective']}")
-                st.markmarkdown = st.markdown
-                st.markmarkdown(f"**Materials:** {', '.join(c['materials'])}")
+                st.markdown(f"**Materials:** {', '.join(c['materials'])}")
                 st.markdown("**Steps:**")
                 for sstep in c["steps"]:
                     st.markdown(f"- {sstep}")
@@ -651,22 +674,4 @@ def main():
         if st.button("Generate Revision Items", key="btn_rev"):
             source_text = src or "Topic notes"
             rev = build_revision(source_text, rev_n)
-            st.success(f"Generated {len(rev)} revision prompts.")
-            for r in rev: st.markdown(r)
-            title = build_title("ADI Revision", course, lesson, week, topic, instr, cohort, lesson_date)
-            doc = revision_to_docx(rev, title)
-            fname = f"adi_revision{'_' + sanitize_filename(course) if course else ''}.docx"
-            safe_download("⬇️ Download Revision (.docx)", doc, fname,
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "revision_docx")
-            ppt = revision_to_pptx(rev, title)
-            if ppt:
-                fname_ppt = f"adi_revision{'_' + sanitize_filename(course) if course else ''}.pptx"
-                safe_download("📽️ Download Revision (.pptx)", ppt, fname_ppt,
-                              "application/vnd.openxmlformats-officedocument.presentationml.presentation", "revision_pptx")
-
-    st.markdown(f"<div style='color:{TEXT_MUTED};font-size:12px;margin-top:18px'>"
-                f"Styling is locked via .streamlit/config.toml and inject_css(). Keys for downloads are unique to avoid duplicate-element errors."
-                f"</div>", unsafe_allow_html=True)
-
-if __name__=="__main__":
-    main()
+            st.success
