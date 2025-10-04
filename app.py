@@ -1,4 +1,4 @@
-# app.py — ADI Builder (full, horizontal verbs + banner fix)
+# app.py — ADI Builder (stable build: spinner upload, horizontal verbs, band highlight, tabs)
 
 import base64
 import io
@@ -70,6 +70,15 @@ st.markdown("""
 .bloom-low  { background: linear-gradient(180deg,#f1f8f1, #ffffff); }
 .bloom-med  { background: linear-gradient(180deg,#fff7e8, #ffffff); }
 .bloom-high { background: linear-gradient(180deg,#eef2ff, #ffffff); }
+
+/* Active highlight when any verb in the band is selected */
+.bloom-group.active {
+  border-color:#245a34;
+  box-shadow: 0 0 0 2px rgba(36,90,52,.08) inset;
+}
+.bloom-group.active.bloom-low  { background: linear-gradient(180deg,#eaf6ed, #ffffff); }
+.bloom-group.active.bloom-med  { background: linear-gradient(180deg,#fff1dc, #ffffff); }
+.bloom-group.active.bloom-high { background: linear-gradient(180deg,#e8ecff, #ffffff); }
 
 .bloom-tag {
   display:inline-block; padding:4px 10px; border-radius: 999px;
@@ -281,6 +290,7 @@ def extract_text(uploaded_file, deep: bool) -> str:
                     if hasattr(sh, "text"): texts.append(sh.text)
             return "\n".join(texts)
         if name.endswith(".pdf") and fitz:
+            # deep==True: blocks can be more robust, but text is safe for speed
             doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
             texts = []
             for pg in doc:
@@ -290,11 +300,16 @@ def extract_text(uploaded_file, deep: bool) -> str:
         st.warning(f"Could not parse {uploaded_file.name}: {e}")
     return ""
 
+# SAFE spinner (prevents SessionInfo crash)
 if st.session_state.uploaded_file and st.button("Process source"):
-    with st.status("Processing upload…", expanded=False) as status:
-        parsed = extract_text(st.session_state.uploaded_file, deep=st.session_state.deep_scan)
-        if parsed: st.session_state.source_text = parsed
-        status.update(label="Upload processed", state="complete", expanded=False)
+    try:
+        with st.spinner("Processing upload…"):
+            parsed = extract_text(st.session_state.uploaded_file, deep=st.session_state.deep_scan)
+            if parsed:
+                st.session_state.source_text = parsed
+        st.success("Upload processed.")
+    except Exception as e:
+        st.error(f"Could not process file: {e}")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -332,7 +347,10 @@ def verb_grid(verbs: list[str], prefix: str, cols_per_row: int = 6):
                 else:       picks.discard(v)
 
 def bloom_group(title: str, subtitle: str, verbs: list[str], css_class: str, prefix: str):
-    st.markdown(f'<div class="bloom-group {css_class}">', unsafe_allow_html=True)
+    picks = st.session_state.bloom_picks
+    group_active = any(v in picks for v in verbs)
+    active_class = " active" if group_active else ""
+    st.markdown(f'<div class="bloom-group {css_class}{active_class}">', unsafe_allow_html=True)
     st.markdown(f"**{title}**  \n<span class='small-muted'>{subtitle}</span>", unsafe_allow_html=True)
     verb_grid(verbs, prefix, cols_per_row=6)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -426,9 +444,12 @@ with tabs[0]:
                                                           value=st.session_state.include_answer_key)
 
     if st.button("Generate MCQs", type="primary"):
-        mcqs = build_mcqs(topic_text, picked_verbs, st.session_state.mcq_count)
-        st.session_state.last_generated["mcqs"] = mcqs
-        st.success(f"Generated {len(mcqs)} MCQs.")
+        try:
+            mcqs = build_mcqs(topic_text, picked_verbs, st.session_state.mcq_count)
+            st.session_state.last_generated["mcqs"] = mcqs
+            st.success(f"Generated {len(mcqs)} MCQs.")
+        except Exception as e:
+            st.error(f"Could not generate MCQs: {e}")
 
     mcqs = st.session_state.last_generated.get("mcqs", [])
     if mcqs:
@@ -471,10 +492,13 @@ with tabs[1]:
         st.markdown("Pick Bloom verbs above; tasks align wording automatically.")
 
     if st.button("Generate Activities", type="primary", key="btn-acts"):
-        acts = build_activities(topic_text, st.session_state.activities_count,
-                                st.session_state.activity_minutes, picked_verbs)
-        st.session_state.last_generated["activities"] = acts
-        st.success(f"Generated {len(acts)} activities.")
+        try:
+            acts = build_activities(topic_text, st.session_state.activities_count,
+                                    st.session_state.activity_minutes, picked_verbs)
+            st.session_state.last_generated["activities"] = acts
+            st.success(f"Generated {len(acts)} activities.")
+        except Exception as e:
+            st.error(f"Could not generate activities: {e}")
 
     acts = st.session_state.last_generated.get("activities", [])
     if acts:
@@ -490,9 +514,12 @@ with tabs[1]:
 with tabs[2]:
     qty = st.slider("How many revision prompts?", 3, 12, 5, step=1)
     if st.button("Generate Revision", type="primary", key="btn-rev"):
-        rev = build_revision(topic_text, picked_verbs, qty)
-        st.session_state.last_generated["revision"] = rev
-        st.success(f"Generated {len(rev)} revision prompts.")
+        try:
+            rev = build_revision(topic_text, picked_verbs, qty)
+            st.session_state.last_generated["revision"] = rev
+            st.success(f"Generated {len(rev)} revision prompts.")
+        except Exception as e:
+            st.error(f"Could not generate revision: {e}")
 
     rev = st.session_state.last_generated.get("revision", [])
     if rev:
