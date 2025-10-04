@@ -247,7 +247,32 @@
     {
       "course_code": "GE4-EMP",
       "course_title": "GE4 EMP",
-      "klos": [],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Outcome 1: (placeholder) see official GE4-IPM module plan."
+        },
+        {
+          "code": "KLO2",
+          "text": "Outcome 2: (placeholder) see official GE4-IPM module plan."
+        },
+        {
+          "code": "KLO3",
+          "text": "Outcome 3: (placeholder) see official GE4-IPM module plan."
+        },
+        {
+          "code": "KLO4",
+          "text": "Outcome 4: (placeholder) see official GE4-IPM module plan."
+        },
+        {
+          "code": "KLO5",
+          "text": "Outcome 5: (placeholder) see official GE4-IPM module plan."
+        },
+        {
+          "code": "KLO6",
+          "text": "Outcome 6: (placeholder) see official GE4-IPM module plan."
+        }
+      ],
       "slos": [],
       "weeks": [],
       "source_files": [
