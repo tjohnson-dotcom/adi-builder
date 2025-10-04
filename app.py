@@ -1,5 +1,5 @@
 
-# app.py — ADI Builder (Week-4 polish: boxes layout, upload feedback, week fix, no sliders)
+# app.py — ADI Builder (Week-4 polished, function-order fix)
 # Layout: Left = Activities, Right = MCQs (top) + Revision (bottom). No tabs.
 
 import io
@@ -158,6 +158,62 @@ def init_state():
 init_state()
 
 
+# --------------------------- parsing + export helpers (defined BEFORE use) ---------------------------
+
+def parse_upload(file, deep=False) -> str:
+    if not file: 
+        return ""
+    name = file.name.lower()
+    try:
+        if name.endswith(".txt"):
+            data = file.getvalue() if hasattr(file, "getvalue") else file.read()
+            return data.decode("utf-8", errors="ignore")
+        if name.endswith(".docx") and Document:
+            d = Document(file)
+            return "\n".join(p.text for p in d.paragraphs)
+        if name.endswith(".pptx") and Presentation:
+            prs = Presentation(file)
+            lines = []
+            for slide in prs.slides:
+                for sh in slide.shapes:
+                    if hasattr(sh, "text") and sh.text:
+                        lines.append(sh.text)
+            return "\n".join(lines)
+        if name.endswith(".pdf") and fitz:
+            data = file.read()
+            doc = fitz.open(stream=data, filetype="pdf")
+            texts = []
+            for pg in doc:
+                try:
+                    t = pg.get_text("blocks" if deep else "text") or ""
+                except Exception:
+                    t = ""
+                texts.append(t)
+            return "\n".join([t if isinstance(t, str) else str(t) for t in texts])
+    except Exception as e:
+        st.warning(f"Could not parse file: {e}")
+    return ""
+
+def docx_download(filename: str, lines: list[str]) -> io.BytesIO:
+    if not Document:
+        buf = io.BytesIO(); buf.write("\n".join(lines).encode("utf-8")); buf.seek(0); return buf
+    doc = Document()
+    for line in lines: doc.add_paragraph(line)
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
+
+def pptx_download(title: str, bullets: list[str]) -> io.BytesIO:
+    if not Presentation:
+        buf = io.BytesIO(); buf.write((title + "\n" + "\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
+    prs = Presentation(); slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = title
+    left, top, width, height = Inches(1), Inches(1.8), Inches(8), Inches(4.5)
+    tb = slide.shapes.add_textbox(left, top, width, height); tf = tb.text_frame; tf.word_wrap = True
+    for i, b in enumerate(bullets):
+        p = tf.add_paragraph() if i else tf.paragraphs[0]; p.text = b; p.level = 0
+        if Pt: p.font.size = Pt(18)
+    buf = io.BytesIO(); prs.save(buf); buf.seek(0); return buf
+
+
 # --------------------------- hero banner ---------------------------
 
 st.markdown("""
@@ -265,7 +321,7 @@ with st.sidebar:
             st.error(f"Could not process file: {e}")
 
 
-# --------------------------- topic + upload parse helpers ---------------------------
+# --------------------------- main text input ---------------------------
 
 st.write("**Topic / Outcome (optional)**")
 st.session_state.source_text = st.text_area(
@@ -277,40 +333,6 @@ st.session_state.source_text = st.text_area(
 
 st.session_state.deep_scan = st.toggle("Deep scan source (slower, better coverage)",
                                        value=st.session_state.get("deep_scan", False))
-
-def parse_upload(file, deep=False) -> str:
-    if not file: 
-        return ""
-    name = file.name.lower()
-    try:
-        if name.endswith(".txt"):
-            data = file.getvalue() if hasattr(file, "getvalue") else file.read()
-            return data.decode("utf-8", errors="ignore")
-        if name.endswith(".docx") and Document:
-            d = Document(file)
-            return "\\n".join(p.text for p in d.paragraphs)
-        if name.endswith(".pptx") and Presentation:
-            prs = Presentation(file)
-            lines = []
-            for slide in prs.slides:
-                for sh in slide.shapes:
-                    if hasattr(sh, "text") and sh.text:
-                        lines.append(sh.text)
-            return "\\n".join(lines)
-        if name.endswith(".pdf") and fitz:
-            data = file.read()
-            doc = fitz.open(stream=data, filetype="pdf")
-            texts = []
-            for pg in doc:
-                try:
-                    t = pg.get_text("blocks" if deep else "text") or ""
-                except Exception:
-                    t = ""
-                texts.append(t)
-            return "\\n".join([t if isinstance(t, str) else str(t) for t in texts])
-    except Exception as e:
-        st.warning(f"Could not parse file: {e}")
-    return ""
 
 st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
 
@@ -374,6 +396,7 @@ def build_activities(topic: str, n: int, minutes: int, verbs: list[str]):
     acts = []
     for i in range(1, n+1):
         acts.append(f"Activity {i} ({minutes} min): {verbs[i % len(verbs)]} on {topic or 'today’s concept'} via example / mini-lab.")
+        # rotate verbs safely even if fewer than n
     return acts
 
 def build_revision(topic: str, verbs: list[str], qty: int = 5):
@@ -518,25 +541,3 @@ if g.get("revision"):
     for r in g["revision"]:
         st.write("• " + r)
 st.markdown('</div>', unsafe_allow_html=True)
-
-
-# --------------------------- exports helpers ---------------------------
-
-def docx_download(filename: str, lines: list[str]) -> io.BytesIO:
-    if not Document:
-        buf = io.BytesIO(); buf.write("\\n".join(lines).encode("utf-8")); buf.seek(0); return buf
-    doc = Document()
-    for line in lines: doc.add_paragraph(line)
-    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
-
-def pptx_download(title: str, bullets: list[str]) -> io.BytesIO:
-    if not Presentation:
-        buf = io.BytesIO(); buf.write((title + "\\n" + "\\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
-    prs = Presentation(); slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = title
-    left, top, width, height = Inches(1), Inches(1.8), Inches(8), Inches(4.5)
-    tb = slide.shapes.add_textbox(left, top, width, height); tf = tb.text_frame; tf.word_wrap = True
-    for i, b in enumerate(bullets):
-        p = tf.add_paragraph() if i else tf.paragraphs[0]; p.text = b; p.level = 0
-        if Pt: p.font.size = Pt(18)
-    buf = io.BytesIO(); prs.save(buf); buf.seek(0); return buf
