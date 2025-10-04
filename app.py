@@ -1,3 +1,7 @@
+import streamlit as st
+
+if not hasattr(st, "session_state") or not st.session_state:
+    st.session_state.clear()
 
 # app.py — ADI Builder (Free Override Edition, FIXED exports)
 import io, base64, random, re, json, hashlib
