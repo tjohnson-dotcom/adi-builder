@@ -1,7 +1,7 @@
 # app.py — ADI Builder (Streamlit)
 # Stable, ADI-branded app with MCQs (answer key), Activities, Revision.
-# Finalized right-side UI (pills + band cards + Bloom chip), PDF parsing, cached uploads,
-# course-aware filenames, and unique download keys to avoid StreamlitDuplicateElementId.
+# Final right-side look (pills + band cards + Bloom chip), PDF parsing, cached uploads,
+# course-aware titles, and unique download keys to avoid StreamlitDuplicateElementId.
 
 from __future__ import annotations
 import io, re, random
@@ -55,7 +55,6 @@ def inject_css():
       }}
 
       /* ---------- Header bar (dark green rounded strip) ---------- */
-      /* The header container we render in header() already; just add the shadow/shape */
       div[style*="ADI Builder — Lesson Activities"] {{
         box-shadow: 0 3px 18px rgba(0,0,0,0.06);
         border-radius: 18px !important;
@@ -346,9 +345,11 @@ def main():
         st.info("Pick at least one Bloom verb block above (you can select multiple).")
 
     st.markdown("### ")
+
+    # ------------------ TABS ------------------
     tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
 
-    # --- MCQs tab ---
+    # === Tab 1: MCQs ===
     with tabs[0]:
         colL, colR = st.columns([1,1])
         with colL:
@@ -358,48 +359,50 @@ def main():
 
         if st.button("Generate MCQs", type="primary", key="btn_mcq"):
             source_text = src or "Instructor-provided notes about this week’s topic."
-            qs = build_mcqs(source_text, mcq_n, picks or BAND_TO_VERBS[band])
+            qs = build_mcqs(source_text, mcq_n, picks or BAND_TO_VERBS[policy_band(int(week))])
             st.success(f"Generated {len(qs)} MCQs.")
             for q in qs:
                 st.markdown(f"**{q.stem}**")
-                for j, c in enumerate(q.choices): st.markdown(f"- {'ABCD'[j]}. {c}")
+                for j, c in enumerate(q.choices):
+                    st.markdown(f"- {'ABCD'[j]}. {c}")
                 st.markdown("<hr/>", unsafe_allow_html=True)
+
             title = build_title("ADI MCQs", course="", lesson=lesson, week=week,
                                 topic=topic, instr="", cohort="", lesson_date=lesson_date)
             doc = mcqs_to_docx(qs, title, show_key)
-            course_stub = sanitize_filename("")
-            fname = f"adi_mcqs{'_' + course_stub if course_stub else ''}.docx"
-            safe_download("⬇️ Download MCQs (.docx)", doc, fname,
+            safe_download("⬇️ Download MCQs (.docx)", doc, "adi_mcqs.docx",
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="mcqs_tab")
 
-    # --- Activities tab ---
+    # === Tab 2: Activities ===
     with tabs[1]:
         act_n = st.selectbox("How many activity prompts?", [4,6,8,10], index=1, key="act_n_sel")
         if st.button("Generate Activities", key="btn_act"):
             source_text = src or "Topic notes"
-            acts = build_activities(source_text, picks or BAND_TO_VERBS[band], act_n)
-            for a in acts: st.markdown(a)
+            acts = build_activities(source_text, picks or BAND_TO_VERBS[policy_band(int(week))], act_n)
+            for a in acts:
+                st.markdown(a)
+
             title = build_title("ADI Activities", course="", lesson=lesson, week=week,
                                 topic=topic, instr="", cohort="", lesson_date=lesson_date)
             doc = activities_to_docx(acts, title)
-            fname = f"adi_activities.docx"
-            safe_download("⬇️ Download Activities (.docx)", doc, fname,
+            safe_download("⬇️ Download Activities (.docx)", doc, "adi_activities.docx",
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="activities_tab")
 
-    # --- Revision tab ---
+    # === Tab 3: Revision ===
     with tabs[2]:
         rev_n = st.selectbox("How many revision items?", [6,8,10,12], index=1, key="rev_n")
         if st.button("Generate Revision Items", key="btn_rev"):
             source_text = src or "Topic notes"
             rev = build_revision(source_text, rev_n)
-            for r in rev: st.markdown(r)
+            for r in rev:
+                st.markdown(r)
+
             title = build_title("ADI Revision", course="", lesson=lesson, week=week,
                                 topic=topic, instr="", cohort="", lesson_date=lesson_date)
             doc = revision_to_docx(rev, title)
-            fname = f"adi_revision.docx"
-            safe_download("⬇️ Download Revision (.docx)", doc, fname,
+            safe_download("⬇️ Download Revision (.docx)", doc, "adi_revision.docx",
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="revision_tab")
 
@@ -411,3 +414,4 @@ def main():
 
 if __name__=="__main__":
     main()
+
