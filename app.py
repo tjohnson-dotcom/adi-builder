@@ -1,7 +1,8 @@
 # app.py — ADI Builder (Streamlit)
-# Stable, ADI-branded app with MCQs (answer key), Activities, Revision.
-# Final right-side look (pills + band cards + Bloom chip), PDF parsing, cached uploads,
-# course-aware titles, and unique download keys to avoid StreamlitDuplicateElementId.
+# ADI-branded app with MCQs (answer key), Activities, Revision.
+# Locked styling, tabs, PDF parsing, cached uploads, course-aware titles/filenames,
+# left-panel dropdowns (Course / Cohort / Instructor) with “Add new…” flow,
+# unique download keys (avoids StreamlitDuplicateElementId).
 
 from __future__ import annotations
 import io, re, random
@@ -38,6 +39,34 @@ TEXT_MUTED = "#6b7280"
 
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
 
+# ---------- Catalog defaults (edit these to your real lists) ----------
+DEFAULT_COURSES = [
+    "CNC Milling Basics",
+    "Electrical Systems 1",
+    "Health & Safety",
+    "Mathematics 101",
+    "Project Integration",
+]
+DEFAULT_COHORTS = [
+    "Cohort A",
+    "Cohort B",
+    "Cohort C",
+    "Evening Group",
+]
+DEFAULT_INSTRUCTORS = [
+    "Dr. Ahmed Ali",
+    "Ms. Sara Khan",
+    "Mr. James Patel",
+    "Ms. Lina Omar",
+]
+
+# Helper: Select from a list OR “Add new…”
+def select_or_add(label: str, options: List[str], key: str, placeholder: str = "") -> str:
+    choice = st.selectbox(label, options + ["➕ Add new…"], key=key)
+    if choice == "➕ Add new…":
+        return st.text_input(f"Enter {label.lower()}", value="", placeholder=placeholder, key=f"{key}_custom")
+    return choice
+
 # ---------- CSS / Branding ----------
 def inject_css():
     st.markdown(f"""
@@ -54,7 +83,7 @@ def inject_css():
         border-bottom: 3px solid {ADI_GREEN} !important;
       }}
 
-      /* ---------- Header bar (dark green rounded strip) ---------- */
+      /* ---------- Header bar (rounded strip) ---------- */
       div[style*="ADI Builder — Lesson Activities"] {{
         box-shadow: 0 3px 18px rgba(0,0,0,0.06);
         border-radius: 18px !important;
@@ -157,8 +186,8 @@ def build_title(prefix,course,lesson,week,topic,instr,cohort,lesson_date):
         topic or None, instr or None, cohort or None,
         lesson_date.strftime("%Y-%m-%d") if lesson_date else None] if s])
 
-def sanitize_filename(course: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", course.strip()) if course else ""
+def sanitize_filename(val: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", val.strip()) if val else ""
 
 # ---------- MCQs ----------
 @dataclass
@@ -257,9 +286,26 @@ def main():
         )
 
         st.caption("Course details")
-        course = st.text_input("Course name","")
-        cohort = st.text_input("Class / Cohort","")
-        instr  = st.text_input("Instructor name (optional)","")
+
+        course = select_or_add(
+            "Course name",
+            DEFAULT_COURSES,
+            key="sb_course",
+            placeholder="Type a new course title…"
+        )
+        cohort = select_or_add(
+            "Class / Cohort",
+            DEFAULT_COHORTS,
+            key="sb_cohort",
+            placeholder="Type a new class / cohort…"
+        )
+        instr = select_or_add(
+            "Instructor name",
+            DEFAULT_INSTRUCTORS,
+            key="sb_instr",
+            placeholder="Type a new instructor name…"
+        )
+
         lesson_date = st.date_input("Date", value=date.today())
 
         st.caption("Context")
@@ -367,10 +413,13 @@ def main():
                     st.markdown(f"- {'ABCD'[j]}. {c}")
                 st.markdown("<hr/>", unsafe_allow_html=True)
 
-            title = build_title("ADI MCQs", course="", lesson=lesson, week=week,
-                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            title = build_title(
+                "ADI MCQs", course=course, lesson=lesson, week=week,
+                topic=topic, instr=instr, cohort=cohort, lesson_date=lesson_date
+            )
             doc = mcqs_to_docx(qs, title, show_key)
-            safe_download("⬇️ Download MCQs (.docx)", doc, "adi_mcqs.docx",
+            fname = f"adi_mcqs{'_' + sanitize_filename(course) if course else ''}.docx"
+            safe_download("⬇️ Download MCQs (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="mcqs_tab")
 
@@ -380,13 +429,15 @@ def main():
         if st.button("Generate Activities", key="btn_act"):
             source_text = src or "Topic notes"
             acts = build_activities(source_text, picks or BAND_TO_VERBS[policy_band(int(week))], act_n)
-            for a in acts:
-                st.markdown(a)
+            for a in acts: st.markdown(a)
 
-            title = build_title("ADI Activities", course="", lesson=lesson, week=week,
-                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            title = build_title(
+                "ADI Activities", course=course, lesson=lesson, week=week,
+                topic=topic, instr=instr, cohort=cohort, lesson_date=lesson_date
+            )
             doc = activities_to_docx(acts, title)
-            safe_download("⬇️ Download Activities (.docx)", doc, "adi_activities.docx",
+            fname = f"adi_activities{'_' + sanitize_filename(course) if course else ''}.docx"
+            safe_download("⬇️ Download Activities (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="activities_tab")
 
@@ -396,22 +447,23 @@ def main():
         if st.button("Generate Revision Items", key="btn_rev"):
             source_text = src or "Topic notes"
             rev = build_revision(source_text, rev_n)
-            for r in rev:
-                st.markdown(r)
+            for r in rev: st.markdown(r)
 
-            title = build_title("ADI Revision", course="", lesson=lesson, week=week,
-                                topic=topic, instr="", cohort="", lesson_date=lesson_date)
+            title = build_title(
+                "ADI Revision", course=course, lesson=lesson, week=week,
+                topic=topic, instr=instr, cohort=cohort, lesson_date=lesson_date
+            )
             doc = revision_to_docx(rev, title)
-            safe_download("⬇️ Download Revision (.docx)", doc, "adi_revision.docx",
+            fname = f"adi_revision{'_' + sanitize_filename(course) if course else ''}.docx"
+            safe_download("⬇️ Download Revision (.docx)", doc, fname,
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           scope="revision_tab")
 
     st.markdown(
         f"<div style='color:{TEXT_MUTED};font-size:12px;margin-top:18px'>"
-        f"ADI style — green {ADI_GREEN}, gold {ADI_GOLD}, stone bg. Keep it simple for daily use."
+        f"ADI style — green {ADI_GREEN}, gold {ADI_GOLD}, stone bg. Styling locked in CSS + config.toml."
         f"</div>", unsafe_allow_html=True
     )
 
 if __name__=="__main__":
     main()
-
