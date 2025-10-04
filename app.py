@@ -1,12 +1,12 @@
 # app.py — ADI Builder (Streamlit)
-# MCQs (validated & mixed), Skills Activities, Revision
+# MCQs (validated & mixed), Skills Activities, Revision, Print Summary
 # DOCX + ADI-branded PPTX exports, stable styling, deep-scan uploads, directory manager with +/−
 
 from __future__ import annotations
 import io, re, random, uuid
 from datetime import date
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple, Dict, Optional
 from pathlib import Path
 
 import streamlit as st
@@ -16,7 +16,7 @@ try:
     from docx import Document as Docx
     from docx.shared import Pt
 except Exception:
-    Docx = None
+    Docx = None  # fall back to plain text exports
 
 try:
     from pptx import Presentation
@@ -91,23 +91,19 @@ def inject_css():
     st.markdown(f"""
     <style>
       .block-container {{ max-width: 1200px; padding-top: 1.0rem; }}
-      /* Header breathing room */
       header, .css-18ni7ap {{ margin-top: 16px !important; }}
 
-      /* Buttons */
       .stButton > button {{
           background:{ADI_GREEN}; color:#fff; border-radius:12px; border:0; padding:0.55rem 0.95rem;
           box-shadow: 0 1px 0 rgba(0,0,0,.05);
       }}
       .stButton > button:hover {{ background:{ADI_GOLD}; }}
 
-      /* Inputs */
       .stTextInput>div>div>input, .stTextArea textarea, .stSelectbox > div > div {{
         border-radius:10px !important; border-color:#cbd5e1 !important;
       }}
       .stTextArea textarea {{ min-height: 120px; }}
 
-      /* Active tab underline */
       div[data-baseweb="tab"] button[aria-selected="true"] {{
         border-bottom: 3px solid {ADI_GREEN} !important;
       }}
@@ -118,10 +114,7 @@ def inject_css():
         border-radius: 18px !important;
       }}
 
-      /* Decorative rule */
       .adi-title {{ height:8px; border-radius:999px; background:#eaeaea; margin:6px 0 16px 0; }}
-
-      /* Info chips */
       .adi-chip {{
         border:1px solid #d1d5db; border-radius:10px; padding:6px 10px; font-size:13px; color:#374151;
         background:#f9fafb; display:inline-block;
@@ -129,9 +122,9 @@ def inject_css():
 
       /* Bloom bands */
       .adi-band {{ border-radius:18px; padding:14px 16px; margin:12px 0 8px 0; border:1px solid #ececec; }}
-      .adi-low  {{ background:linear-gradient(180deg, #f2f9f2 0%, #ffffff 80%); }}     /* light green */
-      .adi-med  {{ background:linear-gradient(180deg, #fff8ec 0%, #ffffff 80%); }}     /* warm stone */
-      .adi-high {{ background:linear-gradient(180deg, #f4f6ff 0%, #ffffff 80%); }}     /* light blue */
+      .adi-low  {{ background:linear-gradient(180deg, #f2f9f2 0%, #ffffff 80%); }}
+      .adi-med  {{ background:linear-gradient(180deg, #fff8ec 0%, #ffffff 80%); }}
+      .adi-high {{ background:linear-gradient(180deg, #f4f6ff 0%, #ffffff 80%); }}
       .adi-band-cap {{ float:right; color:#6b7280; font-size:13px; }}
       .adi-band.adi-active {{ border-color:#245a34; box-shadow:0 0 0 2px rgba(36,90,52,.14) inset; }}
 
@@ -144,14 +137,11 @@ def inject_css():
         box-shadow: 0 1px 0 rgba(0,0,0,.03);
       }}
       .adi-pills .stCheckbox label:hover {{ border-color:#245a34; background:#e9f3ec; }}
-      .adi-pills .stCheckbox label:has(div[role="checkbox"][aria-checked="true"]) {{
-        color:#fff; background:#245a34; border-color:#245a34; font-weight:600;
+      /* highlight when checked (works across Streamlit versions) */
+      .adi-pills .stCheckbox [data-testid="stCheckbox"] input:checked + div + label {{
+        color:#fff !important; background:#245a34 !important; border-color:#245a34 !important; font-weight:600;
       }}
 
-      /* Subtle frame around large blocks */
-      section.main > div:has(.adi-title) {{ box-shadow: 0 2px 10px rgba(0,0,0,.04); border-radius:16px; }}
-
-      /* Expander polish */
       .stExpander > details {{ border-radius:12px; border:1px solid #ececec; background:#fafafa; }}
       .stExpander > details[open] {{ background:#fff; }}
     </style>
@@ -222,7 +212,7 @@ def safe_download(label:str,data:bytes,filename:str,mime:str,scope:str):
         data=data,
         file_name=filename,
         mime=mime,
-        key=f"dl_{scope}_{uuid.uuid4().hex[:8]}"  # unique keys (no duplicate ID crash)
+        key=f"dl_{scope}_{uuid.uuid4().hex[:8]}"
     )
 
 def build_title(prefix,course,lesson,week,topic,instr,cohort,lesson_date):
@@ -271,7 +261,7 @@ def quick_stats(txt: str) -> dict:
     freq = {}
     for w in words:
         w2 = w.lower()
-        if len(w2) <= 3: 
+        if len(w2) <= 3:
             continue
         freq[w2] = freq.get(w2, 0) + 1
     top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -296,7 +286,6 @@ def make_mcq(seed_text:str,verb:str,i:int)->MCQ:
     answer_idx=choices.index(correct)
     return MCQ(stem,choices,answer_idx,"LOW")  # bloom updated later
 
-# Mix & validation
 def allocate_mcq_mix(n:int, bloom_focus:str, selected_verbs:list[str]) -> list[dict]:
     focus = (bloom_focus or "LOW").upper()
     if focus == "LOW":
@@ -329,7 +318,7 @@ def _looks_true_false(options:list[str]) -> bool:
     return set(normalized) in ({"true","false"}, {"false","true"})
 def _similar_len(options:list[str], tolerance:float=0.55) -> bool:
     lens = [max(1, len(o)) for o in options]; return (min(lens)/max(lens)) >= tolerance
-def validate_mcq_item(stem:str, options:list[str], answer_idx:int) -> tuple[bool,str]:
+def validate_mcq_item(stem:str, options:list[str], answer_idx:int) -> Tuple[bool,str]:
     if len(options) != 4: return False, "Need exactly 4 options."
     if not (0 <= answer_idx < 4): return False, "Answer index out of range."
     if BANNED_PATTERN.search(stem or ""): return False, "Banned phrase in stem."
@@ -529,6 +518,63 @@ def revision_to_pptx(items: List[str], title: str) -> bytes:
         p = body.paragraphs[0]; p.text = it; p.font.size = PptPt(22)
     out = io.BytesIO(); prs.save(out); return out.getvalue()
 
+# ---------- SUMMARY (print-friendly) ----------
+def _context_snapshot(course, cohort, instr, lesson_date, lesson, week, topic, band, picks):
+    return {
+        "Course": course or "—",
+        "Cohort": cohort or "—",
+        "Instructor": instr or "—",
+        "Date": lesson_date.strftime("%Y-%m-%d") if lesson_date else "—",
+        "Lesson": f"{lesson}",
+        "Week": f"{week} ({band.title()})",
+        "Topic / Outcome": topic or "—",
+        "Selected verbs": ", ".join(picks) if picks else "—",
+    }
+
+def summary_to_docx(ctx: dict, mcqs: list | None, acts: list | None, revs: list | None, title: str) -> bytes:
+    if Docx is None:
+        out = io.StringIO()
+        out.write(title + "\n\n")
+        out.write("Context\n-------\n")
+        for k,v in ctx.items(): out.write(f"{k}: {v}\n")
+        out.write("\n")
+        if mcqs:
+            out.write("MCQs (stems only)\n-----------------\n")
+            for q in mcqs: out.write(f"- [{q.bloom}] {q.stem}\n")
+            out.write("\n")
+        if acts:
+            out.write("Activities\n----------\n")
+            for a in acts: out.write(f"- {a['title']} ({a['time']} min) — {a['objective']}\n")
+            out.write("\n")
+        if revs:
+            out.write("Revision\n--------\n")
+            for r in revs: out.write(f"- {r}\n")
+        return out.getvalue().encode("utf-8")
+
+    doc = Docx()
+    style = doc.styles["Normal"]; style.font.name = "Calibri"; style.font.size = Pt(11)
+    doc.add_heading(title, level=1)
+
+    doc.add_heading("Context", level=2)
+    for k,v in ctx.items(): doc.add_paragraph(f"{k}: {v}")
+
+    if mcqs:
+        doc.add_heading("MCQs (stems only)", level=2)
+        for q in mcqs:
+            doc.add_paragraph(f"[{q.bloom}] {q.stem}")
+
+    if acts:
+        doc.add_heading("Activities", level=2)
+        for a in acts:
+            doc.add_paragraph(f"{a['title']} ({a['time']} min) — {a['objective']}")
+
+    if revs:
+        doc.add_heading("Revision", level=2)
+        for r in revs:
+            doc.add_paragraph(r)
+
+    buf = io.BytesIO(); doc.save(buf); return buf.getvalue()
+
 # ---------- MAIN ----------
 def main():
     inject_css()
@@ -598,7 +644,11 @@ def main():
         st.warning("PDF uploaded, but PDF parsing is not enabled on this build. Add `pymupdf==1.24.9` to requirements.txt.")
 
     # Bloom bands + pills
-    st.markdown(f'<div class="adi-band adi-low {"adi-active" if band=="LOW" else ""}">'
+    low_active  = "adi-active" if band == "LOW" else ""
+    med_active  = "adi-active" if band == "MEDIUM" else ""
+    high_active = "adi-active" if band == "HIGH" else ""
+
+    st.markdown(f'<div class="adi-band adi-low {low_active}">'
                 f'<span class="adi-band-cap">Remember / Understand</span><b>Low (Weeks 1–4)</b></div>', unsafe_allow_html=True)
     st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
     low_cols = st.columns(len(LOW_VERBS)); low_sel=[]
@@ -607,7 +657,7 @@ def main():
             if st.checkbox(v, key=f"low_{v}", value=(band=="LOW")): low_sel.append(v)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="adi-band adi-med {"adi-active" if band=="MEDIUM" else ""}">'
+    st.markdown(f'<div class="adi-band adi-med {med_active}">'
                 f'<span class="adi-band-cap">Apply / Analyse</span><b>Medium (Weeks 5–9)</b></div>', unsafe_allow_html=True)
     st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
     med_cols = st.columns(len(MED_VERBS)); med_sel=[]
@@ -616,7 +666,7 @@ def main():
             if st.checkbox(v, key=f"med_{v}", value=(band=="MEDIUM")): med_sel.append(v)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown(f'<div class="adi-band adi-high {"adi-active" if band=="HIGH" else ""}">'
+    st.markdown(f'<div class="adi-band adi-high {high_active}">'
                 f'<span class="adi-band-cap">Evaluate / Create</span><b>High (Weeks 10–14)</b></div>', unsafe_allow_html=True)
     st.markdown('<div class="adi-pills">', unsafe_allow_html=True)
     high_cols = st.columns(len(HIGH_VERBS)); high_sel=[]
@@ -627,12 +677,11 @@ def main():
 
     picks = list(dict.fromkeys(low_sel + med_sel + high_sel))
     if not picks:
-        # UX note + safe fallback so generation won't crash or stall.
         st.info("Pick at least one Bloom verb block above (you can select multiple). Using the auto-selected week focus for now.")
         picks = BAND_TO_VERBS[band]
 
     # ------------------ TABS ------------------
-    tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision"])
+    tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
 
     # === MCQs ===
     with tabs[0]:
@@ -642,6 +691,7 @@ def main():
         if st.button("Generate MCQs", type="primary", key="btn_mcq"):
             source_text = src or "Instructor-provided notes about this week’s topic."
             qs = build_mcqs(source_text, mcq_n, picks, bloom_focus=band)
+            st.session_state["last_mcqs"] = qs
             st.success(f"Generated {len(qs)} MCQs (mixed Bloom; no All/None/True/False).")
             for q in qs:
                 st.markdown(f"**[{q.bloom}] {q.stem}**")
@@ -668,6 +718,7 @@ def main():
         if st.button("Generate Activities", key="btn_act"):
             source_text = src or "Topic notes"
             cards = build_activity_cards(source_text, picks, act_count, act_time)
+            st.session_state["last_activities"] = cards
             st.success(f"Generated {len(cards)} activity card(s) — {act_time} min each.")
             for c in cards:
                 st.markdown(f"### {c['title']}  ({c['time']} min)")
@@ -697,6 +748,7 @@ def main():
         if st.button("Generate Revision Items", key="btn_rev"):
             source_text = src or "Topic notes"
             rev = build_revision(source_text, rev_n)
+            st.session_state["last_revision"] = rev
             st.success(f"Generated {len(rev)} revision prompts.")
             for r in rev: st.markdown(r)
             title = build_title("ADI Revision", course, lesson, week, topic, instr, cohort, lesson_date)
@@ -709,6 +761,60 @@ def main():
                 fname_ppt = f"adi_revision{'_' + sanitize_filename(course) if course else ''}.pptx"
                 safe_download("📽️ Download Revision (.pptx)", ppt, fname_ppt,
                               "application/vnd.openxmlformats-officedocument.presentationml.presentation", "revision_pptx")
+
+    # === Print Summary ===
+    with tabs[3]:
+        st.caption("A single, printable overview of your session context and the latest generated content.")
+        ctx = _context_snapshot(course, cohort, instr, lesson_date, lesson, week, topic, band, picks)
+
+        st.subheader("Context")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.write(f"**Course:** {ctx['Course']}")
+            st.write(f"**Cohort:** {ctx['Cohort']}")
+            st.write(f"**Instructor:** {ctx['Instructor']}")
+            st.write(f"**Date:** {ctx['Date']}")
+        with c2:
+            st.write(f"**Lesson:** {ctx['Lesson']}")
+            st.write(f"**Week:** {ctx['Week']}")
+            st.write(f"**Topic / Outcome:** {ctx['Topic / Outcome']}")
+            st.write(f"**Selected verbs:** {ctx['Selected verbs']}")
+
+        st.markdown("---")
+        mcqs = st.session_state.get("last_mcqs")
+        acts = st.session_state.get("last_activities")
+        revs = st.session_state.get("last_revision")
+
+        has_any = False
+        if mcqs:
+            has_any = True
+            st.subheader(f"MCQs (latest set: {len(mcqs)})")
+            for i, q in enumerate(mcqs, 1):
+                st.markdown(f"- **Q{i} [{q.bloom}]** {q.stem}")
+
+        if acts:
+            has_any = True
+            st.subheader(f"Activities (latest set: {len(acts)})")
+            for a in acts:
+                st.markdown(f"- **{a['title']}** ({a['time']} min) — {a['objective']}")
+
+        if revs:
+            has_any = True
+            st.subheader(f"Revision (latest set: {len(revs)})")
+            for r in revs:
+                st.markdown(f"- {r}")
+
+        if not has_any:
+            st.info("No generated content found yet. Create MCQs/Activities/Revision in their tabs and come back here.")
+
+        st.markdown("---")
+        title = build_title("ADI Print Summary", course, lesson, week, topic, instr, cohort, lesson_date)
+        doc = summary_to_docx(ctx, mcqs, acts, revs, title)
+        fname = f"adi_summary{'_' + sanitize_filename(course) if course else ''}.docx"
+        safe_download("🖨️ Download Summary (.docx)", doc, fname,
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "summary_docx")
+
+        st.caption("Tip: you can also print this page directly from your browser (Ctrl/Cmd + P).")
 
     st.markdown(f"<div style='color:{TEXT_MUTED};font-size:12px;margin-top:18px'>"
                 f"Styling is locked via .streamlit/config.toml and inject_css(). Keys for downloads are unique to avoid duplicate-element errors."
