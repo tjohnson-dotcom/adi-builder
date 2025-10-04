@@ -1,34 +1,35 @@
-# app.py — ADI Builder (stable build: spinner upload, horizontal verbs, band highlight, tabs)
+# app.py — ADI Builder (stabilized: no SessionInfo crash, tabs restored, dual Bloom highlights)
 
-import base64
 import io
+import base64
 import random
-from uuid import uuid4
 from datetime import date
+from uuid import uuid4
 
 import streamlit as st
 
-# Optional libs for extraction (guarded)
+# Optional parsers (guarded)
 try:
-    from docx import Document           # python-docx
+    from docx import Document
 except Exception:
     Document = None
 
 try:
-    from pptx import Presentation       # python-pptx
+    from pptx import Presentation
     from pptx.util import Inches, Pt
 except Exception:
     Presentation = None
     Inches = Pt = None
 
 try:
-    import fitz                         # PyMuPDF
+    import fitz  # PyMuPDF
 except Exception:
     fitz = None
 
 
-# ---------- utils ----------
-def _b64_of(path: str) -> str:
+# --------------------------- helpers ---------------------------
+
+def _b64(path: str) -> str:
     try:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
@@ -36,98 +37,71 @@ def _b64_of(path: str) -> str:
         return ""
 
 
-# ---------- page + css ----------
+def week_focus(w: int) -> str:
+    if 1 <= w <= 4: return "Low"
+    if 5 <= w <= 9: return "Medium"
+    return "High"
+
+
+# --------------------------- page setup ---------------------------
+
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
-_B64_LOGO = _b64_of("adi_logo.png")
+LOGO64 = _b64("adi_logo.png")
 
 st.markdown("""
 <style>
-.block-container { padding-top: 1.25rem; }
+/* Layout polish */
+.block-container { padding-top: 1.0rem; }
 
 /* Hero banner */
-.adi-hero {
-  background: linear-gradient(180deg, #245a34 0%, #214d2f 100%);
-  color: #fff;
-  border-radius: 14px;
-  padding: 18px 20px 16px 20px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.06);
-  margin: 0 0 12px 0;
-}
-.adi-hero * { color: #ffffff !important; }
-.adi-hero h1 { font-size: 1.05rem; margin: 0 0 4px 0; font-weight: 700; }
-.adi-hero p  { margin: 0; font-size: .85rem; opacity: .96; }
+.adi-hero {background: linear-gradient(180deg,#245a34 0%, #214d2f 100%);
+  color:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 6px 18px rgba(0,0,0,.06);margin-bottom:12px;}
+.adi-hero * {color:#fff !important;}
+.adi-hero h1 {font-size:1.06rem;margin:0 0 4px 0;font-weight:700;}
+.adi-hero p  {font-size:.86rem;margin:0;opacity:.96;}
 
 /* Sidebar logo */
-.adi-sidewrap { display:flex; align-items:center; gap:.5rem; margin-bottom:.25rem; }
 .adi-logo { width: 180px; max-width: 100%; height:auto; display:block; }
-.adi-badge { font-size:.78rem; font-weight:600; color:#245a34; letter-spacing:.02em; }
 
-/* Bloom containers */
-.bloom-group {
-  border-radius: 12px; border: 1px solid #e5e7eb;
-  padding: 14px 14px 8px 14px; margin: 8px 0 6px 0;
-}
+/* Section rule */
+.hr-soft { height:1px; border:0; background:#e5e7eb; margin:.4rem 0 1rem 0; }
+
+/* Bloom groups */
+.bloom-group {border:1px solid #e5e7eb;border-radius:12px;padding:12px 12px 8px 12px;margin:10px 0;}
 .bloom-low  { background: linear-gradient(180deg,#f1f8f1, #ffffff); }
 .bloom-med  { background: linear-gradient(180deg,#fff7e8, #ffffff); }
 .bloom-high { background: linear-gradient(180deg,#eef2ff, #ffffff); }
 
-/* Active highlight when any verb in the band is selected */
-.bloom-group.active {
-  border-color:#245a34;
-  box-shadow: 0 0 0 2px rgba(36,90,52,.08) inset;
-}
-.bloom-group.active.bloom-low  { background: linear-gradient(180deg,#eaf6ed, #ffffff); }
-.bloom-group.active.bloom-med  { background: linear-gradient(180deg,#fff1dc, #ffffff); }
-.bloom-group.active.bloom-high { background: linear-gradient(180deg,#e8ecff, #ffffff); }
+/* Focus highlight by week */
+.bloom-focus { box-shadow: 0 0 0 2px rgba(36,90,52,.12) inset; border-color:#245a34; }
 
-.bloom-tag {
-  display:inline-block; padding:4px 10px; border-radius: 999px;
-  font-size:.75rem; background:#edf2ee; color:#245a34; font-weight:600;
-}
-.small-muted { font-size:.8rem; color:#6b7280; }
-.hr-soft { height:1px; border:0; background:#e5e7eb; margin:.25rem 0 .75rem 0; }
+/* Active highlight when any verb in that band is selected */
+.bloom-active { box-shadow: 0 0 0 2px rgba(36,90,52,.18) inset; border-color:#245a34; }
 
-/* Make checkboxes feel like chips */
-.bloom-group [data-testid="stCheckbox"] > label,
-.bloom-group [data-testid="stCheckbox"] > div > label {
-  border: 1px solid #d1d5db; border-radius: 999px;
-  padding: 6px 12px; background:#fff;
-  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
-}
-.bloom-group [data-testid="stCheckbox"] > label:hover,
-.bloom-group [data-testid="stCheckbox"] > div > label:hover {
-  box-shadow: 0 2px 10px rgba(0,0,0,.06);
-}
+/* Chips for checkboxes */
+.bloom-group [data-testid="stCheckbox"] > div > label,
+.bloom-group [data-testid="stCheckbox"] > label{
+  display:inline-block;border:1px solid #d1d5db;border-radius:999px;padding:6px 12px;background:#fff;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease; white-space:nowrap;}
+.bloom-group [data-testid="stCheckbox"] > div > label:hover,
+.bloom-group [data-testid="stCheckbox"] > label:hover { box-shadow:0 2px 10px rgba(0,0,0,.06); }
 .bloom-group [data-testid="stCheckbox"] input:checked + div,
-.bloom-group [data-testid="stCheckbox"] input:checked + label {
-  background:#def7e3; border-color:#245a34; box-shadow: 0 0 0 2px rgba(36,90,52,.15);
-}
-
-/* top row alignment */
-.top-row { display:grid; grid-template-columns: 1fr 1fr; gap:24px; }
+.bloom-group [data-testid="stCheckbox"] input:checked + label{
+  background:#def7e3;border-color:#245a34;box-shadow:0 0 0 2px rgba(36,90,52,.15);}
+.bloom-caption {font-size:.80rem;color:#6b7280;margin-left:6px;}
+.bloom-pill {display:inline-block;background:#edf2ee;color:#245a34;border-radius:999px;padding:4px 10px;font-weight:600;font-size:.75rem;}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ---------- sidebar (logo + directory mgmt) ----------
-with st.sidebar:
-    st.markdown(
-        f"""
-        <div class="adi-sidewrap">
-            <img class="adi-logo" src="data:image/png;base64,{_B64_LOGO}" alt="ADI"/>
-        </div>
-        <div class="adi-badge">ADI</div>
-        """, unsafe_allow_html=True
-    )
+# --------------------------- session defaults ---------------------------
 
+def init_state():
+    s = st.session_state
+    if s.get("_ok"): return
+    s._ok = True
 
-# ---------- session defaults ----------
-def _init_state():
-    d = st.session_state
-    if "initialized" in d: return
-    d.initialized = True
-
-    d.courses = [
+    s.courses = [
         "Defense Technology Practices: Experimentation, Quality Management and Inspection (GE4-EPM)",
         "Integrated Project and Materials Management in Defense Technology (GE4-IPM)",
         "Military Vehicle and Aircraft MRO: Principles & Applications (GE4-MRO)",
@@ -153,9 +127,9 @@ def _init_state():
         "Chemical Technology Laboratory Techniques (CT5-LAB)",
         "Chemical Process Technology (CT5-CPT)",
     ]
-    d.cohorts = ["D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
+    s.cohorts = ["D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
                  "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"]
-    d.instructors = [
+    s.instructors = [
         "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ",
         "FAIZ LAZAM ALSHAMMARI","DR. MASHAEL ALSHAMMARI","AHMED ALBADER",
         "Noura Aldossari","Ahmed Gasem Alharbi","Mohammed Saeed Alfarhan",
@@ -165,30 +139,32 @@ def _init_state():
         "Barend Daniel Esterhuizen",
     ]
 
-    d.course = d.courses[0]
-    d.cohort = d.cohorts[0]
-    d.instructor = d.instructors[0]
+    s.course = s.courses[0]
+    s.cohort = s.cohorts[0]
+    s.instructor = s.instructors[0]
 
-    d.today = date.today().isoformat()
-    d.week = 1
-    d.lesson = 1
+    s.lesson = 1
+    s.week = 1
+    s.date_str = date.today().isoformat()
 
-    d.source_text = ""
-    d.uploaded_file = None
-    d.deep_scan = False
+    s.uploaded_file = None
+    s.deep_scan = False
+    s.source_text = ""
 
-    d.bloom_picks = set()
+    s.bloom_picks = set()
 
-    d.include_answer_key = True
-    d.mcq_count = 10
-    d.activities_count = 2
-    d.activity_minutes = 20
-    d.last_generated = {}
+    s.mcq_count = 10
+    s.include_answer_key = True
+    s.activities_count = 2
+    s.activity_minutes = 20
 
-_init_state()
+    s.last_generated = {}
+
+init_state()
 
 
-# ---------- hero ----------
+# --------------------------- hero banner ---------------------------
+
 st.markdown("""
 <div class="adi-hero">
   <h1>ADI Builder — Lesson Activities &amp; Questions</h1>
@@ -197,58 +173,66 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ---------- sidebar controls ----------
+# --------------------------- sidebar ---------------------------
+
 with st.sidebar:
+    if LOGO64:
+        st.markdown(f'<img class="adi-logo" src="data:image/png;base64,{LOGO64}" alt="ADI logo"/>',
+                    unsafe_allow_html=True)
+    st.caption("ADI")
+
     st.write("### Upload (optional)")
-    uploaded = st.file_uploader("Drag and drop file here", type=["txt","docx","pptx","pdf"],
-                                help="TXT, DOCX, PPTX, PDF (200MB max)")
-    st.session_state.uploaded_file = uploaded
+    st.session_state.uploaded_file = st.file_uploader(
+        "Drag and drop file here",
+        type=["txt","docx","pptx","pdf"],
+        help="Limit 200MB per file • TXT, DOCX, PPTX, PDF"
+    )
 
     st.write("### Course details")
     c1, c2, c3 = st.columns([6,1,1])
     with c1:
-        st.session_state.course = st.selectbox("Course name", st.session_state.courses, index=0)
+        st.session_state.course = st.selectbox("Course name", st.session_state.courses, index=0, key="course_sel")
     with c2:
         if st.button("＋", help="Add Course"):
             st.session_state.courses.insert(0, "New Course")
             st.session_state.course = st.session_state.courses[0]
     with c3:
         if st.button("－", help="Remove Course"):
-            if st.session_state.course in st.session_state.courses:
-                st.session_state.courses.remove(st.session_state.course)
-                if st.session_state.courses:
-                    st.session_state.course = st.session_state.courses[0]
-                else:
-                    st.session_state.course = ""
+            lst = st.session_state.courses
+            if st.session_state.course in lst and len(lst) > 1:
+                lst.remove(st.session_state.course)
+                st.session_state.course = lst[0]
 
     coh1, coh2, coh3 = st.columns([6,1,1])
     with coh1:
-        st.session_state.cohort = st.selectbox("Class / Cohort", st.session_state.cohorts, index=0)
+        st.session_state.cohort = st.selectbox("Class / Cohort", st.session_state.cohorts, index=0, key="coh_sel")
     with coh2:
-        if st.button("＋ ", key="add_cohort", help="Add Cohort"):
+        if st.button("＋ ", key="add_coh", help="Add Cohort"):
             st.session_state.cohorts.insert(0, "New Cohort")
             st.session_state.cohort = st.session_state.cohorts[0]
     with coh3:
-        if st.button("－ ", key="del_cohort", help="Remove Cohort"):
-            if st.session_state.cohort in st.session_state.cohorts:
-                st.session_state.cohorts.remove(st.session_state.cohort)
-                st.session_state.cohort = st.session_state.cohorts[0] if st.session_state.cohorts else ""
+        if st.button("－ ", key="del_coh", help="Remove Cohort"):
+            lst = st.session_state.cohorts
+            if st.session_state.cohort in lst and len(lst) > 1:
+                lst.remove(st.session_state.cohort)
+                st.session_state.cohort = lst[0]
 
     ins1, ins2, ins3 = st.columns([6,1,1])
     with ins1:
-        st.session_state.instructor = st.selectbox("Instructor name", st.session_state.instructors, index=0)
+        st.session_state.instructor = st.selectbox("Instructor name", st.session_state.instructors, index=0, key="ins_sel")
     with ins2:
-        if st.button("＋  ", key="add_instr", help="Add Instructor"):
+        if st.button("＋  ", key="add_ins", help="Add Instructor"):
             st.session_state.instructors.insert(0, "New Instructor")
             st.session_state.instructor = st.session_state.instructors[0]
     with ins3:
-        if st.button("－  ", key="del_instr", help="Remove Instructor"):
-            if st.session_state.instructor in st.session_state.instructors:
-                st.session_state.instructors.remove(st.session_state.instructor)
-                st.session_state.instructor = st.session_state.instructors[0] if st.session_state.instructors else ""
+        if st.button("－  ", key="del_ins", help="Remove Instructor"):
+            lst = st.session_state.instructors
+            if st.session_state.instructor in lst and len(lst) > 1:
+                lst.remove(st.session_state.instructor)
+                st.session_state.instructor = lst[0]
 
     st.write("### Date")
-    st.session_state.today = st.text_input("Date", value=st.session_state.today)
+    st.session_state.date_str = st.text_input("Date", st.session_state.date_str)
 
     st.write("### Context")
     cc1, cc2 = st.columns(2)
@@ -260,183 +244,161 @@ with st.sidebar:
     st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
 
-# ---------- top row: topic + bloom pill ----------
-st.markdown('<div class="top-row">', unsafe_allow_html=True)
-st.markdown('<div>', unsafe_allow_html=True)
+# --------------------------- topic + upload parse ---------------------------
 
 st.write("**Topic / Outcome (optional)**")
 st.session_state.source_text = st.text_area(
     "Module description, knowledge & skills outcomes",
-    value=st.session_state.source_text, height=120, label_visibility="collapsed"
+    value=st.session_state.source_text,
+    height=120,
+    label_visibility="collapsed",
 )
-st.session_state.deep_scan = st.toggle("Deep scan source (slower, better coverage)",
-                                       value=st.session_state.deep_scan,
-                                       help="If enabled, we parse slides/tables more aggressively.")
 
-def extract_text(uploaded_file, deep: bool) -> str:
-    if not uploaded_file: return ""
-    name = uploaded_file.name.lower()
+st.session_state.deep_scan = st.toggle("Deep scan source (slower, better coverage)",
+                                       value=st.session_state.deep_scan)
+
+def parse_upload(file, deep=False) -> str:
+    if not file: return ""
+    name = file.name.lower()
     try:
         if name.endswith(".txt"):
-            return uploaded_file.getvalue().decode("utf-8", errors="ignore")
+            return file.getvalue().decode("utf-8", errors="ignore")
         if name.endswith(".docx") and Document:
-            d = Document(uploaded_file)
+            d = Document(file)
             return "\n".join(p.text for p in d.paragraphs)
         if name.endswith(".pptx") and Presentation:
-            prs = Presentation(uploaded_file)
-            texts = []
+            prs = Presentation(file)
+            lines = []
             for slide in prs.slides:
                 for sh in slide.shapes:
-                    if hasattr(sh, "text"): texts.append(sh.text)
-            return "\n".join(texts)
+                    if hasattr(sh, "text"): lines.append(sh.text)
+            return "\n".join(lines)
         if name.endswith(".pdf") and fitz:
-            # deep==True: blocks can be more robust, but text is safe for speed
-            doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+            doc = fitz.open(stream=file.read(), filetype="pdf")
             texts = []
             for pg in doc:
                 texts.append(pg.get_text("text" if not deep else "blocks"))
             return "\n".join([t if isinstance(t, str) else str(t) for t in texts])
     except Exception as e:
-        st.warning(f"Could not parse {uploaded_file.name}: {e}")
+        st.warning(f"Could not parse file: {e}")
     return ""
 
-# SAFE spinner (prevents SessionInfo crash)
 if st.session_state.uploaded_file and st.button("Process source"):
     try:
         with st.spinner("Processing upload…"):
-            parsed = extract_text(st.session_state.uploaded_file, deep=st.session_state.deep_scan)
+            parsed = parse_upload(st.session_state.uploaded_file, st.session_state.deep_scan)
             if parsed:
                 st.session_state.source_text = parsed
         st.success("Upload processed.")
     except Exception as e:
         st.error(f"Could not process file: {e}")
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-def bloom_focus_by_week(w: int) -> str:
-    if 1 <= w <= 4:  return "Low"
-    if 5 <= w <= 9:  return "Medium"
-    return "High"
-
-st.markdown(
-    f"""
-    <div style="display:flex; justify-content:flex-end;">
-      <span class="bloom-tag">Week {int(st.session_state.week)}: {bloom_focus_by_week(int(st.session_state.week))}</span>
-    </div>
-    """, unsafe_allow_html=True
-)
-st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
 
 
-# ---------- HORIZONTAL VERB GRID ----------
-def verb_grid(verbs: list[str], prefix: str, cols_per_row: int = 6):
+# --------------------------- Bloom verbs ---------------------------
+
+LOW_VERBS  = ["define","identify","list","recall","describe","label"]
+MED_VERBS  = ["apply","demonstrate","solve","illustrate","classify","compare"]
+HIGH_VERBS = ["evaluate","synthesize","design","justify","critique","create"]
+
+def verb_row(verbs: list[str], band_key: str):
+    # Horizontal chips in a row of columns
+    cols = st.columns(len(verbs))
+    for i, v in enumerate(verbs):
+        with cols[i]:
+            checked = v in st.session_state.bloom_picks
+            new_val = st.checkbox(v, value=checked, key=f"verb-{v}")
+            if new_val: st.session_state.bloom_picks.add(v)
+            else: st.session_state.bloom_picks.discard(v)
+
+def bloom_block(title: str, subtitle: str, verbs: list[str], css_class: str, focus_band: str, band_name: str):
+    # dual highlight: focus by week + active if any verb selected
     picks = st.session_state.bloom_picks
-
-    def chunks(lst, n):
-        for i in range(0, len(lst), n):
-            yield lst[i:i+n]
-
-    for row in chunks(verbs, cols_per_row):
-        cols = st.columns(len(row))
-        for i, v in enumerate(row):
-            with cols[i]:
-                checked = v in picks
-                new_val = st.checkbox(v, value=checked, key=f"{prefix}-{v}")
-                if new_val: picks.add(v)
-                else:       picks.discard(v)
-
-def bloom_group(title: str, subtitle: str, verbs: list[str], css_class: str, prefix: str):
-    picks = st.session_state.bloom_picks
-    group_active = any(v in picks for v in verbs)
-    active_class = " active" if group_active else ""
-    st.markdown(f'<div class="bloom-group {css_class}{active_class}">', unsafe_allow_html=True)
-    st.markdown(f"**{title}**  \n<span class='small-muted'>{subtitle}</span>", unsafe_allow_html=True)
-    verb_grid(verbs, prefix, cols_per_row=6)
+    active = any(v in picks for v in verbs)
+    classes = ["bloom-group", css_class]
+    if band_name == focus_band: classes.append("bloom-focus")
+    if active: classes.append("bloom-active")
+    st.markdown(f'<div class="{" ".join(classes)}">', unsafe_allow_html=True)
+    st.markdown(f"**{title}**  <span class='bloom-caption'>{subtitle}</span>", unsafe_allow_html=True)
+    verb_row(verbs, band_name)
     st.markdown("</div>", unsafe_allow_html=True)
 
-bloom_group("Low (Weeks 1–4)", "Remember / Understand",
-            ["define","identify","list","recall","describe","label"], "bloom-low", "low")
-bloom_group("Medium (Weeks 5–9)", "Apply / Analyse",
-            ["apply","demonstrate","solve","illustrate","classify","compare"], "bloom-med", "med")
-bloom_group("High (Weeks 10–14)", "Evaluate / Create",
-            ["evaluate","synthesize","design","justify","critique","create"], "bloom-high", "high")
+focus = week_focus(int(st.session_state.week))
+st.markdown(f"<div style='text-align:right'><span class='bloom-pill'>Week {int(st.session_state.week)}: {focus}</span></div>",
+            unsafe_allow_html=True)
+
+bloom_block("Low (Weeks 1–4)",  "Remember / Understand", LOW_VERBS,  "bloom-low",  focus, "Low")
+bloom_block("Medium (Weeks 5–9)","Apply / Analyse",       MED_VERBS,  "bloom-med",  focus, "Medium")
+bloom_block("High (Weeks 10–14)","Evaluate / Create",     HIGH_VERBS, "bloom-high", focus, "High")
 
 st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
 
 
-# ---------- builders + exports ----------
-def _shuffle_clean(opts: list[str]) -> list[str]:
+# --------------------------- builders ---------------------------
+
+def _clean_shuffle(options):
     banned = {"all of the above","none of the above","true","false"}
-    clean = [o for o in opts if o.strip().lower() not in banned]
+    clean = [o for o in options if o.strip().lower() not in banned]
     random.shuffle(clean)
     return clean
 
-def build_mcqs(topic: str, verbs: list[str], count: int) -> list[dict]:
-    mcqs = []
-    for i in range(count):
+def build_mcqs(topic: str, verbs: list[str], n: int):
+    out = []
+    for i in range(n):
         v = random.choice(verbs) if verbs else "identify"
         stem = f"{v.title()} — {topic or 'Topic'} — Q{i+1}"
-        options = _shuffle_clean(["Option A","Option B","Option C","Option D"])
-        if "Correct answer" not in options:
-            options = options[:3] + ["Correct answer"]
-        options = _shuffle_clean(options)
-        mcqs.append({"stem": stem, "options": options, "answer": "Correct answer"})
-    return mcqs
-
-def build_activities(topic: str, n: int, minutes: int, verbs: list[str]) -> list[str]:
-    verbs = verbs or ["apply","demonstrate","solve"]
-    out = []
-    for i in range(1, n+1):
-        out.append(f"Activity {i} ({minutes} min): {verbs[i % len(verbs)]} on {topic or 'today’s concept'} using a worked example / mini-lab.")
+        opts = _clean_shuffle(["Option A","Option B","Option C","Correct answer","Option D"])
+        out.append({"stem": stem, "options": opts, "answer": "Correct answer"})
     return out
 
-def build_revision(topic: str, verbs: list[str], qty: int = 5) -> list[str]:
+def build_activities(topic: str, n: int, minutes: int, verbs: list[str]):
+    verbs = verbs or ["apply","demonstrate","solve"]
+    acts = []
+    for i in range(1, n+1):
+        acts.append(f"Activity {i} ({minutes} min): {verbs[i % len(verbs)]} on {topic or 'today’s concept'} via example / mini-lab.")
+    return acts
+
+def build_revision(topic: str, verbs: list[str], qty: int = 5):
     verbs = verbs or ["recall","classify","compare","justify","design"]
-    out = []
+    rev = []
     for i in range(1, qty+1):
         v = verbs[i % len(verbs)]
-        out.append(f"Rev {i}: {v.title()} — link this week to prior learning for {topic or 'the module'} (3–4 sentences).")
-    return out
+        rev.append(f"Rev {i}: {v.title()} — connect this week to prior learning for {topic or 'the module'} (3–4 sentences).")
+    return rev
 
-def docx_download(filename: str, paragraphs: list[str]) -> io.BytesIO:
+
+# --------------------------- exports ---------------------------
+
+def docx_download(filename: str, lines: list[str]) -> io.BytesIO:
     if not Document:
-        buf = io.BytesIO()
-        buf.write("\n".join(paragraphs).encode("utf-8"))
-        buf.seek(0); return buf
+        buf = io.BytesIO(); buf.write("\n".join(lines).encode("utf-8")); buf.seek(0); return buf
     doc = Document()
-    for p in paragraphs:
-        doc.add_paragraph(p)
-    buf = io.BytesIO()
-    doc.save(buf); buf.seek(0)
-    return buf
+    for line in lines: doc.add_paragraph(line)
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
 
 def pptx_download(title: str, bullets: list[str]) -> io.BytesIO:
     if not Presentation:
-        buf = io.BytesIO()
-        buf.write((title + "\n" + "\n".join(bullets)).encode("utf-8"))
-        buf.seek(0); return buf
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
+        buf = io.BytesIO(); buf.write((title + "\n" + "\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
+    prs = Presentation(); slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = title
-    left = Inches(1); top = Inches(1.8); width = Inches(8); height = Inches(4.5)
-    tb = slide.shapes.add_textbox(left, top, width, height)
-    tf = tb.text_frame; tf.word_wrap = True
+    left, top, width, height = Inches(1), Inches(1.8), Inches(8), Inches(4.5)
+    tb = slide.shapes.add_textbox(left, top, width, height); tf = tb.text_frame; tf.word_wrap = True
     for i, b in enumerate(bullets):
-        p = tf.add_paragraph() if i else tf.paragraphs[0]
-        p.text = b; p.level = 0
+        p = tf.add_paragraph() if i else tf.paragraphs[0]; p.text = b; p.level = 0
         if Pt: p.font.size = Pt(18)
     buf = io.BytesIO(); prs.save(buf); buf.seek(0); return buf
 
 
-# ---------- tabs ----------
+# --------------------------- tabs ---------------------------
+
 tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
-picked_verbs = sorted(list(st.session_state.bloom_picks))
+picked = sorted(list(st.session_state.bloom_picks))
 topic_text = st.session_state.source_text.strip()
 
 # MCQs
 with tabs[0]:
-    cA, cB, _ = st.columns([1,1,4])
+    cA, cB, _ = st.columns([1,1,6])
     with cA:
         st.session_state.mcq_count = st.selectbox("How many MCQs?", [5,10,15,20,25,30], index=1)
     with cB:
@@ -445,7 +407,7 @@ with tabs[0]:
 
     if st.button("Generate MCQs", type="primary"):
         try:
-            mcqs = build_mcqs(topic_text, picked_verbs, st.session_state.mcq_count)
+            mcqs = build_mcqs(topic_text, picked, st.session_state.mcq_count)
             st.session_state.last_generated["mcqs"] = mcqs
             st.success(f"Generated {len(mcqs)} MCQs.")
         except Exception as e:
@@ -455,30 +417,29 @@ with tabs[0]:
     if mcqs:
         for i, q in enumerate(mcqs, 1):
             st.markdown(f"**Q{i}. {q['stem']}**")
-            for opt in q["options"]:
-                st.write(f"- {opt}")
-            if st.session_state.include_answer_key:
-                st.caption(f"Answer: {q['answer']}")
+            for opt in q["options"]: st.write(f"- {opt}")
+            if st.session_state.include_answer_key: st.caption(f"Answer: {q['answer']}")
             st.divider()
 
-        doc_buf = docx_download(
-            "ADI_MCQs.docx",
-            [
-                f"Q{i}. {q['stem']}\n" + "\n".join([f"- {o}" for o in q["options"]]) +
-                (f"\nAnswer: {q['answer']}" if st.session_state.include_answer_key else "")
-                for i, q in enumerate(mcqs, 1)
-            ],
-        )
-        st.download_button("Download MCQs (DOCX)", data=doc_buf,
+        # DOCX
+        lines = []
+        for i, q in enumerate(mcqs, 1):
+            lines.append(f"Q{i}. {q['stem']}")
+            lines.extend([f"- {o}" for o in q["options"]])
+            if st.session_state.include_answer_key: lines.append(f"Answer: {q['answer']}")
+            lines.append("")
+        doc = docx_download("ADI_MCQs.docx", lines)
+        st.download_button("Download MCQs (DOCX)", data=doc,
                            file_name="ADI_MCQs.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                           key=f"dl-mcqs-{uuid4().hex}")
+                           key=f"dlmcq-{uuid4().hex}")
 
-        ppt_buf = pptx_download("MCQs (Preview Deck)", [q["stem"] for q in mcqs[:10]])
-        st.download_button("Download MCQs (PPTX)", data=ppt_buf,
+        # PPTX preview
+        ppt = pptx_download("MCQs (Preview Deck)", [q["stem"] for q in mcqs[:10]])
+        st.download_button("Download MCQs (PPTX)", data=ppt,
                            file_name="ADI_MCQs.pptx",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                           key=f"dl-mcqs-ppt-{uuid4().hex}")
+                           key=f"dlmcq2-{uuid4().hex}")
 
 # Activities
 with tabs[1]:
@@ -491,10 +452,10 @@ with tabs[1]:
     with a3:
         st.markdown("Pick Bloom verbs above; tasks align wording automatically.")
 
-    if st.button("Generate Activities", type="primary", key="btn-acts"):
+    if st.button("Generate Activities", type="primary", key="gen-acts"):
         try:
             acts = build_activities(topic_text, st.session_state.activities_count,
-                                    st.session_state.activity_minutes, picked_verbs)
+                                    st.session_state.activity_minutes, picked)
             st.session_state.last_generated["activities"] = acts
             st.success(f"Generated {len(acts)} activities.")
         except Exception as e:
@@ -502,20 +463,19 @@ with tabs[1]:
 
     acts = st.session_state.last_generated.get("activities", [])
     if acts:
-        for a in acts:
-            st.write("• " + a)
+        for a in acts: st.write("• " + a)
         adb = docx_download("ADI_Activities.docx", [f"{i+1}. {a}" for i,a in enumerate(acts)])
         st.download_button("Download Activities (DOCX)", data=adb,
                            file_name="ADI_Activities.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                           key=f"dl-acts-{uuid4().hex}")
+                           key=f"dlact-{uuid4().hex}")
 
 # Revision
 with tabs[2]:
-    qty = st.slider("How many revision prompts?", 3, 12, 5, step=1)
-    if st.button("Generate Revision", type="primary", key="btn-rev"):
+    qty = st.slider("How many revision prompts?", 3, 12, 5)
+    if st.button("Generate Revision", type="primary", key="gen-rev"):
         try:
-            rev = build_revision(topic_text, picked_verbs, qty)
+            rev = build_revision(topic_text, picked, qty)
             st.session_state.last_generated["revision"] = rev
             st.success(f"Generated {len(rev)} revision prompts.")
         except Exception as e:
@@ -523,13 +483,12 @@ with tabs[2]:
 
     rev = st.session_state.last_generated.get("revision", [])
     if rev:
-        for r in rev:
-            st.write("• " + r)
+        for r in rev: st.write("• " + r)
         rdb = docx_download("ADI_Revision.docx", [f"{i+1}. {r}" for i,r in enumerate(rev)])
         st.download_button("Download Revision (DOCX)", data=rdb,
                            file_name="ADI_Revision.docx",
                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                           key=f"dl-rev-{uuid4().hex}")
+                           key=f"dlrev-{uuid4().hex}")
 
 # Print Summary
 with tabs[3]:
@@ -540,25 +499,26 @@ with tabs[3]:
         f"**Cohort**: {st.session_state.cohort}  \n"
         f"**Instructor**: {st.session_state.instructor}  \n"
         f"**Week**: {st.session_state.week}  \n"
-        f"**Lesson**: {st.session_state.lesson}"
+        f"**Lesson**: {st.session_state.lesson}  \n"
+        f"**Date**: {st.session_state.date_str}"
     )
 
     if topic_text:
         st.subheader("Module notes / outcomes")
         st.write(topic_text)
 
-    lg = st.session_state.last_generated
-    if lg.get("mcqs"):
+    g = st.session_state.last_generated
+    if g.get("mcqs"):
         st.subheader("Latest MCQs")
-        for i, q in enumerate(lg["mcqs"][:5], 1):
+        for i, q in enumerate(g["mcqs"][:5], 1):
             st.write(f"{i}. {q['stem']}")
-    if lg.get("activities"):
+    if g.get("activities"):
         st.subheader("Latest Activities")
-        for a in lg["activities"]:
+        for a in g["activities"]:
             st.write("• " + a)
-    if lg.get("revision"):
+    if g.get("revision"):
         st.subheader("Latest Revision")
-        for r in lg["revision"]:
+        for r in g["revision"]:
             st.write("• " + r)
 
     lines = [
@@ -566,19 +526,20 @@ with tabs[3]:
         f"Cohort: {st.session_state.cohort}",
         f"Instructor: {st.session_state.instructor}",
         f"Week {st.session_state.week}, Lesson {st.session_state.lesson}",
-        "",
+        f"Date: {st.session_state.date_str}",
+        ""
     ]
     if topic_text:
         lines += ["Module notes / outcomes", topic_text, ""]
-    if lg.get("mcqs"):
-        lines += ["MCQs (first 5)"] + [f"{i}. {q['stem']}" for i, q in enumerate(lg["mcqs"][:5], 1)] + [""]
-    if lg.get("activities"):
-        lines += ["Activities"] + [f"• {a}" for a in lg["activities"]] + [""]
-    if lg.get("revision"):
-        lines += ["Revision"] + [f"• {r}" for r in lg["revision"]]
+    if g.get("mcqs"):
+        lines += ["MCQs (first 5)"] + [f"{i}. {q['stem']}" for i, q in enumerate(g["mcqs"][:5], 1)] + [""]
+    if g.get("activities"):
+        lines += ["Activities"] + [f"• {a}" for a in g["activities"]] + [""]
+    if g.get("revision"):
+        lines += ["Revision"] + [f"• {r}" for r in g["revision"]]
 
-    psb = docx_download("ADI_Print_Summary.docx", lines)
-    st.download_button("Download Print Summary (DOCX)", data=psb,
+    doc = docx_download("ADI_Print_Summary.docx", lines)
+    st.download_button("Download Print Summary (DOCX)", data=doc,
                        file_name="ADI_Print_Summary.docx",
                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                       key=f"dl-sum-{uuid4().hex}")
+                       key=f"dlsum-{uuid4().hex}")
