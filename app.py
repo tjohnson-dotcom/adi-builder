@@ -3,7 +3,7 @@
 # DOCX + ADI-branded PPTX exports, stable styling, deep-scan uploads, directory manager with +/−
 
 from __future__ import annotations
-import io, re, random, uuid
+import io, re, random, uuid, base64
 from datetime import date
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Optional
@@ -90,43 +90,74 @@ if "INSTRS"  not in st.session_state: st.session_state.INSTRS  = list(DEFAULT_IN
 def inject_css():
     st.markdown(f"""
     <style>
-      .block-container {{ max-width: 1200px; padding-top: 1.0rem; }}
-      header, .css-18ni7ap {{ margin-top: 16px !important; }}
+      /* App canvas */
+      body {{ background:#f6f8fb; }}
+      .block-container {{
+        max-width: 1200px;
+        padding-top: 1.0rem;
+        background:#ffffff;
+        border:1px solid #eef2f7;
+        border-radius: 20px;
+        box-shadow: 0 6px 24px rgba(0,0,0,.06);
+      }}
 
+      /* Streamlit header spacing */
+      header, .css-18ni7ap {{ margin-top: 10px !important; }}
+
+      /* Buttons */
       .stButton > button {{
           background:{ADI_GREEN}; color:#fff; border-radius:12px; border:0; padding:0.55rem 0.95rem;
           box-shadow: 0 1px 0 rgba(0,0,0,.05);
       }}
       .stButton > button:hover {{ background:{ADI_GOLD}; }}
 
+      /* Inputs */
       .stTextInput>div>div>input, .stTextArea textarea, .stSelectbox > div > div {{
         border-radius:10px !important; border-color:#cbd5e1 !important;
       }}
       .stTextArea textarea {{ min-height: 120px; }}
 
+      /* Tabs */
       div[data-baseweb="tab"] button[aria-selected="true"] {{
         border-bottom: 3px solid {ADI_GREEN} !important;
       }}
 
-      /* Header card */
-      div[style*="ADI Builder — Lesson Activities"] {{
-        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
-        border-radius: 18px !important;
+      /* ADI hero banner */
+      .adi-hero {{
+        background:{ADI_GREEN};
+        color:#fff;
+        border-radius:16px;
+        padding:18px 20px 16px 20px;
+        position:relative;
+        margin: 4px 0 14px 0;
+        box-shadow:0 6px 22px rgba(0,0,0,.12);
       }}
+      .adi-hero__title {{ font-weight:800; font-size:20px; letter-spacing:.2px }}
+      .adi-hero__sub   {{ opacity:.92; font-size:13px; margin-top:4px }}
 
-      .adi-title {{ height:8px; border-radius:999px; background:#eaeaea; margin:6px 0 16px 0; }}
+      /* hero as a left-logo row */
+      .adi-hero--row {{ display:flex; align-items:center; gap:14px; }}
+      .adi-hero__logo img {{
+        height:42px; width:auto; display:block; filter:brightness(0) invert(1);
+      }}
+      .adi-hero__text {{ display:flex; flex-direction:column; }}
+
       .adi-chip {{
         border:1px solid #d1d5db; border-radius:10px; padding:6px 10px; font-size:13px; color:#374151;
         background:#f9fafb; display:inline-block;
       }}
 
       /* Bloom bands */
-      .adi-band {{ border-radius:18px; padding:14px 16px; margin:12px 0 8px 0; border:1px solid #ececec; }}
+      .adi-band {{ border-radius:18px; padding:14px 16px; margin:12px 0 8px 0; border:1px solid #ececec;
+                  box-shadow:0 2px 10px rgba(0,0,0,.04); }}
       .adi-low  {{ background:linear-gradient(180deg, #f2f9f2 0%, #ffffff 80%); }}
       .adi-med  {{ background:linear-gradient(180deg, #fff8ec 0%, #ffffff 80%); }}
       .adi-high {{ background:linear-gradient(180deg, #f4f6ff 0%, #ffffff 80%); }}
       .adi-band-cap {{ float:right; color:#6b7280; font-size:13px; }}
-      .adi-band.adi-active {{ border-color:#245a34; box-shadow:0 0 0 2px rgba(36,90,52,.14) inset; }}
+      .adi-band.adi-active {{
+        border-color:#245a34;
+        box-shadow:0 0 0 3px rgba(36,90,52,.18) inset, 0 8px 20px rgba(36,90,52,.06);
+      }}
 
       /* Verb pills */
       .adi-pills {{ margin-bottom: .35rem; }}
@@ -137,9 +168,9 @@ def inject_css():
         box-shadow: 0 1px 0 rgba(0,0,0,.03);
       }}
       .adi-pills .stCheckbox label:hover {{ border-color:#245a34; background:#e9f3ec; }}
-      /* highlight when checked (works across Streamlit versions) */
       .adi-pills .stCheckbox [data-testid="stCheckbox"] input:checked + div + label {{
         color:#fff !important; background:#245a34 !important; border-color:#245a34 !important; font-weight:600;
+        box-shadow:0 4px 14px rgba(36,90,52,.22);
       }}
 
       .stExpander > details {{ border-radius:12px; border:1px solid #ececec; background:#fafafa; }}
@@ -147,17 +178,30 @@ def inject_css():
     </style>
     """, unsafe_allow_html=True)
 
-def header():
-    logo_html = ""
-    logo_path = Path("adi_logo.png")
+# Base64 logo helper
+def _logo_base64() -> str | None:
+    # Try path next to this file
+    logo_path = Path(__file__).with_name("adi_logo.png")
+    if not logo_path.exists():
+        logo_path = Path("adi_logo.png")
     if logo_path.exists():
-        logo_html = '<img src="adi_logo.png" style="height:34px; float:right; margin-top:-6px;" />'
+        try:
+            return base64.b64encode(logo_path.read_bytes()).decode("ascii")
+        except Exception:
+            return None
+    return None
+
+def header():
+    b64 = _logo_base64()
+    logo_html = f'<img src="data:image/png;base64,{b64}" alt="ADI" />' if b64 else ""
     st.markdown(
         f"""
-        <div style="background:{ADI_STONE};border-radius:14px;padding:14px 18px;margin:8px 0 16px 0;border:1px solid #e5e7eb">
-          {logo_html}
-          <div style="font-weight:800;color:{ADI_GREEN};letter-spacing:.2px;">ADI Builder — Lesson Activities & Questions</div>
-          <div style="color:{TEXT_MUTED};font-size:14px">Sleek, professional and engaging. Print-ready handouts for instructors.</div>
+        <div class="adi-hero adi-hero--row">
+          <div class="adi-hero__logo">{logo_html}</div>
+          <div class="adi-hero__text">
+            <div class="adi-hero__title">ADI Builder — Lesson Activities & Questions</div>
+            <div class="adi-hero__sub">Sleek, professional and engaging. Print-ready handouts for your instructors.</div>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -582,6 +626,11 @@ def main():
 
     # Sidebar
     with st.sidebar:
+        # optional tiny logo for constant branding
+        b64 = _logo_base64()
+        if b64:
+            st.image(f"data:image/png;base64,{b64}", caption="ADI", use_column_width=False)
+
         st.caption("Upload (optional)")
         up = st.file_uploader("Drag & drop file", type=["txt","docx","pptx","pdf"],
                               help="We parse .txt, .docx, .pptx, and .pdf", label_visibility="collapsed")
@@ -609,7 +658,6 @@ def main():
                 st.success(f"Imported {len(new_items)} courses.")
 
     # Right pane
-    st.markdown('<div class="adi-title"></div>', unsafe_allow_html=True)
     band = policy_band(int(week))
     focus_color = {"LOW":"#dff7e8","MEDIUM":"#ffe7cc","HIGH":"#dfe8ff"}[band]
 
@@ -623,23 +671,30 @@ def main():
                     f'{"Low" if band=="LOW" else "Medium" if band=="MEDIUM" else "High"}</span>',
                     unsafe_allow_html=True)
 
-    # Upload deep scan
+    # Upload deep scan (no nested status)
     uploaded_text = read_text_from_upload(up)
     with st.expander("Source (from upload) — optional", expanded=False):
         if up:
-            with st.status("Processing upload…", expanded=True) as status:
-                st.write(f"**File:** {up.name}  •  **Size:** {up.size/1024:.1f} KB")
-                if uploaded_text:
-                    stats = quick_stats(uploaded_text)
-                    st.write(f"- Extracted **{stats['chars']:,}** chars, **{stats['words']:,}** words, **{stats['sentences']:,}** sentences")
-                    if stats["top_terms"]:
-                        terms = ", ".join([f"{k} ({v})" for k,v in stats["top_terms"]])
-                        st.write(f"- Top terms: {terms}")
-                    status.update(label="Upload parsed", state="complete")
-                else:
-                    status.update(label="Could not parse file (try txt/docx/pptx/pdf).", state="error")
-        src = st.text_area("", value=uploaded_text or "", height=140,
-                           placeholder="Any key notes extracted from your upload will appear here…")
+            st.write(f"**File:** {up.name}  •  **Size:** {up.size/1024:.1f} KB")
+            if uploaded_text:
+                stats = quick_stats(uploaded_text)
+                st.success("Upload parsed successfully.")
+                st.write(
+                    f"- Extracted **{stats['chars']:,}** chars, **{stats['words']:,}** words, "
+                    f"**{stats['sentences']:,}** sentences"
+                )
+                if stats["top_terms"]:
+                    terms = ", ".join([f"{k} ({v})" for k,v in stats["top_terms"]])
+                    st.write(f"- Top terms: {terms}")
+            else:
+                st.error("Could not parse file (try TXT/DOCX/PPTX/PDF).")
+
+        src = st.text_area(
+            "",
+            value=uploaded_text or "",
+            height=140,
+            placeholder="Any key notes extracted from your upload will appear here…",
+        )
     if up and up.name.lower().endswith(".pdf") and fitz is None:
         st.warning("PDF uploaded, but PDF parsing is not enabled on this build. Add `pymupdf==1.24.9` to requirements.txt.")
 
