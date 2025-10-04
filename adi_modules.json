@@ -2,12 +2,107 @@
   "modules": [
     {
       "course_code": "CT4-COM",
-      "course_title": "Communication Technologies",
-      "weeks": [1,2,3,4,5,6,7,8,9,10,11,12,13,14],
-      "klos": [ {"code":"KLO1","text":"..."}, ... ],
-      "slos": [ {"code":"SLO1","text":"..."}, ... ]
+      "course_title": "Communication Technologies (CT4-COM)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Define core telecommunications concepts and terms."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply modulation and coding principles to simple links."
+        },
+        {
+          "code": "KLO3",
+          "text": "Compare digital and analog transmission approaches."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate link performance using basic metrics (SNR, BER)."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Label OSI layers for a given scenario."
+        },
+        {
+          "code": "SLO2",
+          "text": "Configure a simple link budget in a spreadsheet."
+        },
+        {
+          "code": "SLO3",
+          "text": "Interpret a constellation diagram at a high level."
+        }
+      ]
     },
-    ...
+    {
+      "course_code": "GE4-IPM",
+      "course_title": "Integrated Project & Materials Management (GE4-IPM)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Plan a small projects’ scope and milestones."
+        },
+        {
+          "code": "KLO2",
+          "text": "Schedule and allocate resources for a given work package."
+        },
+        {
+          "code": "KLO3",
+          "text": "Track materials and quality documentation effectively."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate risks and propose mitigations for delays or defects."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Create a mini Gantt in Excel for a 2‑week sprint."
+        },
+        {
+          "code": "SLO2",
+          "text": "Fill in a simple materials inspection checklist."
+        },
+        {
+          "code": "SLO3",
+          "text": "Draft a short risk register entry with owner and due date."
+        }
+      ]
+    }
   ]
 }
-
