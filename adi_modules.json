@@ -74,7 +74,7 @@
       "klos": [
         {
           "code": "KLO1",
-          "text": "Plan a small projects’ scope and milestones."
+          "text": "Plan a small project's scope and milestones."
         },
         {
           "code": "KLO2",
@@ -101,6 +101,422 @@
         {
           "code": "SLO3",
           "text": "Draft a short risk register entry with owner and due date."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-QA",
+      "course_title": "Internal Quality Assurance (GE4-QA)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Describe roles and documentation in quality systems."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply sampling and inspection to simple parts."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse nonconformities and propose corrective actions."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate audit findings and recommend improvements."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Complete an inspection record from a drawing."
+        },
+        {
+          "code": "SLO2",
+          "text": "Create a cause–effect (fishbone) for a defect."
+        },
+        {
+          "code": "SLO3",
+          "text": "Write a short CAR with owner and due date."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-LOG",
+      "course_title": "Defense Logistics (GE4-LOG)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Define inventory and demand concepts."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply reorder point and safety stock."
+        },
+        {
+          "code": "KLO3",
+          "text": "Compare push vs pull in supply operations."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate trade-offs in lead time, cost, and readiness."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Build a simple EOQ sheet."
+        },
+        {
+          "code": "SLO2",
+          "text": "Simulate a 4‑week inventory cycle."
+        },
+        {
+          "code": "SLO3",
+          "text": "Draft a kitting list for a work order."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-MFG",
+      "course_title": "Defense Manufacturing (GE4-MFG)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "List key manufacturing processes and constraints."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply basic process planning for a part."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse defects and rework routes."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate capacity vs. takt time for a cell."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Create a route card with operations."
+        },
+        {
+          "code": "SLO2",
+          "text": "Fill a simple control plan (CTQ/features)."
+        },
+        {
+          "code": "SLO3",
+          "text": "Balance a two-station line using times."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-CYB",
+      "course_title": "Cybersecurity in Defense (GE4-CYB)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Describe common cyber threats to industrial systems."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply secure-password and MFA practices."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse a simple phishing incident."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate basic controls for a small lab network."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Create an asset list and simple risk table."
+        },
+        {
+          "code": "SLO2",
+          "text": "Draft a user awareness checklist."
+        },
+        {
+          "code": "SLO3",
+          "text": "Write an incident log entry from a scenario."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-ELEC",
+      "course_title": "Electronics Fundamentals (GE4-ELEC)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Define voltage, current, resistance, power."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply Ohm's law and power equations."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse simple series/parallel circuits."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate measurement results vs. tolerances."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Build and test a simple resistor divider."
+        },
+        {
+          "code": "SLO2",
+          "text": "Use a DMM to verify a circuit."
+        },
+        {
+          "code": "SLO3",
+          "text": "Complete a lab sheet with readings."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-MAT",
+      "course_title": "Materials & Processes (GE4-MAT)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Identify metals, polymers, and composites applications."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply heat-treatment and forming basics."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse failure modes from sample photos."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate material selection for a part."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Fill out a material datasheet for a component."
+        },
+        {
+          "code": "SLO2",
+          "text": "Compare two alloys for a use case."
+        },
+        {
+          "code": "SLO3",
+          "text": "Write a brief failure hypothesis."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-PM",
+      "course_title": "Project Management Basics (GE4-PM)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Define scope, stakeholders, and milestones."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply scheduling to a 2‑week task set."
+        },
+        {
+          "code": "KLO3",
+          "text": "Analyse risks and assign owners."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate status using basic KPIs."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Draft a simple WBS for a mini‑project."
+        },
+        {
+          "code": "SLO2",
+          "text": "Create a milestone schedule in Excel."
+        },
+        {
+          "code": "SLO3",
+          "text": "Build a small risk register."
+        }
+      ]
+    },
+    {
+      "course_code": "GE4-DEFTEC",
+      "course_title": "Defense Technology Overview (GE4-DEFTEC)",
+      "weeks": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "klos": [
+        {
+          "code": "KLO1",
+          "text": "Identify domains and platforms in defense tech."
+        },
+        {
+          "code": "KLO2",
+          "text": "Apply basic safety/ethics considerations."
+        },
+        {
+          "code": "KLO3",
+          "text": "Compare capabilities at a high level."
+        },
+        {
+          "code": "KLO4",
+          "text": "Evaluate system trade‑offs qualitatively."
+        }
+      ],
+      "slos": [
+        {
+          "code": "SLO1",
+          "text": "Summarize a platform in a 1‑page brief."
+        },
+        {
+          "code": "SLO2",
+          "text": "Complete a safety checklist for a lab demo."
+        },
+        {
+          "code": "SLO3",
+          "text": "Sketch a simple capability matrix."
         }
       ]
     }
