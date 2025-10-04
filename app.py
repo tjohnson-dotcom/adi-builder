@@ -1,7 +1,5 @@
 
-# app.py — ADI Builder (Free Override Edition)
-# Adds free-text override when KLO/SLO lists are empty.
-
+# app.py — ADI Builder (Free Override Edition, FIXED exports)
 import io, base64, random, re, json, hashlib
 from collections import Counter
 from datetime import date
@@ -35,8 +33,10 @@ st.markdown("""
 
 def _b64(path: str) -> str:
     try:
-        with open(path, "rb") as f: return base64.b64encode(f.read()).decode("utf-8")
-    except Exception: return ""
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        return ""
 
 def week_band(w: int) -> str:
     try: w=int(w)
@@ -45,13 +45,21 @@ def week_band(w: int) -> str:
 
 def docx_download(lines):
     if not Document:
-        buf = io.BytesIO(); buf.write("\n".join(lines).encode("utf-8")); buf.seek(0); return buf
-    doc = Document(); [doc.add_paragraph(l) for l in lines]; buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
+        buf = io.BytesIO()
+        buf.write("\n".join(lines).encode("utf-8"))
+        buf.seek(0)
+        return buf
+    doc = Document()
+    for l in lines: doc.add_paragraph(l)
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf
 
 def load_modules(path="adi_modules.json"):
     try:
-        with open(path,"r",encoding="utf-8") as f: return json.load(f).get("modules",[])
-    except Exception: return []
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f).get("modules", [])
+    except Exception:
+        return []
 
 MODULES = load_modules()
 COURSE_INDEX = {(m.get("course_title") or m.get("course_code") or f"Course {i}"): m for i,m in enumerate(MODULES)}
@@ -79,7 +87,8 @@ def auto_slos_for_week(slos, week, n=2):
     if not codes: return []
     i=max(1,int(week or 1))-1
     out=[]
-    for k in range(min(n,len(codes))): out.append(codes[(i+k)%len(codes)])
+    for k in range(min(n,len(codes))):
+        out.append(codes[(i+k)%len(codes)])
     return out
 
 def get_klo_text(module, code):
@@ -95,9 +104,9 @@ def slos_text_list(module, codes):
 
 def extract_keywords(topic, module, klo_code, slo_codes, k=12):
     base=(topic or "").strip()
-    if module: base+=" "+get_klo_text(module,klo_code or "")
+    if module: base += " " + (get_klo_text(module, klo_code or "") or "")
     if module and slo_codes:
-        for t in slos_text_list(module,slo_codes): base+=" "+t
+        for t in slos_text_list(module, slo_codes): base += " " + t
     words=re.findall(r"[A-Za-zأ-ي]+", base)
     stop=set("a an the and or of for with to in on at by from this that these those is are was were be been being into about as it its they them then than can could should would may might will shall اذا هذا هذه تلك الذي التي الذين اللواتي وال او ثم لما لأن إن كان كانت يكون".split())
     toks=[w.lower() for w in words if len(w)>2 and w.lower() not in stop]
@@ -228,7 +237,6 @@ with st.sidebar:
         st.caption(f"Auto-linked **KLO** for Week {int(s.get('week',1))}: **{auto_klo or '(none)'}**")
         if auto_slo_list: st.caption("Auto-linked **SLO(s)**: "+", ".join(auto_slo_list))
 
-        # Always allow overrides. If no codes, show free-text fields.
         st.checkbox("Override KLO for this lesson", key="klo_override")
         if s.get("klo_override"):
             if klo_codes:
@@ -254,7 +262,6 @@ with st.sidebar:
         else:
             slo_list=auto_slo_list
 
-        # Show KLO text if present
         if klo_code:
             t=None
             if mod and mod.get("klos"):
@@ -301,7 +308,14 @@ slo_l=s.get("slo_sel_list", [])
 
 def header_lines():
     slo_head=", ".join(slo_l or []) or "—"
-    return [f"Course: {s.get('course_sel','')}", f"Week: {int(s.get('week',1))} • Lesson: {int(s.get('lesson',1))}", f"Instructor: {s.get('ins_sel','')}", f"Linked KLO: {klo or '—'}", f"SLO(s): {slo_head}", ""]
+    return [
+        f"Course: {s.get('course_sel','')}",
+        f"Week: {int(s.get('week',1))} • Lesson: {int(s.get('lesson',1))}",
+        f"Instructor: {s.get('ins_sel','')}",
+        f"Linked KLO: {klo or '—'}",
+        f"SLO(s): {slo_head}",
+        ""
+    ]
 
 def seed_now():
     random.seed(int(hashlib.sha256(f"{s.get('ins_sel','')}|{s.get('course_sel','')}|{s.get('week',1)}|{s.get('lesson',1)}".encode('utf-8')).hexdigest()[:8], 16))
@@ -313,10 +327,13 @@ if page=="Activities":
     st.selectbox("Number of activities", [1,2,3,4], index=1, key="acts_count_sel")
     st.number_input("Minutes per activity", min_value=5, max_value=60, step=5, value=20, key="acts_minutes_input")
     if st.button("Generate Activities", type="primary"):
-        seed_now(); s.last_generated["activities"]=build_activities(topic, s.get("acts_count_sel",2), s.get("acts_minutes_input",20), picked, mod or {}, klo, slo_l); st.success(f"Generated {len(s.last_generated['activities'])} activities.")
+        seed_now()
+        s.last_generated["activities"]=build_activities(topic, s.get("acts_count_sel",2), s.get("acts_minutes_input",20), picked, mod or {}, klo, slo_l)
+        st.success(f"Generated {len(s.last_generated['activities'])} activities.")
     acts=s.last_generated.get("activities") or build_activities(topic,2,15,picked,mod or {},klo,slo_l)
     for a in acts: st.write("• "+a)
-    st.download_button("Download Activities (DOCX)", data=docx_download(header_lines()+[f\"{i+1}. {a}\" for i,a in enumerate(acts)]), file_name="ADI_Activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    lines = header_lines() + [f"{i+1}. {a}" for i, a in enumerate(acts)]
+    st.download_button("Download Activities (DOCX)", data=docx_download(lines), file_name="ADI_Activities.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 elif page=="MCQs":
     slo_cap=", ".join(slo_l or []) or "—"
@@ -325,7 +342,9 @@ elif page=="MCQs":
     st.selectbox("How many MCQs?", [5,10,15,20,25,30], index=1, key="mcq_count_sel")
     st.checkbox("Include answer key in export", value=True, key="include_answer_chk")
     if st.button("Generate MCQs", type="primary"):
-        seed_now(); s.last_generated["mcqs"]=build_mcqs(topic,picked,s.get("mcq_count_sel",10),mod or {},klo,slo_l); st.success(f"Generated {len(s.last_generated['mcqs'])} MCQs.")
+        seed_now()
+        s.last_generated["mcqs"]=build_mcqs(topic,picked,s.get("mcq_count_sel",10),mod or {},klo,slo_l)
+        st.success(f"Generated {len(s.last_generated['mcqs'])} MCQs.")
     mcqs=s.last_generated.get("mcqs") or build_mcqs(topic,picked,5,mod or {},klo,slo_l)
     letters=["A","B","C","D"]
     for i,q in enumerate(mcqs,1):
@@ -335,11 +354,14 @@ elif page=="MCQs":
         slo_tag=", ".join(q.get("slos", [])) or "—"
         st.caption(f"Linked KLO: {q.get('klo',klo or '—')} • SLO(s): {slo_tag} • Instructor: {s.get('ins_sel','')}")
         st.divider()
-    lines=header_lines()
+    lines = header_lines()
     for i,q in enumerate(mcqs,1):
-        lines.append(f"Q{i}. {q['stem']}"); 
-        for L,opt in zip(letters,q["options"]): lines.append(f\"{L}. {opt}\")
-        if s.get("include_answer_chk", True): lines.append(f\"Answer: {q['answer']}\"); lines.append("")
+        lines.append(f"Q{i}. {q['stem']}")
+        for L,opt in zip(letters,q["options"]):
+            lines.append(f"{L}. {opt}")
+        if s.get("include_answer_chk", True):
+            lines.append(f"Answer: {q['answer']}")
+        lines.append("")
     st.download_button("Download MCQs (DOCX)", data=docx_download(lines), file_name="ADI_MCQs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 elif page=="Revision":
@@ -348,17 +370,37 @@ elif page=="Revision":
     st.caption(f"Linked KLO: {klo or '—'} • SLO(s): {slo_cap} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
     st.selectbox("How many revision prompts?", list(range(3,13)), index=2, key="rev_qty_sel")
     if st.button("Generate Revision", type="primary"):
-        seed_now(); s.last_generated["revision"]=build_revision(topic,picked,s.get("rev_qty_sel",5),mod or {},klo,slo_l); st.success(f"Generated {len(s.last_generated['revision'])} revision prompts.")
+        seed_now()
+        s.last_generated["revision"]=build_revision(topic,picked,s.get("rev_qty_sel",5),mod or {},klo,slo_l)
+        st.success(f"Generated {len(s.last_generated['revision'])} revision prompts.")
     rev=s.last_generated.get("revision") or build_revision(topic,picked,5,mod or {},klo,slo_l)
     for r in rev: st.write("• "+r)
-    st.download_button("Download Revision (DOCX)", data=docx_download(header_lines()+[f\"{i+1}. {r}\" for i,r in enumerate(rev)]), file_name="ADI_Revision.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    lines = header_lines() + [f"{i+1}. {r}" for i, r in enumerate(rev)]
+    st.download_button("Download Revision (DOCX)", data=docx_download(lines), file_name="ADI_Revision.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 else:
     st.subheader("Print Summary")
     slo_head=", ".join(slo_l or []) or "—"
-    st.write(f"**Course**: {s.get('course_sel','')}  \n**Cohort**: {s.get('coh_sel','')}  \n**Instructor**: {s.get('ins_sel','')}  \n**Week**: {s.get('week',1)}  \n**Lesson**: {s.get('lesson',1)}  \n**Date**: {s.get('date_str','')}  \n**Linked KLO**: {klo or '—'}  \n**SLO(s)**: {slo_head}")
-    if topic: st.subheader("Module notes / outcomes"); st.write(topic)
+    st.write(
+        f"**Course**: {s.get('course_sel','')}  \n"
+        f"**Cohort**: {s.get('coh_sel','')}  \n"
+        f"**Instructor**: {s.get('ins_sel','')}  \n"
+        f"**Week**: {s.get('week',1)}  \n"
+        f"**Lesson**: {s.get('lesson',1)}  \n"
+        f"**Date**: {s.get('date_str','')}  \n"
+        f"**Linked KLO**: {klo or '—'}  \n"
+        f"**SLO(s)**: {slo_head}"
+    )
+    if topic:
+        st.subheader("Module notes / outcomes")
+        st.write(topic)
     g=s.last_generated
-    if g.get("mcqs"): st.subheader("Latest MCQs"); [st.write(f\"{i}. {q['stem']}\") for i,q in enumerate(g['mcqs'][:5],1)]
-    if g.get("activities"): st.subheader("Latest Activities"); [st.write("• "+a) for a in g["activities"]]
-    if g.get("revision"): st.subheader("Latest Revision"); [st.write("• "+r) for r in g["revision"]]
+    if g.get("mcqs"):
+        st.subheader("Latest MCQs")
+        for i,q in enumerate(g["mcqs"][:5],1): st.write(f"{i}. {q['stem']}")
+    if g.get("activities"):
+        st.subheader("Latest Activities")
+        for a in g["activities"]: st.write("• "+a)
+    if g.get("revision"):
+        st.subheader("Latest Revision")
+        for r in g["revision"]: st.write("• "+r)
