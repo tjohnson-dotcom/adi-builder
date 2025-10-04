@@ -1,4 +1,5 @@
-# app.py — ADI Builder (stabilized: no SessionInfo crash, tabs restored, dual Bloom highlights)
+
+# app.py — ADI Builder (stabilized + bug fixes: PDF parse, unique button keys, preserve selections, logo fallback)
 
 import io
 import base64
@@ -29,12 +30,21 @@ except Exception:
 
 # --------------------------- helpers ---------------------------
 
+# 1x1 transparent PNG as a safe default so the app never crashes if logo file is missing.
+TRANSPARENT_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8"
+    "/w8AAwMB/aqyJ4kAAAAASUVORK5CYII="
+)
+
 def _b64(path: str) -> str:
+    """
+    Try to read a file and base64 it; if that fails, return a 1x1 transparent PNG.
+    """
     try:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     except Exception:
-        return ""
+        return TRANSPARENT_PNG_B64
 
 
 def week_focus(w: int) -> str:
@@ -98,7 +108,8 @@ st.markdown("""
 
 def init_state():
     s = st.session_state
-    if s.get("_ok"): return
+    if s.get("_ok"): 
+        return
     s._ok = True
 
     s.courses = [
@@ -193,43 +204,49 @@ with st.sidebar:
     with c1:
         st.session_state.course = st.selectbox("Course name", st.session_state.courses, index=0, key="course_sel")
     with c2:
-        if st.button("＋", help="Add Course"):
-            st.session_state.courses.insert(0, "New Course")
-            st.session_state.course = st.session_state.courses[0]
+        if st.button("＋", help="Add Course", key="add_course"):
+            if "New Course" not in st.session_state.courses:
+                st.session_state.courses.insert(0, "New Course")
+            st.session_state.course = "New Course"
     with c3:
-        if st.button("－", help="Remove Course"):
+        if st.button("－", help="Remove Course", key="del_course"):
             lst = st.session_state.courses
             if st.session_state.course in lst and len(lst) > 1:
+                idx = lst.index(st.session_state.course)
                 lst.remove(st.session_state.course)
-                st.session_state.course = lst[0]
+                st.session_state.course = lst[max(0, idx-1)]
 
     coh1, coh2, coh3 = st.columns([6,1,1])
     with coh1:
         st.session_state.cohort = st.selectbox("Class / Cohort", st.session_state.cohorts, index=0, key="coh_sel")
     with coh2:
         if st.button("＋ ", key="add_coh", help="Add Cohort"):
-            st.session_state.cohorts.insert(0, "New Cohort")
-            st.session_state.cohort = st.session_state.cohorts[0]
+            if "New Cohort" not in st.session_state.cohorts:
+                st.session_state.cohorts.insert(0, "New Cohort")
+            st.session_state.cohort = "New Cohort"
     with coh3:
         if st.button("－ ", key="del_coh", help="Remove Cohort"):
             lst = st.session_state.cohorts
             if st.session_state.cohort in lst and len(lst) > 1:
+                idx = lst.index(st.session_state.cohort)
                 lst.remove(st.session_state.cohort)
-                st.session_state.cohort = lst[0]
+                st.session_state.cohort = lst[max(0, idx-1)]
 
     ins1, ins2, ins3 = st.columns([6,1,1])
     with ins1:
         st.session_state.instructor = st.selectbox("Instructor name", st.session_state.instructors, index=0, key="ins_sel")
     with ins2:
         if st.button("＋  ", key="add_ins", help="Add Instructor"):
-            st.session_state.instructors.insert(0, "New Instructor")
-            st.session_state.instructor = st.session_state.instructors[0]
+            if "New Instructor" not in st.session_state.instructors:
+                st.session_state.instructors.insert(0, "New Instructor")
+            st.session_state.instructor = "New Instructor"
     with ins3:
         if st.button("－  ", key="del_ins", help="Remove Instructor"):
             lst = st.session_state.instructors
             if st.session_state.instructor in lst and len(lst) > 1:
+                idx = lst.index(st.session_state.instructor)
                 lst.remove(st.session_state.instructor)
-                st.session_state.instructor = lst[0]
+                st.session_state.instructor = lst[max(0, idx-1)]
 
     st.write("### Date")
     st.session_state.date_str = st.text_input("Date", st.session_state.date_str)
@@ -258,32 +275,42 @@ st.session_state.deep_scan = st.toggle("Deep scan source (slower, better coverag
                                        value=st.session_state.deep_scan)
 
 def parse_upload(file, deep=False) -> str:
-    if not file: return ""
+    if not file: 
+        return ""
     name = file.name.lower()
     try:
         if name.endswith(".txt"):
-            return file.getvalue().decode("utf-8", errors="ignore")
+            # file is a BytesIO-like object
+            data = file.getvalue() if hasattr(file, "getvalue") else file.read()
+            return data.decode("utf-8", errors="ignore")
         if name.endswith(".docx") and Document:
             d = Document(file)
-            return "\n".join(p.text for p in d.paragraphs)
+            return "\\n".join(p.text for p in d.paragraphs)
         if name.endswith(".pptx") and Presentation:
             prs = Presentation(file)
             lines = []
             for slide in prs.slides:
                 for sh in slide.shapes:
-                    if hasattr(sh, "text"): lines.append(sh.text)
-            return "\n".join(lines)
+                    if hasattr(sh, "text") and sh.text:
+                        lines.append(sh.text)
+            return "\\n".join(lines)
         if name.endswith(".pdf") and fitz:
-            doc = fitz.open(stream=file.read(), filetype="pdf")
+            # Read once, then open via PyMuPDF
+            data = file.read()
+            doc = fitz.open(stream=data, filetype="pdf")
             texts = []
             for pg in doc:
-                texts.append(pg.get_text("text" if not deep else "blocks"))
-            return "\n".join([t if isinstance(t, str) else str(t) for t in texts])
+                try:
+                    t = pg.get_text("blocks" if deep else "text") or ""
+                except Exception:
+                    t = ""
+                texts.append(t)
+            return "\\n".join([t if isinstance(t, str) else str(t) for t in texts])
     except Exception as e:
         st.warning(f"Could not parse file: {e}")
     return ""
 
-if st.session_state.uploaded_file and st.button("Process source"):
+if st.session_state.uploaded_file and st.button("Process source", key="process_src"):
     try:
         with st.spinner("Processing upload…"):
             parsed = parse_upload(st.session_state.uploaded_file, st.session_state.deep_scan)
@@ -372,14 +399,14 @@ def build_revision(topic: str, verbs: list[str], qty: int = 5):
 
 def docx_download(filename: str, lines: list[str]) -> io.BytesIO:
     if not Document:
-        buf = io.BytesIO(); buf.write("\n".join(lines).encode("utf-8")); buf.seek(0); return buf
+        buf = io.BytesIO(); buf.write("\\n".join(lines).encode("utf-8")); buf.seek(0); return buf
     doc = Document()
     for line in lines: doc.add_paragraph(line)
     buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
 
 def pptx_download(title: str, bullets: list[str]) -> io.BytesIO:
     if not Presentation:
-        buf = io.BytesIO(); buf.write((title + "\n" + "\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
+        buf = io.BytesIO(); buf.write((title + "\\n" + "\\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
     prs = Presentation(); slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = title
     left, top, width, height = Inches(1), Inches(1.8), Inches(8), Inches(4.5)
@@ -405,7 +432,7 @@ with tabs[0]:
         st.session_state.include_answer_key = st.checkbox("Include answer key in export",
                                                           value=st.session_state.include_answer_key)
 
-    if st.button("Generate MCQs", type="primary"):
+    if st.button("Generate MCQs", type="primary", key="gen-mcqs"):
         try:
             mcqs = build_mcqs(topic_text, picked, st.session_state.mcq_count)
             st.session_state.last_generated["mcqs"] = mcqs
@@ -495,11 +522,11 @@ with tabs[3]:
     st.caption("A single, printable overview of your session context and the latest generated content.")
     st.subheader("Context")
     st.write(
-        f"**Course**: {st.session_state.course}  \n"
-        f"**Cohort**: {st.session_state.cohort}  \n"
-        f"**Instructor**: {st.session_state.instructor}  \n"
-        f"**Week**: {st.session_state.week}  \n"
-        f"**Lesson**: {st.session_state.lesson}  \n"
+        f"**Course**: {st.session_state.course}  \\n"
+        f"**Cohort**: {st.session_state.cohort}  \\n"
+        f"**Instructor**: {st.session_state.instructor}  \\n"
+        f"**Week**: {st.session_state.week}  \\n"
+        f"**Lesson**: {st.session_state.lesson}  \\n"
         f"**Date**: {st.session_state.date_str}"
     )
 
