@@ -1,8 +1,8 @@
 [theme]
-primaryColor="#245a34"
-backgroundColor="#f9f9f7"
-secondaryBackgroundColor="#e5e1da"
-textColor="#1c1c1c"
+primaryColor = "#245a34"         # ADI green
+backgroundColor = "#ffffff"      # pure white background
+secondaryBackgroundColor = "#f5f5f3"  # ADI stone
+textColor = "#1f2937"            # slate grey (good contrast)
 
 [server]
 maxUploadSize = 200
