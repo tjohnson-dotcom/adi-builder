@@ -1,38 +1,28 @@
-ADI Builder — Lesson Activities & Questions
+# ADI Builder — Lesson Activities & Questions
 
-Sleek, professional, ADI-branded handouts and slides for instructors.
-Generate MCQs (validated & mixed Bloom), Skills Activities, Revision prompts, and a Print Summary. Export to DOCX and ADI-branded PPTX.
+Sleek, professional, ADI-branded tool for generating **MCQs, Skills Activities, and Revision handouts** directly from lesson notes, PPTX, or eBooks.  
+Designed for staff to quickly create print-ready material for Smart TVs, Moodle, or paper handouts.
 
-✨ Features
+---
 
-ADI branding (hero banner, colors, logo)
+## 🚀 Features
+- Upload **TXT, DOCX, PPTX, PDF** sources (deep-scan enabled).
+- Auto-selects **Bloom’s taxonomy levels** based on week (Low / Medium / High).
+- Generate:
+  - ✅ **Knowledge MCQs** (policy-compliant, no "all of the above", no pure T/F spam)
+  - 🎯 **Skills Activities** (time-controlled, 5–60 mins, 1–4 per lesson)
+  - 🔄 **Revision tasks** (tight linkage to outcomes & past assessments)
+- Instructor, Course, and Cohort tracking (add/remove as needed).
+- ADI Colors (green `#245a34`, gold `#C8A85A`, stone grey).
+- Export options: **Word**, **PDF**, and Smart TV display.
+- **Print Summary Tab** for quick session overview.
 
-Bloom policy awareness (Weeks 1–4 Low, 5–9 Medium, 10–14 High)
+---
 
-Verb chips with clear selection highlights
+## 🛠️ Local Setup
 
-Upload & deep-scan: TXT / DOCX / PPTX / PDF (PDF via PyMuPDF)
+Clone the repository:
+```bash
+git clone https://github.com/YOUR-ORG/adi-builder.git
+cd adi-builder
 
-Directory manager with ➕ / − for Courses, Cohorts, Instructors
-
-MCQ quality guardrails (no “all/none/true/false”, no T/F sets, balanced option lengths)
-
-Activities: choose minutes (5–60) and count (1–4 per lesson)
-
-Revision prompts
-
-Exports: DOCX and Smart-TV friendly PPTX
-
-Print Summary (context + latest generated content)
-
-Stable keys for downloads (avoids Streamlit duplicate-ID errors)
-
-🧩 Tech
-
-Python 3.11 (see runtime.txt)
-
-Streamlit UI (app.py)
-
-Export: python-docx, python-pptx
-
-Optional PDF parsing: pymupdf
