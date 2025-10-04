@@ -1,23 +1,26 @@
-# app.py — ADI Builder (Curriculum-aware, KLO-linked, teacher-personalized; no external APIs)
+
+
+# app.py — ADI Builder (Final)
+# - Curriculum-aware (adi_modules.json)
+# - Auto KLO by Week + optional override
+# - Instructor-personalized outputs (seeded)
+# - Enhanced MCQ generator (scenario-driven, Bloom-aware)
+# - Activities & Revision aligned + DOCX exports
+# - No external APIs required
 
 import io, base64, random, re, json, hashlib
 from collections import Counter
 from datetime import date
 import streamlit as st
 
-# -------------------- optional libs (soft imports) --------------------
+# Optional libraries
 try:
     from docx import Document
 except Exception:
     Document = None
-try:
-    import fitz  # PyMuPDF (optional for richer PDF parsing elsewhere if needed)
-except Exception:
-    fitz = None
 
-# -------------------- page setup --------------------
+# ---------- Page setup ----------
 st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
-
 st.markdown("""
 <style>
 .block-container { padding-top: 1rem; }
@@ -43,7 +46,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------- helpers --------------------
+# ---------- Helpers ----------
 def _b64(path: str) -> str:
     try:
         with open(path, "rb") as f:
@@ -59,7 +62,6 @@ def week_band(w: int) -> str:
     return "High"
 
 def docx_download(lines):
-    """Return DOCX bytes if python-docx is present; otherwise TXT fallback."""
     if not Document:
         buf = io.BytesIO()
         buf.write("\n".join(lines).encode("utf-8"))
@@ -67,36 +69,31 @@ def docx_download(lines):
     doc = Document()
     for line in lines:
         doc.add_paragraph(line)
-    buf = io.BytesIO()
-    doc.save(buf); buf.seek(0); return buf
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
 
-# Load curriculum (no APIs)
-def _load_modules(path="adi_modules.json"):
+def load_modules(path="adi_modules.json"):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f).get("modules", [])
     except Exception:
         return []
 
-MODULES = _load_modules()
+MODULES = load_modules()
 COURSE_INDEX = { (m.get("course_title") or m.get("course_code") or f"Course {i}"): m
                  for i, m in enumerate(MODULES) }
 
 def course_display_list():
-    # Prefer course_title; fallback to code if missing
     titles = []
     for m in MODULES:
-        label = m.get("course_title") or m.get("course_code") or "Course"
-        titles.append(label)
+        titles.append(m.get("course_title") or m.get("course_code") or "Course")
     return sorted(set(titles)) if titles else []
 
 def find_module(selected_title: str):
     if selected_title in COURSE_INDEX:
         return COURSE_INDEX[selected_title]
     for m in MODULES:
-        title = m.get("course_title","")
-        code  = m.get("course_code","")
-        if selected_title and (selected_title.lower() == title.lower() or selected_title.lower() == code.lower()):
+        title = m.get("course_title",""); code = m.get("course_code","")
+        if selected_title.lower() in (title.lower(), code.lower()):
             return m
     return None
 
@@ -123,7 +120,49 @@ def extract_keywords(topic_text: str, module: dict, klo_code: str, k: int = 10):
     common = [w for w,_ in Counter(toks).most_common(k)]
     return common or ["system","process","quality","inspection","materials","safety"]
 
-# Generators (curriculum-aware)
+# ---------- Enhanced MCQ generator ----------
+TEMPLATES = {
+    "remember": [
+        "Which statement best defines **{kw}** as used in {course_code}?",
+        "Identify the correct description of **{kw}** within {course_code}.",
+        "Select the accurate meaning of **{kw}** in {course_code}."
+    ],
+    "apply": [
+        "Apply **{kw}** during a practical {course_code} scenario.",
+        "Demonstrate how **{kw}** should be used in a {course_code} task.",
+        "Solve a problem that requires proper use of **{kw}** in {course_code}."
+    ],
+    "analyse": [
+        "Analyse how **{kw}** influences outcomes in {course_code}.",
+        "Classify the result of changes to **{kw}** in a {course_code} workflow."
+    ],
+    "evaluate": [
+        "Evaluate the effectiveness of **{kw}** in a {course_code} operation.",
+        "Justify the choice of method for **{kw}** in {course_code}."
+    ],
+    "create": [
+        "Design an approach that uses **{kw}** to improve {course_code} performance.",
+        "Create a simple plan incorporating **{kw}** for {course_code}."
+    ]
+}
+
+def pick_bucket(verb: str):
+    v = (verb or "").lower()
+    if v in ("define","identify","list","recall","describe","label","classify"): return "remember"
+    if v in ("apply","demonstrate","solve","illustrate"): return "apply"
+    if v in ("analyse","analyze","compare"): return "analyse"
+    if v in ("evaluate","critique","justify"): return "evaluate"
+    if v in ("design","create","synthesize","synthesise"): return "create"
+    return "remember"
+
+def make_distractors(kw: str, klo: str):
+    base = kw.lower()
+    return [
+        f"A partial statement about {base} with missing constraints.",
+        f"A common misconception regarding {base} not aligned to {klo}.",
+        f"An unrelated claim that mentions {base} but ignores the scenario."
+    ]
+
 def build_mcqs(topic: str, verbs: list[str], n: int, module: dict, klo_code: str):
     verbs = list(verbs) or ["identify","define","list","describe","apply","compare"]
     keys = extract_keywords(topic, module, klo_code, k=12)
@@ -131,26 +170,27 @@ def build_mcqs(topic: str, verbs: list[str], n: int, module: dict, klo_code: str
     out = []
     for i in range(n):
         v  = verbs[i % len(verbs)]
+        bucket = pick_bucket(v)
         kw = keys[i % len(keys)]
-        if v in ("identify","define","list","describe","classify","compare","recall","label"):
-            stem    = f"{v.title()} the best statement about **{kw}** in the context of {klo_code}."
-            correct = f"{kw.title()}: the most accurate statement aligned to {klo_code}."
-        elif v in ("apply","demonstrate","solve","illustrate"):
-            stem    = f"{v.title()} how **{kw}** is used in a realistic {course_code} scenario."
-            correct = f"Correct application of {kw} aligned to {klo_code}."
-        else:
-            stem    = f"{v.title()} the implications of **{kw}** for {course_code}."
-            correct = f"Reasoned conclusion about {kw} supported by evidence (per {klo_code})."
-        distractors = [
-            f"An incomplete or vague statement about {kw}.",
-            f"A common misconception regarding {kw}.",
-            f"An unrelated detail not tied to {kw}.",
-        ]
+        stem = random.choice(TEMPLATES[bucket]).format(kw=kw, course_code=course_code)
+        # correct answer phrasing varies by bucket
+        if bucket == "remember":
+            correct = f"{kw.title()}: the most accurate, curriculum-aligned definition for {klo_code}."
+        elif bucket == "apply":
+            correct = f"Proper use of {kw} in a realistic {course_code} task, aligned to {klo_code}."
+        elif bucket == "analyse":
+            correct = f"Breaks {kw} into parts and shows their effect on outcomes (per {klo_code})."
+        elif bucket == "evaluate":
+            correct = f"Judges effectiveness of {kw} using explicit criteria linked to {klo_code}."
+        else:  # create
+            correct = f"Produces a viable design/plan that integrates {kw} for {course_code} (per {klo_code})."
+        distractors = make_distractors(kw, klo_code)
         options = [correct] + distractors
         random.shuffle(options)
         out.append({"stem": stem, "options": options[:4], "answer": correct, "klo": klo_code})
     return out
 
+# ---------- Activities & Revision ----------
 def build_activities(topic, n, minutes, verbs, module: dict, klo_code: str):
     verbs = list(verbs) or ["apply","demonstrate","solve"]
     title = module.get("course_code","Module") if module else "Module"
@@ -167,15 +207,13 @@ def build_revision(topic, verbs, qty: int, module: dict, klo_code: str):
         for i in range(1, qty+1)
     ]
 
-# -------------------- one-time session defaults --------------------
+# ---------- Session defaults ----------
 s = st.session_state
 if "_ok" not in s:
     s._ok = True
-    s.course_sel = course_display_list()[0] if course_display_list() else "Select a course"
-    s.cohorts = [
-        "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
-        "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
-    ]
+    s.course_sel = (course_display_list()[0] if course_display_list() else "Select a course")
+    s.cohorts = ["D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
+                 "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"]
     s.instructors = [
         "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ",
         "FAIZ LAZAM ALSHAMMARI","DR. MASHAEL ALSHAMMARI","AHMED ALBADER",
@@ -188,14 +226,14 @@ if "_ok" not in s:
     s.lesson = 1
     s.week = 1
     s.date_str = date.today().isoformat()
-    s.source_text = ""          # will hold text pasted/parsed from uploads
+    s.source_text = ""
     s.deep_scan = False
     s.bloom_picks = set()
     s.last_generated = {}
     s.klo_override = False
-    s.klo_sel = ""              # final KLO in use (auto or override)
+    s.klo_sel = ""
 
-# -------------------- hero --------------------
+# ---------- Hero ----------
 LOGO64 = _b64("adi_logo.png")
 st.markdown("""
 <div class="adi-hero">
@@ -204,7 +242,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# -------------------- sidebar --------------------
+# ---------- Sidebar ----------
 with st.sidebar:
     if LOGO64:
         st.markdown(f'<img class="adi-logo" src="data:image/png;base64,{LOGO64}" alt="ADI logo"/>', unsafe_allow_html=True)
@@ -219,7 +257,6 @@ with st.sidebar:
     if st.button("Process source", disabled=(f is None)):
         try:
             data = f.getvalue() if hasattr(f, "getvalue") else f.read()
-            # very light parsing: treat as text (detailed docx/pdf parsing not needed here)
             if data:
                 try:
                     text = data.decode("utf-8", errors="ignore")
@@ -246,7 +283,7 @@ with st.sidebar:
     with c2: st.number_input("Week", min_value=1, key="week")
     st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
-    # ---- Outcome alignment (auto by week, optional override) ----
+    # Outcome alignment (auto by week, optional override)
     mod = find_module(s.get("course_sel",""))
     klos = (mod.get("klos", []) if mod else [])
     klo_codes = [k["code"] for k in klos] if klos else []
@@ -254,8 +291,7 @@ with st.sidebar:
 
     with st.expander("Outcome alignment", expanded=True):
         st.caption(f"Auto-linked KLO for Week {int(s.get('week',1))}: **{auto_code or '(none)'}**")
-        # Optional PIN to limit overrides (leave blank to allow anyone)
-        ADMIN_PIN = ""  # set to "1234" if you want to restrict
+        ADMIN_PIN = ""  # set to "1234" to restrict override
         can_override = True
         if ADMIN_PIN:
             pin_ok = st.text_input("Admin PIN (optional)", type="password", key="pin")
@@ -272,17 +308,15 @@ with st.sidebar:
 
     s["klo_sel"] = klo_code or ""
 
-# -------------------- main input (topic) --------------------
+# ---------- Content area ----------
 st.write("**Topic / Outcome (optional)**")
 st.text_area("Module description, knowledge & skills outcomes",
              value=s.get("source_text",""), height=110, label_visibility="collapsed", key="source_text")
 st.toggle("Deep scan source (slower, better coverage)", value=s.get("deep_scan", False), key="deep_scan")
 
-# -------------------- Bloom (week highlight) --------------------
 LOW = ["define","identify","list","recall","describe","label"]
 MED = ["apply","demonstrate","solve","illustrate","classify","compare"]
 HIGH= ["evaluate","synthesize","design","justify","critique","create"]
-
 band = week_band(s.get("week", 1))
 st.markdown(f"<div style='text-align:right'><span class='bloom-pill'>Week {int(s.get('week',1))}: {band}</span></div>", unsafe_allow_html=True)
 
@@ -306,9 +340,7 @@ bloom_group("High (Weeks 10–14)","Evaluate / Create", HIGH,"bloom-high","High"
 
 st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
 
-# -------------------- Page switcher --------------------
 page = st.radio("Mode", ["Activities","MCQs","Revision","Print Summary"], horizontal=True, key="mode_radio")
-
 picked = sorted(list(s.get("bloom_picks", set())))
 topic  = s.get("source_text","").strip()
 mod    = find_module(s.get("course_sel",""))
@@ -324,14 +356,9 @@ def header_lines():
     ]
 
 def seed_now():
-    random.seed(instructor_seed(
-        s.get("ins_sel",""),
-        s.get("course_sel",""),
-        s.get("week",1),
-        s.get("lesson",1)
-    ))
+    random.seed(int(hashlib.sha256(f"{s.get('ins_sel','')}|{s.get('course_sel','')}|{s.get('week',1)}|{s.get('lesson',1)}".encode('utf-8')).hexdigest()[:8], 16))
 
-# -------------------- Activities --------------------
+# Activities
 if page == "Activities":
     st.subheader("Activities")
     st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
@@ -354,7 +381,7 @@ if page == "Activities":
                        file_name="ADI_Activities.docx",
                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# -------------------- MCQs --------------------
+# MCQs
 elif page == "MCQs":
     st.subheader("Knowledge MCQs")
     st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
@@ -392,7 +419,7 @@ elif page == "MCQs":
                        file_name="ADI_MCQs.docx",
                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# -------------------- Revision --------------------
+# Revision
 elif page == "Revision":
     st.subheader("Revision")
     st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
@@ -414,7 +441,7 @@ elif page == "Revision":
                        file_name="ADI_Revision.docx",
                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# -------------------- Print Summary --------------------
+# Print Summary
 else:
     st.subheader("Print Summary")
     st.write(
@@ -439,4 +466,3 @@ else:
     if g.get("revision"):
         st.subheader("Latest Revision")
         for r in g["revision"]: st.write("• " + r)
-
