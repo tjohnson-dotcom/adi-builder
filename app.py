@@ -1,10 +1,9 @@
-
-
-# app.py — ADI Builder (Final)
+# app.py — ADI Builder (Final + KLO & SLO support)
 # - Curriculum-aware (adi_modules.json)
 # - Auto KLO by Week + optional override
+# - Auto SLO selection (1–2 per week) + optional override
 # - Instructor-personalized outputs (seeded)
-# - Enhanced MCQ generator (scenario-driven, Bloom-aware)
+# - Enhanced MCQ generator (scenario-driven, Bloom-aware) using KLO/SLO text
 # - Activities & Revision aligned + DOCX exports
 # - No external APIs required
 
@@ -13,7 +12,7 @@ from collections import Counter
 from datetime import date
 import streamlit as st
 
-# Optional libraries
+# Optional library for DOCX export
 try:
     from docx import Document
 except Exception:
@@ -99,26 +98,52 @@ def find_module(selected_title: str):
 
 def auto_klo_for_week(klos: list, week: int | None):
     if not klos: return None
-    codes = [k["code"] for k in klos]
+    codes = [k["code"] for k in klos if k.get("code")]
+    if not codes: return None
     idx = max(1, int(week or 1)) - 1
     return codes[idx % len(codes)]
+
+def auto_slos_for_week(slos: list, week: int | None, n: int = 2):
+    if not slos: return []
+    codes = [s["code"] for s in slos if s.get("code")]
+    if not codes: return []
+    w = max(1, int(week or 1)) - 1
+    out = []
+    for i in range(min(n, len(codes))):
+        out.append(codes[(w + i) % len(codes)])
+    return out
 
 def instructor_seed(name: str, course: str, week: int, lesson: int) -> int:
     h = hashlib.sha256(f"{name}|{course}|{week}|{lesson}".encode("utf-8")).hexdigest()
     return int(h[:8], 16)
 
-def extract_keywords(topic_text: str, module: dict, klo_code: str, k: int = 10):
+def get_klo_text(module: dict, klo_code: str) -> str:
+    if not module or not module.get("klos"): return ""
+    for k in module["klos"]:
+        if k.get("code") == klo_code:
+            return k.get("text","")
+    return ""
+
+def slos_text_list(module: dict, codes: list[str]) -> list[str]:
+    if not module or not module.get("slos"): return []
+    by = {s.get("code"): s.get("text","") for s in module["slos"]}
+    return [by[c] for c in (codes or []) if c in by]
+
+def extract_keywords(topic_text: str, module: dict, klo_code: str, slo_codes: list[str], k: int = 12):
     base = (topic_text or "").strip()
     if module and module.get("klos"):
-        txt = next((klo["text"] for klo in module["klos"] if klo["code"] == klo_code), "")
-        base = (base + " " + txt).strip()
+        txt = get_klo_text(module, klo_code)
+        if txt: base += " " + txt
+    if module and module.get("slos") and slo_codes:
+        for t in slos_text_list(module, slo_codes):
+            if t: base += " " + t
     words = re.findall(r"[A-Za-zأ-ي]+", base)
     stop = set("""a an the and or of for with to in on at by from this that these those is are was were be been being
                   into about as it its they them then than can could should would may might will shall
                   اذا هذا هذه تلك الذي التي الذين اللواتي وال او ثم لما لأن إن كان كانت يكون""".split())
     toks = [w.lower() for w in words if len(w) > 2 and w.lower() not in stop]
     common = [w for w,_ in Counter(toks).most_common(k)]
-    return common or ["system","process","quality","inspection","materials","safety"]
+    return common or ["project","materials","quality","inspection","logistics","supply","risk","schedule"]
 
 # ---------- Enhanced MCQ generator ----------
 TEMPLATES = {
@@ -155,17 +180,18 @@ def pick_bucket(verb: str):
     if v in ("design","create","synthesize","synthesise"): return "create"
     return "remember"
 
-def make_distractors(kw: str, klo: str):
+def make_distractors(kw: str, klo: str, slos: list[str]):
     base = kw.lower()
+    anchor = (" and ".join(slos)) if slos else klo
     return [
         f"A partial statement about {base} with missing constraints.",
-        f"A common misconception regarding {base} not aligned to {klo}.",
+        f"A common misconception regarding {base} not aligned to {anchor}.",
         f"An unrelated claim that mentions {base} but ignores the scenario."
     ]
 
-def build_mcqs(topic: str, verbs: list[str], n: int, module: dict, klo_code: str):
+def build_mcqs(topic: str, verbs: list[str], n: int, module: dict, klo_code: str, slo_codes: list[str]):
     verbs = list(verbs) or ["identify","define","list","describe","apply","compare"]
-    keys = extract_keywords(topic, module, klo_code, k=12)
+    keys = extract_keywords(topic, module, klo_code, slo_codes, k=12)
     course_code = module.get("course_code","the course") if module else "the course"
     out = []
     for i in range(n):
@@ -184,26 +210,31 @@ def build_mcqs(topic: str, verbs: list[str], n: int, module: dict, klo_code: str
             correct = f"Judges effectiveness of {kw} using explicit criteria linked to {klo_code}."
         else:  # create
             correct = f"Produces a viable design/plan that integrates {kw} for {course_code} (per {klo_code})."
-        distractors = make_distractors(kw, klo_code)
+        distractors = make_distractors(kw, klo_code, slo_codes)
         options = [correct] + distractors
         random.shuffle(options)
-        out.append({"stem": stem, "options": options[:4], "answer": correct, "klo": klo_code})
+        out.append({"stem": stem, "options": options[:4], "answer": correct,
+                    "klo": klo_code, "slos": list(slo_codes or [])})
     return out
 
 # ---------- Activities & Revision ----------
-def build_activities(topic, n, minutes, verbs, module: dict, klo_code: str):
+def build_activities(topic, n, minutes, verbs, module: dict, klo_code: str, slo_codes: list[str]):
     verbs = list(verbs) or ["apply","demonstrate","solve"]
     title = module.get("course_code","Module") if module else "Module"
+    slo_str = ", ".join(slo_codes or [])
+    context = f"**{title} {klo_code}**" + (f" / SLO: {slo_str}" if slo_str else "")
     return [
-        f"Activity {i} ({minutes} min): {verbs[(i-1)%len(verbs)].title()} — Use **{title} {klo_code}** to work with '{topic or 'today’s concept'}' in a short case or mini-lab."
+        f"Activity {i} ({minutes} min): {verbs[(i-1)%len(verbs)].title()} — Use {context} to work with '{topic or 'today’s concept'}' in a short case or mini-lab."
         for i in range(1, n+1)
     ]
 
-def build_revision(topic, verbs, qty: int, module: dict, klo_code: str):
+def build_revision(topic, verbs, qty: int, module: dict, klo_code: str, slo_codes: list[str]):
     verbs = list(verbs) or ["recall","classify","compare","justify","design"]
     title = module.get("course_code","Module") if module else "Module"
+    slo_str = ", ".join(slo_codes or [])
+    tag = f"{title} {klo_code}" + (f" / {slo_str}" if slo_str else "")
     return [
-        f"Rev {i}: {verbs[(i-1)%len(verbs)].title()} — Summarize how **{title} {klo_code}** connects to this week’s topic (‘{topic or 'module focus'}’) in 3–4 sentences."
+        f"Rev {i}: {verbs[(i-1)%len(verbs)].title()} — Summarize how **{tag}** connects to this week’s topic ('{topic or 'module focus'}') in 3–4 sentences."
         for i in range(1, qty+1)
     ]
 
@@ -211,7 +242,9 @@ def build_revision(topic, verbs, qty: int, module: dict, klo_code: str):
 s = st.session_state
 if "_ok" not in s:
     s._ok = True
-    s.course_sel = (course_display_list()[0] if course_display_list() else "Select a course")
+    # build course list from JSON or fallback
+    courses = course_display_list()
+    s.course_sel = (courses[0] if courses else "Select a course")
     s.cohorts = ["D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
                  "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"]
     s.instructors = [
@@ -232,6 +265,8 @@ if "_ok" not in s:
     s.last_generated = {}
     s.klo_override = False
     s.klo_sel = ""
+    s.slo_override = False
+    s.slo_sel_list = []
 
 # ---------- Hero ----------
 LOGO64 = _b64("adi_logo.png")
@@ -272,7 +307,8 @@ with st.sidebar:
             st.error(f"Could not process file: {e}")
 
     st.write("### Course details")
-    s.course_sel = st.selectbox("Course name", course_display_list() or ["(no modules found)"], index=0 if course_display_list() else 0)
+    course_choices = course_display_list() or ["(no modules found)"]
+    s.course_sel = st.selectbox("Course name", course_choices, index=0)
     st.selectbox("Class / Cohort", s.cohorts, index=0, key="coh_sel")
     st.selectbox("Instructor name", s.instructors, index=0, key="ins_sel")
     st.text_input("Date", key="date_str")
@@ -283,30 +319,59 @@ with st.sidebar:
     with c2: st.number_input("Week", min_value=1, key="week")
     st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
-    # Outcome alignment (auto by week, optional override)
+    # Outcome alignment (auto by week, optional overrides)
     mod = find_module(s.get("course_sel",""))
     klos = (mod.get("klos", []) if mod else [])
+    slos = (mod.get("slos", []) if mod else [])
     klo_codes = [k["code"] for k in klos] if klos else []
-    auto_code = auto_klo_for_week(klos, s.get("week", 1))
+    slo_codes = [sl["code"] for sl in slos] if slos else []
+    auto_klo = auto_klo_for_week(klos, s.get("week", 1))
+    auto_slo_list = auto_slos_for_week(slos, s.get("week", 1), n=2)
 
     with st.expander("Outcome alignment", expanded=True):
-        st.caption(f"Auto-linked KLO for Week {int(s.get('week',1))}: **{auto_code or '(none)'}**")
-        ADMIN_PIN = ""  # set to "1234" to restrict override
+        st.caption(f"Auto-linked **KLO** for Week {int(s.get('week',1))}: **{auto_klo or '(none)'}**")
+        if auto_slo_list:
+            st.caption("Auto-linked **SLO(s)**: " + ", ".join(auto_slo_list))
+
+        # Optional PIN to limit overrides (leave blank to allow anyone)
+        ADMIN_PIN = ""  # e.g., set to "1234" if you want to restrict
         can_override = True
         if ADMIN_PIN:
             pin_ok = st.text_input("Admin PIN (optional)", type="password", key="pin")
             can_override = (pin_ok == ADMIN_PIN)
 
-        st.checkbox("Override KLO for this lesson", key="klo_override", disabled=not can_override)
+        # KLO override
+        st.checkbox("Override KLO for this lesson", key="klo_override", disabled=not can_override or not klo_codes)
         if s.get("klo_override") and klo_codes:
-            default_idx = klo_codes.index(auto_code) if auto_code in klo_codes else 0
+            default_idx = klo_codes.index(auto_klo) if auto_klo in klo_codes else 0
             st.selectbox("Choose KLO", klo_codes, index=default_idx, key="klo_sel_manual")
             klo_code = s.get("klo_sel_manual")
-            st.caption("Override active → using manual KLO.")
+            st.caption("KLO override active.")
         else:
-            klo_code = auto_code
+            klo_code = auto_klo
+
+        # SLO override
+        st.checkbox("Override SLOs for this lesson", key="slo_override", disabled=not can_override or not slo_codes)
+        if s.get("slo_override") and slo_codes:
+            default = auto_slo_list if auto_slo_list else []
+            s.selected_slos = st.multiselect("Choose SLO(s)", slo_codes, default=default, key="slo_sel_manual")
+            slo_list = s.selected_slos
+            st.caption("SLO override active.")
+        else:
+            slo_list = auto_slo_list
+
+        # Show KLO text when available
+        if klo_code:
+            t = None
+            if mod and mod.get("klos"):
+                for k in mod["klos"]:
+                    if k.get("code") == klo_code:
+                        t = k.get("text",""); break
+            if t:
+                st.caption(f"**{klo_code}** — {t}")
 
     s["klo_sel"] = klo_code or ""
+    s["slo_sel_list"] = slo_list or []
 
 # ---------- Content area ----------
 st.write("**Topic / Outcome (optional)**")
@@ -317,6 +382,10 @@ st.toggle("Deep scan source (slower, better coverage)", value=s.get("deep_scan",
 LOW = ["define","identify","list","recall","describe","label"]
 MED = ["apply","demonstrate","solve","illustrate","classify","compare"]
 HIGH= ["evaluate","synthesize","design","justify","critique","create"]
+def week_band(w): 
+    try: w=int(w)
+    except: w=1
+    return "Low" if 1<=w<=4 else ("Medium" if 5<=w<=9 else "High")
 band = week_band(s.get("week", 1))
 st.markdown(f"<div style='text-align:right'><span class='bloom-pill'>Week {int(s.get('week',1))}: {band}</span></div>", unsafe_allow_html=True)
 
@@ -345,13 +414,16 @@ picked = sorted(list(s.get("bloom_picks", set())))
 topic  = s.get("source_text","").strip()
 mod    = find_module(s.get("course_sel",""))
 klo    = s.get("klo_sel","") or "KLO?"
+slo_l  = s.get("slo_sel_list", [])
 
 def header_lines():
+    slo_head = ", ".join(slo_l or []) or "—"
     return [
         f"Course: {s.get('course_sel','')}",
         f"Week: {int(s.get('week',1))} • Lesson: {int(s.get('lesson',1))}",
         f"Instructor: {s.get('ins_sel','')}",
         f"Linked KLO: {klo}",
+        f"SLO(s): {slo_head}",
         ""
     ]
 
@@ -360,19 +432,20 @@ def seed_now():
 
 # Activities
 if page == "Activities":
+    slo_cap = ", ".join(slo_l or []) or "—"
     st.subheader("Activities")
-    st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
+    st.caption(f"Linked KLO: {klo} • SLO(s): {slo_cap} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
     st.selectbox("Number of activities", [1,2,3,4], index=1, key="acts_count_sel")
     st.number_input("Minutes per activity", min_value=5, max_value=60, step=5, value=20, key="acts_minutes_input")
 
     if st.button("Generate Activities", type="primary"):
         seed_now()
         s.last_generated["activities"] = build_activities(
-            topic, s.get("acts_count_sel",2), s.get("acts_minutes_input",20), picked, mod or {}, klo
+            topic, s.get("acts_count_sel",2), s.get("acts_minutes_input",20), picked, mod or {}, klo, slo_l
         )
         st.success(f"Generated {len(s.last_generated['activities'])} activities.")
 
-    acts = s.last_generated.get("activities") or build_activities(topic, 2, 15, picked, mod or {}, klo)
+    acts = s.last_generated.get("activities") or build_activities(topic, 2, 15, picked, mod or {}, klo, slo_l)
     for a in acts: st.write("• " + a)
 
     lines = header_lines() + [f"{i+1}. {a}" for i,a in enumerate(acts)]
@@ -383,19 +456,20 @@ if page == "Activities":
 
 # MCQs
 elif page == "MCQs":
+    slo_cap = ", ".join(slo_l or []) or "—"
     st.subheader("Knowledge MCQs")
-    st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
+    st.caption(f"Linked KLO: {klo} • SLO(s): {slo_cap} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
     st.selectbox("How many MCQs?", [5,10,15,20,25,30], index=1, key="mcq_count_sel")
     st.checkbox("Include answer key in export", value=True, key="include_answer_chk")
 
     if st.button("Generate MCQs", type="primary"):
         seed_now()
         s.last_generated["mcqs"] = build_mcqs(
-            topic, picked, s.get("mcq_count_sel",10), mod or {}, klo
+            topic, picked, s.get("mcq_count_sel",10), mod or {}, klo, slo_l
         )
         st.success(f"Generated {len(s.last_generated['mcqs'])} MCQs.")
 
-    mcqs = s.last_generated.get("mcqs") or build_mcqs(topic, picked, 5, mod or {}, klo)
+    mcqs = s.last_generated.get("mcqs") or build_mcqs(topic, picked, 5, mod or {}, klo, slo_l)
     letters = ["A","B","C","D"]
     for i, q in enumerate(mcqs, 1):
         st.markdown(f"**Q{i}. {q['stem']}**")
@@ -403,7 +477,8 @@ elif page == "MCQs":
             st.write(f"- **{L}.** {opt}")
         if s.get("include_answer_chk", True):
             st.caption(f"Answer: {q['answer']}")
-        st.caption(f"Linked KLO: {q.get('klo',klo)} • Instructor: {s.get('ins_sel','')}")
+        slo_tag = ", ".join(q.get("slos", [])) or "—"
+        st.caption(f"Linked KLO: {q.get('klo',klo)} • SLO(s): {slo_tag} • Instructor: {s.get('ins_sel','')}")
         st.divider()
 
     lines = header_lines()
@@ -421,18 +496,19 @@ elif page == "MCQs":
 
 # Revision
 elif page == "Revision":
+    slo_cap = ", ".join(slo_l or []) or "—"
     st.subheader("Revision")
-    st.caption(f"Linked KLO: {klo} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
+    st.caption(f"Linked KLO: {klo} • SLO(s): {slo_cap} • Instructor: {s.get('ins_sel','')} • Week {int(s.get('week',1))} • Lesson {int(s.get('lesson',1))}")
     st.selectbox("How many revision prompts?", list(range(3,13)), index=2, key="rev_qty_sel")
 
     if st.button("Generate Revision", type="primary"):
         seed_now()
         s.last_generated["revision"] = build_revision(
-            topic, picked, s.get("rev_qty_sel",5), mod or {}, klo
+            topic, picked, s.get("rev_qty_sel",5), mod or {}, klo, slo_l
         )
         st.success(f"Generated {len(s.last_generated['revision'])} revision prompts.")
 
-    rev = s.last_generated.get("revision") or build_revision(topic, picked, 5, mod or {}, klo)
+    rev = s.last_generated.get("revision") or build_revision(topic, picked, 5, mod or {}, klo, slo_l)
     for r in rev: st.write("• " + r)
 
     lines = header_lines() + [f"{i+1}. {r}" for i,r in enumerate(rev)]
@@ -444,6 +520,7 @@ elif page == "Revision":
 # Print Summary
 else:
     st.subheader("Print Summary")
+    slo_head = ", ".join(slo_l or []) or "—"
     st.write(
         f"**Course**: {s.get('course_sel','')}  \n"
         f"**Cohort**: {s.get('coh_sel','')}  \n"
@@ -451,7 +528,8 @@ else:
         f"**Week**: {s.get('week',1)}  \n"
         f"**Lesson**: {s.get('lesson',1)}  \n"
         f"**Date**: {s.get('date_str','')}  \n"
-        f"**Linked KLO**: {klo}"
+        f"**Linked KLO**: {klo}  \n"
+        f"**SLO(s)**: {slo_head}"
     )
     if topic:
         st.subheader("Module notes / outcomes")
