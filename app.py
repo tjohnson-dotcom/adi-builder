@@ -35,9 +35,12 @@ section[data-testid="stSidebar"]{ background:#fff; border-right:1px solid #e5e7e
 
 /* Uploader */
 div[data-testid="stFileUploaderDropzone"]{
-  border:3px dotted var(--adi-green) !important;
+  border:4px dashed var(--adi-green) !important; /* dashed frame */
   border-radius:12px !important;
-  background:#ffffff !important;
+  background: rgba(30, 77, 43, 0.04) !important; /* light tint */
+  padding: 14px !important;
+  min-height: 84px !important;
+  transition: box-shadow .12s ease-in-out, background-color .12s ease-in-out, border-color .12s ease-in-out;
 }
 
 /* Chip colors — label first, then order fallback */
@@ -106,7 +109,14 @@ button {
 
 /* Hover feedback */
 /* Uploader hover transition */
-div[data-testid="stFileUploaderDropzone"]{ transition: box-shadow .12s ease-in-out, border-color .12s ease-in-out; }
+div[data-testid="stFileUploaderDropzone"]{
+  border:4px dashed var(--adi-green) !important; /* dashed frame */
+  border-radius:12px !important;
+  background: rgba(30, 77, 43, 0.04) !important; /* light tint */
+  padding: 14px !important;
+  min-height: 84px !important;
+  transition: box-shadow .12s ease-in-out, background-color .12s ease-in-out, border-color .12s ease-in-out;
+}
 div[data-testid="stFileUploaderDropzone"]:hover {
   box-shadow: 0 0 0 3px var(--adi-green) inset !important;
 }
@@ -167,6 +177,41 @@ div[data-testid="stMultiSelect"] button{
   border: 1px solid rgba(30,77,43,.18) !important;
   border-radius: 10px !important;
 }
+
+
+/* ===== Verb row highlight (when focused or has tags) ===== */
+div[data-testid="stMultiSelect"]{
+  background:#f7f7f7 !important;
+  border:1px solid rgba(30,77,43,.18) !important;
+  border-radius:10px !important;
+  padding:6px !important;
+  transition: box-shadow .12s ease-in-out, background-color .12s ease-in-out;
+}
+/* Focus / hover highlight */
+div[data-testid="stMultiSelect"]:hover,
+div[data-testid="stMultiSelect"]:focus-within{
+  box-shadow: 0 0 0 2px var(--adi-green) inset !important;
+  background: rgba(30,77,43,.06) !important;
+}
+
+/* When there are tags selected (modern browsers) */
+div[data-testid="stMultiSelect"]:has([data-baseweb="tag"]){
+  box-shadow: 0 0 0 2px var(--adi-green) inset !important;
+  background: rgba(30,77,43,.06) !important;
+}
+
+/* Color-coded borders for the first three verb rows (fallback & polish) */
+div[data-testid="stMultiSelect"]:nth-of-type(1){ border-color: var(--low-b) !important; }
+div[data-testid="stMultiSelect"]:nth-of-type(1):hover,
+div[data-testid="stMultiSelect"]:nth-of-type(1):focus-within{ box-shadow: 0 0 0 2px var(--low-b) inset !important; }
+
+div[data-testid="stMultiSelect"]:nth-of-type(2){ border-color: var(--med-b) !important; }
+div[data-testid="stMultiSelect"]:nth-of-type(2):hover,
+div[data-testid="stMultiSelect"]:nth-of-type(2):focus-within{ box-shadow: 0 0 0 2px var(--med-b) inset !important; }
+
+div[data-testid="stMultiSelect"]:nth-of-type(3){ border-color: var(--high-b) !important; }
+div[data-testid="stMultiSelect"]:nth-of-type(3):hover,
+div[data-testid="stMultiSelect"]:nth-of-type(3):focus-within{ box-shadow: 0 0 0 2px var(--high-b) inset !important; }
 
 </style>
 ''', unsafe_allow_html=True)
