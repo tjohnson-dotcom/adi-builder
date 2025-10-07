@@ -1,4 +1,5 @@
 
+
 import streamlit as st
 import io, os, json, random, hashlib
 from datetime import date
@@ -71,6 +72,18 @@ div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]{{
   border:2px dashed var(--adi-green)!important; background:#fff!important; border-radius:12px!important;
 }}
 .download-panel{{border:2px dashed var(--adi-green);background:#fff;border-radius:14px;padding:14px;margin-top:12px;max-width:900px;}}
+
+/* HOTFIX: order-based targeting of the 3 multiselects on the page */
+div[data-testid="stMultiSelect"]:nth-of-type(1) [data-baseweb="tag"]{
+  background:#cfe8d9 !important; border:1px solid #245a34 !important; color:#153a27 !important; font-weight:600;
+}
+div[data-testid="stMultiSelect"]:nth-of-type(2) [data-baseweb="tag"]{
+  background:#f8e6c9 !important; border:1px solid #C8A85A !important; color:#3f2c13 !important; font-weight:600;
+}
+div[data-testid="stMultiSelect"]:nth-of-type(3) [data-baseweb="tag"]{
+  background:#dfe6ff !important; border:1px solid #4F46E5 !important; color:#1E1B4B !important; font-weight:600;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
