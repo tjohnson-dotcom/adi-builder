@@ -17,7 +17,7 @@ ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"
 LOW_BG,  LOW_BORDER,  LOW_TEXT  = "#cfe8d9", "#245a34", "#153a27"
 MED_BG,  MED_BORDER,  MED_TEXT  = "#f8e6c9", "#C8A85A", "#3f2c13"
 HIGH_BG, HIGH_BORDER, HIGH_TEXT = "#dfe6ff", "#4F46E5", "#1E1B4B"
-BAND_LOW, BAND_MED, BAND_HIGH = "#eaf3ed", "#fcf8ef", "#eef2ff"
+BAND_LOW, BAND_MED, BAND_HIGH   = "#eaf3ed", "#fcf8ef", "#eef2ff"
 
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
                    page_icon="🗂️", layout="wide")
@@ -39,22 +39,20 @@ div.low-band>div>div{{background:var(--band-low)!important;}}
 div.med-band>div>div{{background:var(--band-med)!important;}}
 div.high-band>div>div{{background:var(--band-high)!important;}}
 
-/* Strong chip overrides */
-#low-wrap  div[data-testid="stMultiSelect"] [data-baseweb="tag"],
-#low-wrap  [data-baseweb="tag"],
-#low-wrap  span[data-baseweb="tag"] {{
+/* FINAL selectors — tags recolor regardless of DOM shifts */
+#low-wrap  [data-baseweb="tag"]{{
   background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; font-weight:600;
 }}
-#med-wrap  div[data-testid="stMultiSelect"] [data-baseweb="tag"],
-#med-wrap  [data-baseweb="tag"],
-#med-wrap  span[data-baseweb="tag"] {{
+#med-wrap  [data-baseweb="tag"]{{
   background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; font-weight:600;
 }}
-#high-wrap div[data-testid="stMultiSelect"] [data-baseweb="tag"],
-#high-wrap [data-baseweb="tag"],
-#high-wrap span[data-baseweb="tag"] {{
+#high-wrap [data-baseweb="tag"]{{
   background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; font-weight:600;
 }}
+/* Safety net: fallback by aria-label if wrappers fail */
+div[aria-label="Low verbs"]    [data-baseweb="tag"]{{ background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; }}
+div[aria-label="Medium verbs"] [data-baseweb="tag"]{{ background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; }}
+div[aria-label="High verbs"]   [data-baseweb="tag"]{{ background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; }}
 
 /* Click cues */
 div[data-baseweb="tab"] button{{border-radius:999px!important;cursor:pointer;}}
@@ -73,9 +71,11 @@ div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]{{
 # ---------- Persistence ----------
 DATA_DIR = Path(os.getenv("DATA_DIR", ".")); DATA_DIR.mkdir(parents=True, exist_ok=True)
 CFG_FILE = DATA_DIR / "adi_modules.json"
-SEED_CFG = {"courses":["GE4-IPM — Integrated Project & Materials Mgmt","Defense Technologies 101"],
-            "cohorts":["D1-M01","D1-C01"], "instructors":["Daniel","Staff Instructor"]}
-
+SEED_CFG = {
+    "courses":["GE4-IPM — Integrated Project & Materials Mgmt","Defense Technologies 101"],
+    "cohorts":["D1-M01","D1-C01"],
+    "instructors":["Daniel","Staff Instructor"]
+}
 def load_cfg():
     try: cfg = json.loads(CFG_FILE.read_text(encoding="utf-8")) if CFG_FILE.exists() else {}
     except Exception: cfg = {}
@@ -86,8 +86,8 @@ def save_cfg(cfg): CFG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=Fa
 if "cfg" not in st.session_state: st.session_state.cfg = load_cfg()
 
 def ensure_state():
-    for k,v in {"gen_mcqs":[], "gen_acts":[], "gen_rev":[], "answer_key":[], "upload_meta":None, "last_sig":None}.items():
-        st.session_state.setdefault(k,v)
+    base = {"gen_mcqs":[], "gen_acts":[], "gen_rev":[], "answer_key":[], "upload_meta":None, "last_sig":None}
+    for k,v in base.items(): st.session_state.setdefault(k,v)
 
 def edit_list(label, key, placeholder):
     items = st.session_state.cfg.get(key, [])
@@ -237,29 +237,29 @@ def main():
 
     topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
-    # ---- Low
-    st.markdown('<div id="low-wrap">', unsafe_allow_html=True)
+    # ---- Low (wrapper INSIDE expander)
     with st.expander("**Low (Weeks 1–4)** — Remember / Understand", True):
         st.markdown('<div class="low-band">', unsafe_allow_html=True)
+        st.markdown('<div id="low-wrap">', unsafe_allow_html=True)
         low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
+        st.markdown('</div>', unsafe_allow_html=True)  # close #low-wrap
         st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # ---- Medium
-    st.markdown('<div id="med-wrap">', unsafe_allow_html=True)
     with st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", False):
         st.markdown('<div class="med-band">', unsafe_allow_html=True)
+        st.markdown('<div id="med-wrap">', unsafe_allow_html=True)
         med = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
         st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ---- High
-    st.markdown('<div id="high-wrap">', unsafe_allow_html=True)
     with st.expander("**High (Weeks 10–14)** — Evaluate / Create", False):
         st.markdown('<div class="high-band">', unsafe_allow_html=True)
+        st.markdown('<div id="high-wrap">', unsafe_allow_html=True)
         high = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
         st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
 
@@ -384,3 +384,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Unexpected error: {e}"); st.stop()
+
