@@ -1,5 +1,4 @@
 
-
 import streamlit as st
 import io, os, json, random, hashlib
 from datetime import date
@@ -389,16 +388,16 @@ def main():
     with tabs[1]:
         left, right = st.columns([2,2])
         with left:
-            act_choices = [("3 activities",3),("5 activities",5),("8 activities",8),("10 activities",10)]
+            act_choices = [("1 per lesson",1),("2 per lesson",2),("3 per lesson",3)]
             act_label = st.selectbox("How many activities?", [l for l,_ in act_choices], index=0, key="n_act")
             n_act = dict(act_choices)[act_label]
         with right:
-            minute_values = list(range(5,65,5))
+            minute_values = list(range(5,61,5))  # 5 to 60
             minute_labels = [f"{m} min" for m in minute_values]
             mins = dict(zip(minute_labels, minute_values))[
                 st.selectbox("Minutes per activity", minute_labels, index=1, key="act_mins")
             ]
-        gs_choices = [("Solo (1)",1),("Pairs (2)",2),("Triads (3)",3)]
+        gs_choices = [("Solo (1)",1),("Pairs (2)",2),("Triads (3)",3),("Quads (4)",4)]
         group_size = dict(gs_choices)[
             st.selectbox("Group size", [l for l,_ in gs_choices], index=1, key="group_size")
         ]
