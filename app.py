@@ -1,9 +1,7 @@
 
-
 import streamlit as st
 import io, random, textwrap
 from datetime import date
-from pathlib import Path
 
 # ------------------------
 # Optional PDF support
@@ -15,7 +13,93 @@ except Exception:
     fitz = None
     PDF_ENABLED = False
 
-# Optional DOCX/PPTX parsing (we only import when needed)
+# ------------------------
+# ADI brand + page config
+# ------------------------
+ADI_GREEN = "#245a34"
+ADI_GOLD  = "#C8A85A"
+ADI_STONE = "#f7f8f7"
+
+st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
+                   page_icon="🗂️", layout="wide")
+
+# global styles (visual only)
+st.markdown(f"""
+<style>
+:root {{
+  --adi-green: {ADI_GREEN};
+  --adi-gold: {ADI_GOLD};
+  --adi-stone: {ADI_STONE};
+}}
+/* sidebar */
+section[data-testid="stSidebar"] {{
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+}}
+/* header banner */
+.adi-banner {{
+  background: var(--adi-green);
+  color: #fff;
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03), 0 6px 18px rgba(0,0,0,.06) inset;
+}}
+.adi-subtle {{
+  color: #e7f2ea;
+  font-weight: 400;
+  font-size: .9rem;
+}}
+/* expanders as soft cards */
+div[data-testid="stExpander"] > div {{
+  background: #ffffff;
+  border: 1px solid #e6e6e6;
+  border-radius: 14px;
+}}
+/* pill-like tabs */
+div[data-baseweb="tab"] button {{
+  border-radius: 999px !important;
+}}
+/* primary buttons */
+button[kind="primary"] {{
+  border-radius: 12px !important;
+}}
+/* code blocks */
+div[data-testid="stMarkdownContainer"] code {{
+  background: var(--adi-stone);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------------
+# Helpers
+# ------------------------
+def ensure_state():
+    defaults = {
+        "gen_mcqs": [],
+        "gen_acts": [],
+        "gen_rev": [],
+        "answer_key": [],
+        "export_ready": False,
+    }
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
+
+def detect_filetype(uploaded_file) -> str:
+    """Return 'pdf' | 'pptx' | 'docx' | 'txt' (fallback from name/MIME)."""
+    name = (uploaded_file.name or "").lower()
+    if name.endswith(".pdf"):   return "pdf"
+    if name.endswith(".pptx"):  return "pptx"
+    if name.endswith(".docx"):  return "docx"
+    if name.endswith(".txt"):   return "txt"
+    mime = (uploaded_file.type or "").lower()
+    if "pdf" in mime:    return "pdf"
+    if "ppt" in mime:    return "pptx"
+    if "word" in mime:   return "docx"
+    if "text" in mime:   return "txt"
+    return "txt"
+
 def read_docx_bytes(file_bytes: bytes) -> str:
     from docx import Document
     bio = io.BytesIO(file_bytes)
@@ -31,22 +115,6 @@ def read_pptx_bytes(file_bytes: bytes) -> str:
             if hasattr(shape, "text"):
                 texts.append(shape.text)
     return "\n".join(texts)
-
-# ------------------------
-# Utility
-# ------------------------
-def detect_filetype(uploaded_file) -> str:
-    name = (uploaded_file.name or "").lower()
-    if name.endswith(".pdf"):   return "pdf"
-    if name.endswith(".pptx"):  return "pptx"
-    if name.endswith(".docx"):  return "docx"
-    if name.endswith(".txt"):   return "txt"
-    mime = (uploaded_file.type or "").lower()
-    if "pdf" in mime:    return "pdf"
-    if "ppt" in mime:    return "pptx"
-    if "word" in mime:   return "docx"
-    if "text" in mime:   return "txt"
-    return "txt"
 
 def parse_upload(uploaded_file, filetype: str) -> str:
     data = uploaded_file.read()
@@ -72,26 +140,14 @@ def parse_upload(uploaded_file, filetype: str) -> str:
     except Exception:
         return ""
 
-def ensure_state():
-    defaults = {
-        "gen_mcqs": [],
-        "gen_acts": [],
-        "gen_rev": [],
-        "answer_key": [],
-        "export_ready": False,
-    }
-    for k, v in defaults.items():
-        st.session_state.setdefault(k, v)
-
 # ------------------------
-# Simple content generation (rule-based placeholders)
+# Generators (rule-based placeholders)
 # ------------------------
 BLOOM_VERBS_LOW = ["define", "identify", "list", "recall", "describe", "label"]
 BLOOM_VERBS_MED = ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"]
 BLOOM_VERBS_HIGH = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
 
 def pick_terms(text, k=20):
-    """Pick candidate keywords from the source text (very simple heuristic)."""
     if not text:
         corpus = ["safety", "procedure", "system", "component", "principle", "policy", "mission", "calibration", "diagnostics", "maintenance"]
     else:
@@ -111,7 +167,6 @@ def generate_mcqs(n, verbs, source_text, include_answers=True):
         term = random.choice(terms)
         verb = random.choice(verbs or BLOOM_VERBS_LOW)
         question = f"{i+1}. {verb.capitalize()} the following term as it relates to the lesson: **{term}**."
-        # Make 4 options: one correct + 3 distractors
         correct = f"Accurate statement about {term}."
         distractors = [
             f"Unrelated detail about {random.choice(terms)}.",
@@ -196,9 +251,9 @@ def export_txt_mcqs(mcqs, answer_key=None, include_answers=False) -> bytes:
 # UI
 # ------------------------
 ensure_state()
-st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
 
 with st.sidebar:
+    st.image("https://raw.githubusercontent.com/fortana-co/asset-host/main/adi-logo-placeholder.png", use_column_width=True)
     st.subheader("Upload (optional)")
     uploaded_file = st.file_uploader("Drag and drop file here", type=["txt", "docx", "pptx", "pdf"])
     deep_scan = st.toggle("Deep scan source (slower, better coverage)", value=False)
@@ -214,15 +269,22 @@ with st.sidebar:
     colA, colB = st.columns(2)
     lesson = colA.number_input("Lesson", 1, 5, 1, step=1)
     week = colB.number_input("Week", 1, 14, 1, step=1)
+    st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
-st.markdown("### ADI Builder — Lesson Activities & Questions")
+# Banner
+st.markdown(
+    '<div class="adi-banner">ADI Builder — Lesson Activities & Questions'
+    '<div class="adi-subtle">Sleek, professional and engaging. Print-ready handouts for your instructors.</div>'
+    '</div>',
+    unsafe_allow_html=True
+)
+
 topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
 # Bloom policy bands
-st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
-low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=True)
-med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=True)
-high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=True)
+low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=week <= 4)
+med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=5 <= week <= 9)
+high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=week >= 10)
 
 with low_expander:
     low = st.multiselect("Low verbs", BLOOM_VERBS_LOW, default=BLOOM_VERBS_LOW[:3], key="lowverbs")
@@ -323,4 +385,4 @@ with tabs[3]:
         for r in st.session_state.gen_rev:
             st.markdown(f"- {r}")
 
-st.caption("ADI Builder — sleek, professional and engaging. Print‑ready handouts for your instructors.")
+st.caption("ADI Builder — sleek, professional and engaging. Print-ready handouts for your instructors.")
