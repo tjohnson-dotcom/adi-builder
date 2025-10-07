@@ -14,7 +14,6 @@ except Exception:
 
 # ---------- Theme ----------
 ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"
-# Chip palette (ADI)
 LOW_BG,  LOW_BORDER,  LOW_TEXT  = "#cfe8d9", "#245a34", "#153a27"
 MED_BG,  MED_BORDER,  MED_TEXT  = "#f8e6c9", "#C8A85A", "#3f2c13"
 HIGH_BG, HIGH_BORDER, HIGH_TEXT = "#dfe6ff", "#4F46E5", "#1E1B4B"
@@ -39,15 +38,30 @@ section[data-testid="stSidebar"]{{background:#fff;border-right:1px solid #e5e7eb
 div.low-band>div>div{{background:var(--band-low)!important;}}
 div.med-band>div>div{{background:var(--band-med)!important;}}
 div.high-band>div>div{{background:var(--band-high)!important;}}
-/* Scoped chip colors */
-#low-wrap  [data-baseweb="tag"]{{background:var(--low-bg)!important;border:1px solid var(--low-border)!important;color:var(--low-text)!important;font-weight:600;}}
-#med-wrap  [data-baseweb="tag"]{{background:var(--med-bg)!important;border:1px solid var(--med-border)!important;color:var(--med-text)!important;font-weight:600;}}
-#high-wrap [data-baseweb="tag"]{{background:var(--high-bg)!important;border:1px solid var(--high-border)!important;color:var(--high-text)!important;font-weight:600;}}
+
+/* Strong chip overrides */
+#low-wrap  div[data-testid="stMultiSelect"] [data-baseweb="tag"],
+#low-wrap  [data-baseweb="tag"],
+#low-wrap  span[data-baseweb="tag"] {{
+  background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; font-weight:600;
+}}
+#med-wrap  div[data-testid="stMultiSelect"] [data-baseweb="tag"],
+#med-wrap  [data-baseweb="tag"],
+#med-wrap  span[data-baseweb="tag"] {{
+  background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; font-weight:600;
+}}
+#high-wrap div[data-testid="stMultiSelect"] [data-baseweb="tag"],
+#high-wrap [data-baseweb="tag"],
+#high-wrap span[data-baseweb="tag"] {{
+  background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; font-weight:600;
+}}
+
 /* Click cues */
 div[data-baseweb="tab"] button{{border-radius:999px!important;cursor:pointer;}}
 button[kind="primary"]{{border-radius:12px!important;cursor:pointer;}}
 div[data-baseweb="select"] *{{cursor:pointer!important;}}
-/* Uploader dashed across DOM variants */
+
+/* Uploader dashed */
 div[data-testid="stFileUploaderDropzone"], section[data-testid="stFileUploaderDropzone"],
 div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]{{
   border:2px dashed var(--adi-green)!important; background:#fff!important; border-radius:12px!important;
@@ -59,8 +73,8 @@ div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]{{
 # ---------- Persistence ----------
 DATA_DIR = Path(os.getenv("DATA_DIR", ".")); DATA_DIR.mkdir(parents=True, exist_ok=True)
 CFG_FILE = DATA_DIR / "adi_modules.json"
-SEED_CFG = {"courses":["Defense Technologies 101","Integrated Project & Systems"],
-            "cohorts":["D1-C01"], "instructors":["Staff Instructor"]}
+SEED_CFG = {"courses":["GE4-IPM — Integrated Project & Materials Mgmt","Defense Technologies 101"],
+            "cohorts":["D1-M01","D1-C01"], "instructors":["Daniel","Staff Instructor"]}
 
 def load_cfg():
     try: cfg = json.loads(CFG_FILE.read_text(encoding="utf-8")) if CFG_FILE.exists() else {}
@@ -160,9 +174,9 @@ def gen_mcqs(n, verbs, txt, include=True):
     return out, key
 
 # ---------- Export helpers ----------
-def export_docx(mcqs, include, key):
+def export_docx(mcqs, include, key, title="Knowledge MCQs"):
     from docx import Document
-    doc=Document(); doc.add_heading("Knowledge MCQs", level=1)
+    doc=Document(); doc.add_heading(title, level=1)
     for q,opts in mcqs:
         r=doc.add_paragraph().add_run(q); r.bold=True
         for j,opt in enumerate(opts, start=1): doc.add_paragraph(f"{chr(64+j)}. {opt}")
@@ -180,6 +194,15 @@ def export_txt(mcqs, key, include):
     if include and key:
         lines.append("Answer Key")
         for i,a in enumerate(key, start=1): lines.append(f"Q{i}: {['A','B','C','D'][a-1]}")
+    return ("\n".join(lines)).encode("utf-8")
+
+def export_docx_list(lines, title):
+    from docx import Document
+    doc=Document(); doc.add_heading(title, level=1)
+    for ln in lines: doc.add_paragraph(ln)
+    bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+def export_txt_list(lines):
     return ("\n".join(lines)).encode("utf-8")
 
 # ---------- UI ----------
@@ -255,6 +278,7 @@ def main():
     else:
         st.session_state["last_sig"] = None
 
+    # ----- Tab 1: MCQs -----
     with tabs[0]:
         n = st.selectbox("How many MCQs?", [5,10,15,20], index=1)
         include = st.checkbox("Include answer key in export", value=True)
@@ -283,24 +307,61 @@ def main():
                                    mime="text/plain")
             st.markdown('</div>', unsafe_allow_html=True)
 
+    # ----- Tab 2: Activities -----
     with tabs[1]:
-        n_act = st.selectbox("How many activities?", [3,5,8,10], index=1, key="n_act")
+        left, right = st.columns([2,2])
+        with left:
+            n_act = st.selectbox("How many activities?", [3,5,8,10], index=0, key="n_act")
+        with right:
+            mins = st.selectbox("Minutes per activity", list(range(5,65,5)), index=1, key="act_mins")
+        group_size = st.selectbox("Group size", [1,2,3], index=1, key="group_size")
+
         if st.button("Generate Activities"):
-            acts = [f"{i+1}. {random.choice(med or MED).capitalize()} a short activity focusing on **{w}**."
-                    for i,w in enumerate(pick_terms(text, max(10,n_act*2))[:n_act])]
+            terms = pick_terms(text, max(10,n_act*2))[:n_act]
+            acts = [f"{i+1}. {random.choice(med or MED).capitalize()} a {mins}-minute activity "
+                    f"for groups of {group_size} focusing on **{w}**."
+                    for i,w in enumerate(terms)]
             st.session_state.gen_acts = acts; st.success("Activities generated.")
         if st.session_state.get("gen_acts"):
             for a in st.session_state.gen_acts: st.markdown(f"- {a}")
+            st.markdown('<div class="download-panel">', unsafe_allow_html=True)
+            col1,col2 = st.columns(2)
+            with col1:
+                st.download_button("⬇️ Download DOCX (Activities)",
+                                   data=export_docx_list(st.session_state.gen_acts, "Skills Activities"),
+                                   file_name="ADI_Skills_Activities.docx",
+                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            with col2:
+                st.download_button("⬇️ Download TXT (Activities)",
+                                   data=export_txt_list(st.session_state.gen_acts),
+                                   file_name="ADI_Skills_Activities.txt",
+                                   mime="text/plain")
+            st.markdown('</div>', unsafe_allow_html=True)
 
+    # ----- Tab 3: Revision -----
     with tabs[2]:
-        n_rev = st.selectbox("How many revision prompts?", [3,5,8,10], index=1, key="n_rev")
+        n_rev = st.selectbox("How many revision prompts?", [3,5,8,10], index=0, key="n_rev")
         if st.button("Generate Revision"):
             revs = [f"{i+1}. {random.choice(low or LOW).capitalize()} key points on **{w}** in a 5-bullet summary."
                     for i,w in enumerate(pick_terms(text, max(10,n_rev*2))[:n_rev])]
             st.session_state.gen_rev = revs; st.success("Revision prompts generated.")
         if st.session_state.get("gen_rev"):
             for r in st.session_state.gen_rev: st.markdown(f"- {r}")
+            st.markdown('<div class="download-panel">', unsafe_allow_html=True)
+            col1,col2 = st.columns(2)
+            with col1:
+                st.download_button("⬇️ Download DOCX (Revision)",
+                                   data=export_docx_list(st.session_state.gen_rev, "Revision Prompts"),
+                                   file_name="ADI_Revision_Prompts.docx",
+                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            with col2:
+                st.download_button("⬇️ Download TXT (Revision)",
+                                   data=export_txt_list(st.session_state.gen_rev),
+                                   file_name="ADI_Revision_Prompts.txt",
+                                   mime="text/plain")
+            st.markdown('</div>', unsafe_allow_html=True)
 
+    # ----- Tab 4: Print Summary -----
     with tabs[3]:
         st.subheader("Print Summary")
         st.markdown(f"**Course:** {course or '—'}  \n**Cohort:** {cohort or '—'}  \n**Instructor:** {instructor or '—'}  \n**Date:** {the_date}  \n**Lesson:** {lesson}  \n**Week:** {week}")
@@ -323,6 +384,3 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Unexpected error: {e}"); st.stop()
-
-
-
