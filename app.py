@@ -1,4 +1,5 @@
 
+
 import streamlit as st
 import io, os, json, random, hashlib
 from datetime import date
@@ -157,6 +158,15 @@ div[data-testid="stMultiSelect"] button:hover,
 }
 [data-baseweb="menu"] li{ cursor: pointer !important; }
 [data-baseweb="menu"] li:hover{ background: rgba(30,77,43,.08) !important; }
+
+/* Compact select appearance to reduce 'double box' look */
+div[data-testid="stSelectbox"] button,
+div[data-testid="stMultiSelect"] button{
+  background: #f7f7f7 !important;
+  border: 1px solid rgba(30,77,43,.18) !important;
+  border-radius: 10px !important;
+}
+
 </style>
 ''', unsafe_allow_html=True)
 
@@ -174,7 +184,7 @@ if "cfg" not in st.session_state: st.session_state.cfg = load_cfg()
 
 def edit_list(label, key, placeholder):
     items = st.session_state.cfg.get(key, [])
-    opts=[f"— {placeholder} —"]+items
+    opts=[placeholder]+items
     c1,c2,c3=st.columns([5,1,1])
     choice=c1.selectbox(label, opts, index=0, key=f"sel_{key}")
     add=c2.button("＋", key=f"add_{key}"); rm=c3.button("−", key=f"rm_{key}")
@@ -379,10 +389,19 @@ def main():
     with tabs[1]:
         left, right = st.columns([2,2])
         with left:
-            n_act = st.selectbox("How many activities?", [3,5,8,10], index=0, key="n_act")
+            act_choices = [("3 activities",3),("5 activities",5),("8 activities",8),("10 activities",10)]
+            act_label = st.selectbox("How many activities?", [l for l,_ in act_choices], index=0, key="n_act")
+            n_act = dict(act_choices)[act_label]
         with right:
-            mins = st.selectbox("Minutes per activity", list(range(5,65,5)), index=1, key="act_mins")
-        group_size = st.selectbox("Group size", [1,2,3], index=1, key="group_size")
+            minute_values = list(range(5,65,5))
+            minute_labels = [f"{m} min" for m in minute_values]
+            mins = dict(zip(minute_labels, minute_values))[
+                st.selectbox("Minutes per activity", minute_labels, index=1, key="act_mins")
+            ]
+        gs_choices = [("Solo (1)",1),("Pairs (2)",2),("Triads (3)",3)]
+        group_size = dict(gs_choices)[
+            st.selectbox("Group size", [l for l,_ in gs_choices], index=1, key="group_size")
+        ]
         if st.button("Generate Activities"):
             terms = pick_terms(text, max(10,n_act*2))[:n_act]
             acts = [f"{i+1}. {random.choice(med or MED).capitalize()} a {mins}-minute activity "
