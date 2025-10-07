@@ -14,6 +14,7 @@ except Exception:
 
 # ---------- Theme ----------
 ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"
+# Chip palette (ADI)
 LOW_BG,  LOW_BORDER,  LOW_TEXT  = "#cfe8d9", "#245a34", "#153a27"
 MED_BG,  MED_BORDER,  MED_TEXT  = "#f8e6c9", "#C8A85A", "#3f2c13"
 HIGH_BG, HIGH_BORDER, HIGH_TEXT = "#dfe6ff", "#4F46E5", "#1E1B4B"
@@ -34,13 +35,15 @@ st.markdown(f"""
 section[data-testid="stSidebar"]{{background:#fff;border-right:1px solid #e5e7eb;}}
 .adi-banner{{background:var(--adi-green);color:#fff;padding:14px 18px;border-radius:12px;font-weight:600;margin-bottom:14px;}}
 .adi-subtle{{color:#e7f2ea;font-weight:400;font-size:.9rem;}}
+/* Band tints */
 div.low-band>div>div{{background:var(--band-low)!important;}}
 div.med-band>div>div{{background:var(--band-med)!important;}}
 div.high-band>div>div{{background:var(--band-high)!important;}}
-/* Chip colors via aria-label */
-div[aria-label="Low verbs"]    [data-baseweb="tag"]{{background:var(--low-bg)!important;border:1px solid var(--low-border)!important;color:var(--low-text)!important;font-weight:600;}}
-div[aria-label="Medium verbs"] [data-baseweb="tag"]{{background:var(--med-bg)!important;border:1px solid var(--med-border)!important;color:var(--med-text)!important;font-weight:600;}}
-div[aria-label="High verbs"]   [data-baseweb="tag"]{{background:var(--high-bg)!important;border:1px solid var(--high-border)!important;color:var(--high-text)!important;font-weight:600;}}
+/* Scoped chip colors */
+#low-wrap  [data-baseweb="tag"]{{background:var(--low-bg)!important;border:1px solid var(--low-border)!important;color:var(--low-text)!important;font-weight:600;}}
+#med-wrap  [data-baseweb="tag"]{{background:var(--med-bg)!important;border:1px solid var(--med-border)!important;color:var(--med-text)!important;font-weight:600;}}
+#high-wrap [data-baseweb="tag"]{{background:var(--high-bg)!important;border:1px solid var(--high-border)!important;color:var(--high-text)!important;font-weight:600;}}
+/* Click cues */
 div[data-baseweb="tab"] button{{border-radius:999px!important;cursor:pointer;}}
 button[kind="primary"]{{border-radius:12px!important;cursor:pointer;}}
 div[data-baseweb="select"] *{{cursor:pointer!important;}}
@@ -58,6 +61,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", ".")); DATA_DIR.mkdir(parents=True, exist_
 CFG_FILE = DATA_DIR / "adi_modules.json"
 SEED_CFG = {"courses":["Defense Technologies 101","Integrated Project & Systems"],
             "cohorts":["D1-C01"], "instructors":["Staff Instructor"]}
+
 def load_cfg():
     try: cfg = json.loads(CFG_FILE.read_text(encoding="utf-8")) if CFG_FILE.exists() else {}
     except Exception: cfg = {}
@@ -80,14 +84,14 @@ def edit_list(label, key, placeholder):
     selected=None if choice==opts[0] else choice
     if add: st.session_state[f"adding_{key}"]=True
     if rm and selected:
-        try: items.remove(selected); save_cfg(st.session_state.cfg); st.rerun()
+        try: items.remove(selected); save_cfg(st.session_state.cfg)
         except ValueError: pass
     if st.session_state.get(f"adding_{key}"):
         new_val=st.text_input(f"Add new {label.lower()}", key=f"new_{key}")
         colA,colB=st.columns([1,1])
         if colA.button("Save", key=f"save_{key}"):
             if new_val and new_val not in items: items.append(new_val); save_cfg(st.session_state.cfg)
-            st.session_state[f"adding_{key}"]=False; st.rerun()
+            st.session_state[f"adding_{key}"]=False
         if colB.button("Cancel", key=f"cancel_{key}"): st.session_state[f"adding_{key}"]=False
     return selected
 
@@ -210,18 +214,29 @@ def main():
 
     topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
+    # ---- Low
+    st.markdown('<div id="low-wrap">', unsafe_allow_html=True)
     with st.expander("**Low (Weeks 1–4)** — Remember / Understand", True):
         st.markdown('<div class="low-band">', unsafe_allow_html=True)
         low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
         st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- Medium
+    st.markdown('<div id="med-wrap">', unsafe_allow_html=True)
     with st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", False):
         st.markdown('<div class="med-band">', unsafe_allow_html=True)
         med = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
         st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- High
+    st.markdown('<div id="high-wrap">', unsafe_allow_html=True)
     with st.expander("**High (Weeks 10–14)** — Evaluate / Create", False):
         st.markdown('<div class="high-band">', unsafe_allow_html=True)
         high = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
         st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
 
@@ -229,16 +244,16 @@ def main():
     text = ""
     if uploaded is not None:
         sig = file_signature(uploaded, deep)
-        if st.session_state.last_sig != sig:
+        if st.session_state.get("last_sig") != sig:
             ftype = detect_filetype(uploaded)
             data  = uploaded.getvalue()
             text, note = parse_upload_cached(data, ftype, deep)
             st.session_state.upload_meta = {"name": uploaded.name, "type": ftype, "note": note}
-            st.session_state.last_sig = sig
+            st.session_state["last_sig"] = sig
         meta = st.session_state.upload_meta
         status.markdown(f"✅ **Uploaded:** {meta['name']}  \n_Type:_ {meta['type']} — {meta['note']}")
     else:
-        st.session_state.last_sig = None
+        st.session_state["last_sig"] = None
 
     with tabs[0]:
         n = st.selectbox("How many MCQs?", [5,10,15,20], index=1)
@@ -308,4 +323,6 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Unexpected error: {e}"); st.stop()
+
+
 
