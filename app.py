@@ -1,136 +1,569 @@
 
-import io, os, base64, random, re, json, hashlib
+# app.py — ADI Builder (stable build)
+# - ADI banner + small logo
+# - Horizontal Bloom verbs with dual highlight (focus + active)
+# - Tabs: MCQs / Activities / Revision / Print Summary
+# - Deep Scan toggle
+# - No nested expanders/status (prevents SessionInfo error)
+# - Large uploads parsed and previewed without slowing UI
+
+import io
+import base64
+import random
 from datetime import date
+from uuid import uuid4
+
 import streamlit as st
+
+# Optional parsers (guarded so app still runs without them)
+try:
+    from docx import Document
+except Exception:
+    Document = None
+
+try:
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+except Exception:
+    Presentation = None
+    Inches = Pt = None
 
 try:
     import fitz  # PyMuPDF
 except Exception:
     fitz = None
 
-try:
-    from docx import Document as DocxDocument
-except Exception:
-    DocxDocument = None
 
-try:
-    from pptx import Presentation as PptxPresentation
-except Exception:
-    PptxPresentation = None
+# --------------------------- small helpers ---------------------------
 
-st.set_page_config(page_title="ADI Builder (E‑book Safe)", page_icon="📘", layout="wide")
-
-def pdf_to_text(file_like, quick_pages=15, deep=False):
-    if fitz is None:
-        return ""
-    try:
-        doc = fitz.open(stream=file_like.read(), filetype="pdf")
-    except Exception:
-        try:
-            file_like.seek(0)
-            doc = fitz.open(stream=file_like.read(), filetype="pdf")
-        except Exception:
-            return ""
-    N = doc.page_count
-    if not deep:
-        N = min(N, quick_pages)
-    out = []
-    prog = st.progress(0.0, text="Reading PDF…")
-    for i in range(N):
-        try:
-            page = doc.load_page(i)
-            out.append(page.get_text())
-        except Exception as e:
-            st.warning(f"Skipped page {i+1}: {e}")
-        prog.progress((i+1)/N, text=f"Reading PDF… {i+1}/{N}")
-    return "\n".join(out).strip()
-
-def docx_to_text(file_like):
-    if DocxDocument is None:
-        return ""
-    try:
-        data = file_like.read()
-        bio = io.BytesIO(data)
-        d = DocxDocument(bio)
-        return "\n".join([p.text for p in d.paragraphs]).strip()
-    except Exception:
-        return ""
-
-def pptx_to_text(file_like):
-    if PptxPresentation is None:
-        return ""
-    try:
-        data = file_like.read()
-        bio = io.BytesIO(data)
-        p = PptxPresentation(bio)
-        out = []
-        for slide in p.slides:
-            for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    t = (shape.text or "").strip()
-                    if t:
-                        out.append(t)
-        return "\n".join(out).strip()
-    except Exception:
-        return ""
-
-def txt_to_text(file_like):
-    data = file_like.read()
-    for enc in ("utf-8", "utf-16", "latin-1"):
-        try:
-            return data.decode(enc, errors="ignore")
-        except Exception:
-            continue
-    return ""
-
-def detect_ext(name):
-    return (os.path.splitext(name)[1] or "").lower()
-
-def safe_file_text(upload, deep=False):
-    ext = detect_ext(upload.name)
-    upload.seek(0)
-    if ext == ".pdf":
-        return pdf_to_text(upload, deep=deep)
-    elif ext == ".docx":
-        return docx_to_text(upload)
-    elif ext == ".pptx":
-        return pptx_to_text(upload)
-    elif ext in (".txt", ".md", ".rtf"):
-        return txt_to_text(upload)
-    else:
-        return txt_to_text(upload)
-
-def b64_logo(path="adi_logo.png"):
+def _b64(path: str) -> str:
     try:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     except Exception:
         return ""
 
-st.markdown('<div style="background:#245a34;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px;"><b>ADI Builder — E‑book Safe Uploads</b><br/>Large PDFs, DOCXs and PPTXs won’t crash the app. Quick scan vs Deep scan supported.</div>', unsafe_allow_html=True)
+
+def week_focus(w: int) -> str:
+    if 1 <= w <= 4: return "Low"
+    if 5 <= w <= 9: return "Medium"
+    return "High"
+
+
+# --------------------------- page setup ---------------------------
+
+st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
+LOGO64 = _b64("adi_logo.png")
+
+st.markdown("""
+<style>
+/* Layout */
+.block-container{padding-top:0.8rem;}
+/* Sidebar logo */
+.adi-logo{height:70px; width:auto; display:block; margin:2px 0 8px 0;}
+/* Top banner */
+.adi-hero{background:#245a34;color:#fff;border-radius:14px;padding:14px 18px;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);margin:6px 0 10px 0;}
+.adi-hero *{color:#fff !important;}
+.adi-hero h1{font-size:1.06rem;margin:0 0 3px 0;font-weight:700;}
+.adi-hero p{font-size:.86rem;margin:0;opacity:.96;}
+/* Soft rule */
+.hr-soft{height:1px;border:0;background:#e5e7eb;margin:.4rem 0 1rem 0;}
+/* Bloom groups */
+.bloom-group{border:1px solid #e5e7eb;border-radius:12px;padding:12px 12px 8px 12px;margin:10px 0;}
+.bloom-low{background:linear-gradient(180deg,#f1f8f1,#ffffff);}
+.bloom-med{background:linear-gradient(180deg,#fff7e8,#ffffff);}
+.bloom-high{background:linear-gradient(180deg,#eef2ff,#ffffff);}
+.bloom-focus{box-shadow:0 0 0 2px rgba(36,90,52,.12) inset;border-color:#245a34;}
+.bloom-active{box-shadow:0 0 0 2px rgba(36,90,52,.18) inset;border-color:#245a34;}
+.bloom-caption{font-size:.80rem;color:#6b7280;margin-left:6px;}
+.bloom-pill{display:inline-block;background:#edf2ee;color:#245a34;border-radius:999px;
+  padding:4px 10px;font-weight:600;font-size:.75rem;}
+/* Checkbox chips laid out horizontally */
+.bloom-row{display:flex; gap:10px; flex-wrap:wrap;}
+.bloom-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid #d1d5db;border-radius:999px;
+  padding:6px 12px;background:#fff;transition:box-shadow .15s ease,border-color .15s ease,background .15s ease;}
+.bloom-chip:hover{box-shadow:0 2px 10px rgba(0,0,0,.06);}
+.bloom-chip input{margin:0;}
+.bloom-chip.checked{background:#def7e3;border-color:#245a34;box-shadow:0 0 0 2px rgba(36,90,52,.15);}
+</style>
+""", unsafe_allow_html=True)
+
+
+# --------------------------- session defaults ---------------------------
+
+def init_state():
+    s = st.session_state
+    if s.get("_ok"): return
+    s._ok = True
+
+    s.courses = [
+        "Defense Technology Practices: Experimentation, Quality Management and Inspection (GE4-EPM)",
+        "Integrated Project and Materials Management in Defense Technology (GE4-IPM)",
+        "Military Vehicle and Aircraft MRO: Principles & Applications (GE4-MRO)",
+        "Computation for Chemical Technologists (CT4-COM)",
+        "Explosives Manufacturing (CT4-EMG)",
+        "Thermofluids (CT4-TFL)",
+        "Composite Manufacturing (MT4-CMG)",
+        "Computer Aided Design (MT4-CAD)",
+        "Machine Elements (MT4-MAE)",
+        "Electrical Materials (EE4-MFC)",
+        "PCB Manufacturing (EE4-PMG)",
+        "Power Circuits & Transmission (EE4-PCT)",
+        "Mechanical Product Dissection (MT5-MPD)",
+        "Assembly Technology (MT5-AST)",
+        "Aviation Maintenance (MT5-AVM)",
+        "Hydraulics and Pneumatics (MT5-HYP)",
+        "Computer Aided Design and Additive Manufacturing (MT5-CAD)",
+        "Industrial Machining (MT5-CNC)",
+        "Thermochemistry of Explosives (CT5-TCE)",
+        "Separation Technologies 1 (CT5-SET)",
+        "Explosives Plant Operations and Troubleshooting (CT5-POT)",
+        "Coating Technologies (CT5-COT)",
+        "Chemical Technology Laboratory Techniques (CT5-LAB)",
+        "Chemical Process Technology (CT5-CPT)",
+    ]
+    s.cohorts = ["D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
+                 "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"]
+    s.instructors = [
+        "GHAMZA LABEEB KHADER","DANIEL JOSEPH LAMB","NARDEEN TARIQ",
+        "FAIZ LAZAM ALSHAMMARI","DR. MASHAEL ALSHAMMARI","AHMED ALBADER",
+        "Noura Aldossari","Ahmed Gasem Alharbi","Mohammed Saeed Alfarhan",
+        "Abdulmalik Halawani","Dari AlMutairi","Meshari AlMutrafi","Myra Crawford",
+        "Meshal Alghurabi","Ibrahim Alrawili","Michail Mavroftas","Gerhard Van der Poel",
+        "Khalil Razak","Mohammed Alwuthylah","Rana Ramadan","Salem Saleh Subaih",
+        "Barend Daniel Esterhuizen",
+    ]
+
+    s.course = s.courses[0]
+    s.cohort = s.cohorts[0]
+    s.instructor = s.instructors[0]
+    s.lesson = 1
+    s.week = 1
+    s.date_str = date.today().isoformat()
+
+    s.uploaded_file = None
+    s.deep_scan = False
+    s.source_full = ""  # parsed full text kept out of big textarea
+    s.notes = ""        # your small editable notes
+
+    s.bloom_picks = set()
+
+    s.mcq_count = 10
+    s.include_answer_key = True
+    s.activities_count = 2
+    s.activity_minutes = 20
+
+    s.last_generated = {}
+
+init_state()
+
+
+# --------------------------- hero + sidebar ---------------------------
+
+st.markdown("""
+<div class="adi-hero">
+  <h1>ADI Builder — Lesson Activities &amp; Questions</h1>
+  <p>Sleek, professional and engaging. Print-ready handouts for your instructors.</p>
+</div>
+""", unsafe_allow_html=True)
 
 with st.sidebar:
-    deep = st.toggle("Deep scan e‑books (full document)", value=False, help="Off = quick scan (~15 pages). On = full PDF.")
-    upload = st.file_uploader("Upload e‑book or source (PDF/DOCX/PPTX/TXT)", type=["pdf","docx","pptx","txt","md","rtf"], key="ebook_upl")
+    if LOGO64:
+        st.markdown(f'<img class="adi-logo" src="data:image/png;base64,{LOGO64}" alt="ADI logo"/>',
+                    unsafe_allow_html=True)
+    st.caption("ADI")
 
-    if upload is not None:
-        size_kb = (getattr(upload, "size", 0) or 0)/1024
-        st.info(f"Selected: **{upload.name}** ({size_kb:.1f} KB) • Deep scan: {'On' if deep else 'Off'}")
-        if st.button("Process source", type="primary"):
-            try:
-                text = safe_file_text(upload, deep=deep) or ""
-                if text.strip():
-                    st.session_state["source_text"] = text
-                    st.success("✅ Upload processed and indexed. You can generate Activities / MCQs / Revision now.")
+    st.write("### Upload (optional)")
+    st.session_state.uploaded_file = st.file_uploader(
+        "Drag and drop file here",
+        type=["txt","docx","pptx","pdf"],
+        help="Limit 200MB per file • TXT, DOCX, PPTX, PDF"
+    )
+
+    st.write("### Course details")
+    c1, c2, c3 = st.columns([6,1,1])
+    with c1:
+        st.session_state.course = st.selectbox("Course name", st.session_state.courses, index=0, key="course_sel")
+    with c2:
+        if st.button("＋", help="Add Course"):
+            st.session_state.courses.insert(0, "New Course")
+            st.session_state.course = st.session_state.courses[0]
+    with c3:
+        if st.button("－", help="Remove Course"):
+            lst = st.session_state.courses
+            if st.session_state.course in lst and len(lst) > 1:
+                lst.remove(st.session_state.course)
+                st.session_state.course = lst[0]
+
+    coh1, coh2, coh3 = st.columns([6,1,1])
+    with coh1:
+        st.session_state.cohort = st.selectbox("Class / Cohort", st.session_state.cohorts, index=0, key="coh_sel")
+    with coh2:
+        if st.button("＋ ", key="add_coh", help="Add Cohort"):
+            st.session_state.cohorts.insert(0, "New Cohort")
+            st.session_state.cohort = st.session_state.cohorts[0]
+    with coh3:
+        if st.button("－ ", key="del_coh", help="Remove Cohort"):
+            lst = st.session_state.cohorts
+            if st.session_state.cohort in lst and len(lst) > 1:
+                lst.remove(st.session_state.cohort)
+                st.session_state.cohort = lst[0]
+
+    ins1, ins2, ins3 = st.columns([6,1,1])
+    with ins1:
+        st.session_state.instructor = st.selectbox("Instructor name", st.session_state.instructors, index=0, key="ins_sel")
+    with ins2:
+        if st.button("＋  ", key="add_ins", help="Add Instructor"):
+            st.session_state.instructors.insert(0, "New Instructor")
+            st.session_state.instructor = st.session_state.instructors[0]
+    with ins3:
+        if st.button("－  ", key="del_ins", help="Remove Instructor"):
+            lst = st.session_state.instructors
+            if st.session_state.instructor in lst and len(lst) > 1:
+                lst.remove(st.session_state.instructor)
+                st.session_state.instructor = lst[0]
+
+    st.write("### Date")
+    st.session_state.date_str = st.text_input("Date", st.session_state.date_str)
+
+    st.write("### Context")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        st.session_state.lesson = st.number_input("Lesson", min_value=1, value=int(st.session_state.lesson))
+    with cc2:
+        st.session_state.week = st.number_input("Week", min_value=1, value=int(st.session_state.week))
+
+    st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
+
+
+# --------------------------- upload parsing ---------------------------
+
+def parse_upload(file, deep=False) -> str:
+    if not file: return ""
+    name = file.name.lower()
+    try:
+        if name.endswith(".txt"):
+            return file.getvalue().decode("utf-8", errors="ignore")
+        if name.endswith(".docx") and Document:
+            d = Document(file)
+            return "\n".join(p.text for p in d.paragraphs)
+        if name.endswith(".pptx") and Presentation:
+            prs = Presentation(file)
+            lines = []
+            for slide in prs.slides:
+                for sh in slide.shapes:
+                    if hasattr(sh, "text"): lines.append(sh.text)
+            return "\n".join(lines)
+        if name.endswith(".pdf") and fitz:
+            doc = fitz.open(stream=file.read(), filetype="pdf")
+            texts = []
+            for pg in doc:
+                if deep:
+                    blocks = pg.get_text("blocks")
+                    texts.append("\n".join([b[4] for b in blocks if isinstance(b, tuple) and len(b) >= 5]))
                 else:
-                    st.warning("Processed the file but couldn’t extract readable text. If this is a scanned PDF, consider an OCR’d copy.")
-                st.session_state["ebook_upl"] = None
-            except Exception as e:
-                st.error(f"Could not process file safely: {e}")
+                    texts.append(pg.get_text("text"))
+            return "\n".join(texts)
+    except Exception as e:
+        st.warning(f"Could not parse file: {e}")
+    return ""
 
-st.subheader("Source preview (first 1200 chars)")
-src = st.session_state.get("source_text","")
-if src:
-    st.text(src[:1200] + ("..." if len(src)>1200 else ""))
-else:
-    st.caption("No source loaded yet. Upload in the left sidebar.")
+st.write("**Topic / Outcome (optional)**")
+st.session_state.deep_scan = st.toggle("Deep scan source (slower, better coverage)", value=st.session_state.deep_scan)
+
+c_u1, c_u2 = st.columns([1,3])
+with c_u1:
+    if st.session_state.uploaded_file and st.button("Process source", type="primary"):
+        with st.spinner("Processing upload…"):
+            parsed = parse_upload(st.session_state.uploaded_file, st.session_state.deep_scan)
+            if parsed:
+                st.session_state.source_full = parsed
+        st.success("Upload processed.")
+with c_u2:
+    st.session_state.notes = st.text_area(
+        "Add short notes / outcomes (optional)",
+        value=st.session_state.notes,
+        height=100,
+        label_visibility="collapsed",
+    )
+
+# Preview (keeps UI fast even with very large uploads)
+if st.session_state.source_full:
+    preview = (st.session_state.source_full[:1400] + " …") if len(st.session_state.source_full) > 1400 else st.session_state.source_full
+    with st.expander("Preview of parsed source", expanded=False):
+        st.write(preview)
+
+st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
+
+
+# --------------------------- Bloom verbs (horizontal with chips) ---------------------------
+
+LOW_VERBS  = ["define","identify","list","recall","describe","label"]
+MED_VERBS  = ["apply","demonstrate","solve","illustrate","classify","compare"]
+HIGH_VERBS = ["evaluate","synthesize","design","justify","critique","create"]
+
+def chip_row(verbs: list[str]):
+    # Render as horizontal chips (custom HTML so layout stays consistent)
+    row_html = ['<div class="bloom-row">']
+    for v in verbs:
+        checked = (v in st.session_state.bloom_picks)
+        cls = "bloom-chip checked" if checked else "bloom-chip"
+        # Use Streamlit checkbox to keep state in sync; hide label and wrap in our chip
+        cid = f"cb-{v}"
+        row_html.append(f'''
+            <label class="{cls}">
+              <input type="checkbox" disabled {"checked" if checked else ""}/>
+              <span>{v}</span>
+            </label>
+        ''')
+    row_html.append('</div>')
+    st.markdown("".join(row_html), unsafe_allow_html=True)
+
+    # Real checkboxes (invisible) to control state; place offscreen to capture interaction
+    cols = st.columns(len(verbs))
+    for i, v in enumerate(verbs):
+        with cols[i]:
+            # present minimal checkbox with empty label to toggle state
+            val = st.checkbox(" ", value=(v in st.session_state.bloom_picks), key=f"verb-{v}")
+            if val: st.session_state.bloom_picks.add(v)
+            else:   st.session_state.bloom_picks.discard(v)
+
+def bloom_block(title: str, subtitle: str, verbs: list[str], css_class: str, focus_band: str, band_name: str):
+    picks = st.session_state.bloom_picks
+    active = any(v in picks for v in verbs)
+    classes = ["bloom-group", css_class]
+    if band_name == focus_band: classes.append("bloom-focus")
+    if active: classes.append("bloom-active")
+    st.markdown(f'<div class="{" ".join(classes)}">', unsafe_allow_html=True)
+    st.markdown(f"**{title}**  <span class='bloom-caption'>{subtitle}</span>", unsafe_allow_html=True)
+    chip_row(verbs)  # horizontal chips
+    st.markdown("</div>", unsafe_allow_html=True)
+
+focus = week_focus(int(st.session_state.week))
+st.markdown(f"<div style='text-align:right'><span class='bloom-pill'>Week {int(st.session_state.week)}: {focus}</span></div>",
+            unsafe_allow_html=True)
+
+bloom_block("Low (Weeks 1–4)",  "Remember / Understand", LOW_VERBS,  "bloom-low",  focus, "Low")
+bloom_block("Medium (Weeks 5–9)","Apply / Analyse",       MED_VERBS,  "bloom-med",  focus, "Medium")
+bloom_block("High (Weeks 10–14)","Evaluate / Create",     HIGH_VERBS, "bloom-high", focus, "High")
+
+st.markdown('<hr class="hr-soft"/>', unsafe_allow_html=True)
+
+
+# --------------------------- Builders ---------------------------
+
+def _clean_shuffle(options):
+    banned = {"all of the above","none of the above","true","false"}
+    clean = [o for o in options if o.strip().lower() not in banned]
+    random.shuffle(clean)
+    return clean
+
+def build_mcqs(topic: str, verbs: list[str], n: int):
+    out = []
+    for i in range(n):
+        v = random.choice(verbs) if verbs else "identify"
+        stem = f"{v.title()} — {topic or 'Topic'} — Q{i+1}"
+        opts = _clean_shuffle(["Option A","Option B","Option C","Correct answer","Option D"])
+        out.append({"stem": stem, "options": opts, "answer": "Correct answer"})
+    return out
+
+def build_activities(topic: str, n: int, minutes: int, verbs: list[str]):
+    verbs = verbs or ["apply","demonstrate","solve"]
+    acts = []
+    for i in range(1, n+1):
+        acts.append(f"Activity {i} ({minutes} min): {verbs[i % len(verbs)]} on {topic or 'today’s concept'} via example / mini-lab.")
+    return acts
+
+def build_revision(topic: str, verbs: list[str], qty: int = 5):
+    verbs = verbs or ["recall","classify","compare","justify","design"]
+    rev = []
+    for i in range(1, qty+1):
+        v = verbs[i % len(verbs)]
+        rev.append(f"Rev {i}: {v.title()} — connect this week to prior learning for {topic or 'the module'} (3–4 sentences).")
+    return rev
+
+
+# --------------------------- Exports ---------------------------
+
+def docx_download(filename: str, lines: list[str]) -> io.BytesIO:
+    if not Document:
+        buf = io.BytesIO(); buf.write("\n".join(lines).encode("utf-8")); buf.seek(0); return buf
+    doc = Document()
+    for line in lines: doc.add_paragraph(line)
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf
+
+def pptx_download(title: str, bullets: list[str]) -> io.BytesIO:
+    if not Presentation:
+        buf = io.BytesIO(); buf.write((title + "\n" + "\n".join(bullets)).encode("utf-8")); buf.seek(0); return buf
+    prs = Presentation(); slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = title
+    left, top, width, height = Inches(1), Inches(1.8), Inches(8), Inches(4.5)
+    tb = slide.shapes.add_textbox(left, top, width, height); tf = tb.text_frame; tf.word_wrap = True
+    for i, b in enumerate(bullets):
+        p = tf.add_paragraph() if i else tf.paragraphs[0]; p.text = b; p.level = 0
+        if Pt: p.font.size = Pt(18)
+    buf = io.BytesIO(); prs.save(buf); buf.seek(0); return buf
+
+
+# --------------------------- Tabs ---------------------------
+
+tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
+
+picked = sorted(list(st.session_state.bloom_picks))
+topic_text = (st.session_state.notes + "\n\n" + st.session_state.source_full).strip()
+
+# MCQs
+with tabs[0]:
+    cA, cB, _ = st.columns([1,1,6])
+    with cA:
+        st.session_state.mcq_count = st.selectbox("How many MCQs?", [5,10,15,20,25,30], index=1)
+    with cB:
+        st.session_state.include_answer_key = st.checkbox("Include answer key in export",
+                                                          value=st.session_state.include_answer_key)
+
+    if st.button("Generate MCQs", type="primary"):
+        try:
+            mcqs = build_mcqs(topic_text, picked, st.session_state.mcq_count)
+            st.session_state.last_generated["mcqs"] = mcqs
+            st.success(f"Generated {len(mcqs)} MCQs.")
+        except Exception as e:
+            st.error(f"Could not generate MCQs: {e}")
+
+    mcqs = st.session_state.last_generated.get("mcqs", [])
+    if mcqs:
+        for i, q in enumerate(mcqs, 1):
+            st.markdown(f"**Q{i}. {q['stem']}**")
+            for opt in q["options"]: st.write(f"- {opt}")
+            if st.session_state.include_answer_key: st.caption(f"Answer: {q['answer']}")
+            st.divider()
+
+        # DOCX
+        lines = []
+        for i, q in enumerate(mcqs, 1):
+            lines.append(f"Q{i}. {q['stem']}")
+            lines.extend([f"- {o}" for o in q["options"]])
+            if st.session_state.include_answer_key: lines.append(f"Answer: {q['answer']}")
+            lines.append("")
+        doc = docx_download("ADI_MCQs.docx", lines)
+        st.download_button("Download MCQs (DOCX)", data=doc,
+                           file_name="ADI_MCQs.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           key=f"dlmcq-{uuid4().hex}")
+
+        # PPTX preview
+        ppt = pptx_download("MCQs (Preview Deck)", [q["stem"] for q in mcqs[:10]])
+        st.download_button("Download MCQs (PPTX)", data=ppt,
+                           file_name="ADI_MCQs.pptx",
+                           mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                           key=f"dlmcq2-{uuid4().hex}")
+
+# Activities
+with tabs[1]:
+    a1, a2, a3 = st.columns([1,1,3])
+    with a1:
+        st.session_state.activities_count = st.selectbox("Number of activities", [1,2,3,4], index=1)
+    with a2:
+        st.session_state.activity_minutes = st.select_slider("Minutes per activity",
+                                                             options=list(range(5,65,5)), value=20)
+    with a3:
+        st.markdown("Pick Bloom verbs above; tasks align wording automatically.")
+
+    if st.button("Generate Activities", type="primary", key="gen-acts"):
+        try:
+            acts = build_activities(topic_text, st.session_state.activities_count,
+                                    st.session_state.activity_minutes, picked)
+            st.session_state.last_generated["activities"] = acts
+            st.success(f"Generated {len(acts)} activities.")
+        except Exception as e:
+            st.error(f"Could not generate activities: {e}")
+
+    acts = st.session_state.last_generated.get("activities", [])
+    if acts:
+        for a in acts: st.write("• " + a)
+        adb = docx_download("ADI_Activities.docx", [f"{i+1}. {a}" for i,a in enumerate(acts)])
+        st.download_button("Download Activities (DOCX)", data=adb,
+                           file_name="ADI_Activities.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           key=f"dlact-{uuid4().hex}")
+
+# Revision
+with tabs[2]:
+    qty = st.slider("How many revision prompts?", 3, 12, 5)
+    if st.button("Generate Revision", type="primary", key="gen-rev"):
+        try:
+            rev = build_revision(topic_text, picked, qty)
+            st.session_state.last_generated["revision"] = rev
+            st.success(f"Generated {len(rev)} revision prompts.")
+        except Exception as e:
+            st.error(f"Could not generate revision: {e}")
+
+    rev = st.session_state.last_generated.get("revision", [])
+    if rev:
+        for r in rev: st.write("• " + r)
+        rdb = docx_download("ADI_Revision.docx", [f"{i+1}. {r}" for i,r in enumerate(rev)])
+        st.download_button("Download Revision (DOCX)", data=rdb,
+                           file_name="ADI_Revision.docx",
+                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           key=f"dlrev-{uuid4().hex}")
+
+# Print Summary
+with tabs[3]:
+    st.caption("A single, printable overview of your session context and the latest generated content.")
+    st.subheader("Context")
+    st.write(
+        f"**Course**: {st.session_state.course}  \n"
+        f"**Cohort**: {st.session_state.cohort}  \n"
+        f"**Instructor**: {st.session_state.instructor}  \n"
+        f"**Week**: {st.session_state.week}  \n"
+        f"**Lesson**: {st.session_state.lesson}  \n"
+        f"**Date**: {st.session_state.date_str}"
+    )
+
+    if st.session_state.notes:
+        st.subheader("Your notes")
+        st.write(st.session_state.notes)
+
+    if st.session_state.source_full:
+        st.subheader("Source (first 500 chars)")
+        st.write(st.session_state.source_full[:500] + ("…" if len(st.session_state.source_full) > 500 else ""))
+
+    g = st.session_state.last_generated
+    if g.get("mcqs"):
+        st.subheader("Latest MCQs")
+        for i, q in enumerate(g["mcqs"][:5], 1):
+            st.write(f"{i}. {q['stem']}")
+    if g.get("activities"):
+        st.subheader("Latest Activities")
+        for a in g["activities"]:
+            st.write("• " + a)
+    if g.get("revision"):
+        st.subheader("Latest Revision")
+        for r in g["revision"]:
+            st.write("• " + r)
+
+    lines = [
+        f"Course: {st.session_state.course}",
+        f"Cohort: {st.session_state.cohort}",
+        f"Instructor: {st.session_state.instructor}",
+        f"Week {st.session_state.week}, Lesson {st.session_state.lesson}",
+        f"Date: {st.session_state.date_str}",
+        ""
+    ]
+    if st.session_state.notes:
+        lines += ["Your notes", st.session_state.notes, ""]
+    if st.session_state.source_full:
+        lines += ["Source (first 500 chars)", st.session_state.source_full[:500], ""]
+    if g.get("mcqs"):
+        lines += ["MCQs (first 5)"] + [f"{i}. {q['stem']}" for i, q in enumerate(g["mcqs"][:5], 1)] + [""]
+    if g.get("activities"):
+        lines += ["Activities"] + [f"• {a}" for a in g["activities"]] + [""]
+    if g.get("revision"):
+        lines += ["Revision"] + [f"• {r}" for r in g["revision"]]
+
+    doc = docx_download("ADI_Print_Summary.docx", lines)
+    st.download_button("Download Print Summary (DOCX)", data=doc,
+                       file_name="ADI_Print_Summary.docx",
+                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                       key=f"dlsum-{uuid4().hex}")
+
