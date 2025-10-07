@@ -13,9 +13,7 @@ except Exception:
     PDF_ENABLED = False
 
 # ---------- Theme ----------
-ADI_GREEN = "#245a34"
-ADI_GOLD  = "#C8A85A"
-# Chip palette
+ADI_GREEN = "#245a34"; ADI_GOLD = "#C8A85A"
 LOW_BG,  LOW_BORDER,  LOW_TEXT  = "#cfe8d9", "#245a34", "#153a27"
 MED_BG,  MED_BORDER,  MED_TEXT  = "#f8e6c9", "#C8A85A", "#3f2c13"
 HIGH_BG, HIGH_BORDER, HIGH_TEXT = "#dfe6ff", "#4F46E5", "#1E1B4B"
@@ -39,15 +37,14 @@ section[data-testid="stSidebar"]{{background:#fff;border-right:1px solid #e5e7eb
 div.low-band>div>div{{background:var(--band-low)!important;}}
 div.med-band>div>div{{background:var(--band-med)!important;}}
 div.high-band>div>div{{background:var(--band-high)!important;}}
-/* Color chips by aria-label (robust with Streamlit DOM) */
+/* Chip colors via aria-label */
 div[aria-label="Low verbs"]    [data-baseweb="tag"]{{background:var(--low-bg)!important;border:1px solid var(--low-border)!important;color:var(--low-text)!important;font-weight:600;}}
 div[aria-label="Medium verbs"] [data-baseweb="tag"]{{background:var(--med-bg)!important;border:1px solid var(--med-border)!important;color:var(--med-text)!important;font-weight:600;}}
 div[aria-label="High verbs"]   [data-baseweb="tag"]{{background:var(--high-bg)!important;border:1px solid var(--high-border)!important;color:var(--high-text)!important;font-weight:600;}}
-/* Clickable feel */
 div[data-baseweb="tab"] button{{border-radius:999px!important;cursor:pointer;}}
 button[kind="primary"]{{border-radius:12px!important;cursor:pointer;}}
 div[data-baseweb="select"] *{{cursor:pointer!important;}}
-/* Uploader dashed (cover variants) */
+/* Uploader dashed across DOM variants */
 div[data-testid="stFileUploaderDropzone"], section[data-testid="stFileUploaderDropzone"],
 div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]{{
   border:2px dashed var(--adi-green)!important; background:#fff!important; border-radius:12px!important;
@@ -61,7 +58,6 @@ DATA_DIR = Path(os.getenv("DATA_DIR", ".")); DATA_DIR.mkdir(parents=True, exist_
 CFG_FILE = DATA_DIR / "adi_modules.json"
 SEED_CFG = {"courses":["Defense Technologies 101","Integrated Project & Systems"],
             "cohorts":["D1-C01"], "instructors":["Staff Instructor"]}
-
 def load_cfg():
     try: cfg = json.loads(CFG_FILE.read_text(encoding="utf-8")) if CFG_FILE.exists() else {}
     except Exception: cfg = {}
@@ -95,7 +91,7 @@ def edit_list(label, key, placeholder):
         if colB.button("Cancel", key=f"cancel_{key}"): st.session_state[f"adding_{key}"]=False
     return selected
 
-# ---------- Upload parsing (parse-once guard) ----------
+# ---------- Upload parsing ----------
 def detect_filetype(f)->str:
     n=(f.name or "").lower(); m=(f.type or "").lower()
     if n.endswith(".pdf") or "pdf" in m: return "pdf"
@@ -128,8 +124,7 @@ def parse_upload_cached(b:bytes, t:str, deep:bool):
 
 def file_signature(uploaded, deep)->str:
     try:
-        b = uploaded.getvalue()
-        h = hashlib.sha1(b).hexdigest()[:12]
+        b = uploaded.getvalue(); h = hashlib.sha1(b).hexdigest()[:12]
         return f"{uploaded.name}|{len(b)}|{deep}|{h}"
     except Exception:
         return f"{uploaded.name}|{deep}|unknown"
@@ -159,6 +154,29 @@ def gen_mcqs(n, verbs, txt, include=True):
         random.shuffle(opts); out.append((q,opts)); 
         if include: key.append(opts.index(right)+1)
     return out, key
+
+# ---------- Export helpers ----------
+def export_docx(mcqs, include, key):
+    from docx import Document
+    doc=Document(); doc.add_heading("Knowledge MCQs", level=1)
+    for q,opts in mcqs:
+        r=doc.add_paragraph().add_run(q); r.bold=True
+        for j,opt in enumerate(opts, start=1): doc.add_paragraph(f"{chr(64+j)}. {opt}")
+    if include and key:
+        doc.add_heading("Answer Key", level=2)
+        for i,a in enumerate(key, start=1): doc.add_paragraph(f"Q{i}: {['A','B','C','D'][a-1]}")
+    bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+def export_txt(mcqs, key, include):
+    lines=[]
+    for q,opts in mcqs:
+        lines.append(q)
+        for j,opt in enumerate(opts, start=1): lines.append(f"{chr(64+j)}. {opt}")
+        lines.append("")
+    if include and key:
+        lines.append("Answer Key")
+        for i,a in enumerate(key, start=1): lines.append(f"Q{i}: {['A','B','C','D'][a-1]}")
+    return ("\n".join(lines)).encode("utf-8")
 
 # ---------- UI ----------
 def main():
@@ -207,7 +225,7 @@ def main():
 
     tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
 
-    # Parse once per unique signature (prevents extra work/flicker)
+    # Parse once per signature
     text = ""
     if uploaded is not None:
         sig = file_signature(uploaded, deep)
@@ -230,31 +248,30 @@ def main():
             st.session_state.gen_mcqs = mcqs
             st.session_state.answer_key = key if include else []
             st.success("Download panel is ready below.")
+
         if st.session_state.get("gen_mcqs"):
             for q,opts in st.session_state.gen_mcqs:
                 st.markdown(f"**{q}**")
                 for j,opt in enumerate(opts, start=1): st.markdown(f"{chr(64+j)}. {opt}")
                 st.write("")
             st.markdown('<div class="download-panel">', unsafe_allow_html=True)
-            from docx import Document
-            def export_docx(mcqs, include, key):
-                doc=Document(); doc.add_heading("Knowledge MCQs", level=1)
-                for q,opts in mcqs:
-                    r=doc.add_paragraph().add_run(q); r.bold=True
-                    for j,opt in enumerate(opts, start=1): doc.add_paragraph(f"{chr(64+j)}. {opt}")
-                if include and key:
-                    doc.add_heading("Answer Key", level=2)
-                    for i,a in enumerate(key, start=1): doc.add_paragraph(f"Q{i}: {['A','B','C','D'][a-1]}")
-                bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
-            st.download_button("⬇️ Download DOCX", data=export_docx(st.session_state.gen_mcqs, include, st.session_state.answer_key),
-                               file_name="ADI_Knowledge_MCQs.docx",
-                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            col1,col2 = st.columns(2)
+            with col1:
+                st.download_button("⬇️ Download DOCX",
+                                   data=export_docx(st.session_state.gen_mcqs, include, st.session_state.answer_key),
+                                   file_name="ADI_Knowledge_MCQs.docx",
+                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            with col2:
+                st.download_button("⬇️ Download TXT",
+                                   data=export_txt(st.session_state.gen_mcqs, st.session_state.answer_key, include),
+                                   file_name="ADI_Knowledge_MCQs.txt",
+                                   mime="text/plain")
             st.markdown('</div>', unsafe_allow_html=True)
 
     with tabs[1]:
         n_act = st.selectbox("How many activities?", [3,5,8,10], index=1, key="n_act")
         if st.button("Generate Activities"):
-            acts = [f"{i+1}. {random.choice(med or MED).capitalize()} a short activity focusing on **{w}**." 
+            acts = [f"{i+1}. {random.choice(med or MED).capitalize()} a short activity focusing on **{w}**."
                     for i,w in enumerate(pick_terms(text, max(10,n_act*2))[:n_act])]
             st.session_state.gen_acts = acts; st.success("Activities generated.")
         if st.session_state.get("gen_acts"):
@@ -276,7 +293,7 @@ def main():
         if st.session_state.get("gen_mcqs"):
             st.markdown("### Knowledge MCQs")
             for q,opts in st.session_state.gen_mcqs:
-                st.markdown(f"**{q}**"); 
+                st.markdown(f"**{q}**")
                 for j,opt in enumerate(opts, start=1): st.markdown(f"{chr(64+j)}. {opt}")
                 st.write("")
         if st.session_state.get("gen_acts"):
@@ -291,3 +308,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Unexpected error: {e}"); st.stop()
+
