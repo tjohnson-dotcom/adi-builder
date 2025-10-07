@@ -20,6 +20,9 @@ except Exception:
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
 ADI_STONE = "#f7f8f7"
+BAND_LOW  = "#eaf3ed"
+BAND_MED  = "#fcf8ef"
+BAND_HIGH = "#eef2ff"
 
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
                    page_icon="🗂️", layout="wide")
@@ -31,6 +34,9 @@ st.markdown(f"""
   --adi-green: {ADI_GREEN};
   --adi-gold: {ADI_GOLD};
   --adi-stone: {ADI_STONE};
+  --band-low: {BAND_LOW};
+  --band-med: {BAND_MED};
+  --band-high:{BAND_HIGH};
 }}
 /* sidebar */
 section[data-testid="stSidebar"] {{
@@ -52,20 +58,28 @@ section[data-testid="stSidebar"] {{
   font-weight: 400;
   font-size: .9rem;
 }}
-/* expanders as soft cards */
-div[data-testid="stExpander"] > div {{
-  background: #ffffff;
-  border: 1px solid #e6e6e6;
-  border-radius: 14px;
+/* expanders as soft cards with band tints */
+div.low-band > div > div {{
+  background: var(--band-low) !important;
+}}
+div.med-band > div > div {{
+  background: var(--band-med) !important;
+}}
+div.high-band > div > div {{
+  background: var(--band-high) !important;
 }}
 /* pill-like tabs */
 div[data-baseweb="tab"] button {{
   border-radius: 999px !important;
+  cursor: pointer;
 }}
 /* primary buttons */
 button[kind="primary"] {{
   border-radius: 12px !important;
+  cursor: pointer;
 }}
+/* make selects feel clickable */
+div[data-baseweb="select"] * {{ cursor: pointer !important; }}
 /* code blocks */
 div[data-testid="stMarkdownContainer"] code {{
   background: var(--adi-stone);
@@ -77,18 +91,24 @@ div[data-testid="stMarkdownContainer"] code {{
 # Persistence for lists
 # ------------------------
 CFG_FILE = Path("adi_modules.json")
-DEFAULT_CFG = {
+SEED_CFG = {
     "courses": ["Defense Technologies 101"],
-    "instructors": ["Instructor A"]
+    "instructors": ["Staff Instructor"]
 }
 
 def load_cfg():
+    # always return dict with non-empty lists (seed if empty/missing)
+    cfg = {}
     try:
         if CFG_FILE.exists():
-            return json.loads(CFG_FILE.read_text(encoding="utf-8"))
+            cfg = json.loads(CFG_FILE.read_text(encoding="utf-8")) or {}
     except Exception:
-        pass
-    return DEFAULT_CFG.copy()
+        cfg = {}
+    # ensure keys
+    for k in ("courses", "instructors"):
+        if k not in cfg or not isinstance(cfg[k], list) or len(cfg[k]) == 0:
+            cfg[k] = SEED_CFG[k].copy()
+    return cfg
 
 def save_cfg(cfg):
     try:
@@ -112,17 +132,21 @@ def ensure_state():
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
-# helpers to edit a persistent list with + / - buttons
-def edit_list(label: str, items_key: str):
+# helpers to edit a persistent list with + / − buttons
+def edit_list(label: str, items_key: str, placeholder: str):
     items = st.session_state.cfg.get(items_key, [])
     if not isinstance(items, list):
         items = []
         st.session_state.cfg[items_key] = items
 
+    # prepend placeholder sentinel for UX
+    options = [f"— {placeholder} —"] + items
     c1, c2, c3 = st.columns([5,1,1])
-    selected = c1.selectbox(label, items, index=0 if items else None, key=f"sel_{items_key}")
+    choice = c1.selectbox(label, options, index=0, key=f"sel_{items_key}")
     add = c2.button("＋", key=f"add_{items_key}")
     rm  = c3.button("−", key=f"rm_{items_key}")
+
+    selected = None if choice == options[0] else choice
 
     if add:
         st.session_state[f"adding_{items_key}"] = True
@@ -331,9 +355,9 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Course details")
-    course = edit_list("Course name", "courses")
+    course = edit_list("Course name", "courses", "Choose a course")
     cohort = st.text_input("Class / Cohort", value="D1-C01")
-    instructor = edit_list("Instructor name", "instructors")
+    instructor = edit_list("Instructor name", "instructors", "Choose an instructor")
     the_date = st.date_input("Date", value=date.today())
 
     st.subheader("Context")
@@ -353,16 +377,23 @@ st.markdown(
 topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
 # Bloom policy bands
-low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=True if week <= 4 else False)
-med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=True if 5 <= week <= 9 else False)
-high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=True if week >= 10 else False)
+low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=True)
+med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=False)
+high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=False)
 
-with low_expander:
-    low = st.multiselect("Low verbs", BLOOM_VERBS_LOW, default=BLOOM_VERBS_LOW[:3], key="lowverbs")
-with med_expander:
-    med = st.multiselect("Medium verbs", BLOOM_VERBS_MED, default=BLOOM_VERBS_MED[:3], key="medverbs")
-with high_expander:
-    high = st.multiselect("High verbs", BLOOM_VERBS_HIGH, default=BLOOM_VERBS_HIGH[:3], key="highverbs")
+with st.container():
+    with low_expander:
+        st.markdown('<div class="low-band">', unsafe_allow_html=True)
+        low = st.multiselect("Low verbs", BLOOM_VERBS_LOW, default=BLOOM_VERBS_LOW[:3], key="lowverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with med_expander:
+        st.markdown('<div class="med-band">', unsafe_allow_html=True)
+        med = st.multiselect("Medium verbs", BLOOM_VERBS_MED, default=BLOOM_VERBS_MED[:3], key="medverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with high_expander:
+        st.markdown('<div class="high-band">', unsafe_allow_html=True)
+        high = st.multiselect("High verbs", BLOOM_VERBS_HIGH, default=BLOOM_VERBS_HIGH[:3], key="highverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 tabs = st.tabs(["Knowledge MCQs (ADI Policy)", "Skills Activities", "Revision", "Print Summary"])
 
@@ -397,7 +428,7 @@ with tabs[0]:
         colDL = st.columns(2)
         with colDL[0]:
             docx_bytes = export_docx(
-                title=f"{course} — Lesson {lesson} (Week {week})",
+                title=f"{course or 'Course'} — Lesson {lesson} (Week {week})",
                 mcqs=st.session_state.gen_mcqs,
                 acts=None,
                 rev=None,
@@ -436,7 +467,7 @@ with tabs[2]:
 # Tab 4 — Print Summary
 with tabs[3]:
     st.subheader("Print Summary")
-    st.markdown(f"**Course:** {course}  \n**Cohort:** {cohort}  \n**Instructor:** {instructor}  \n**Date:** {the_date}  \n**Lesson:** {lesson}  \n**Week:** {week}")
+    st.markdown(f"**Course:** {course or '—'}  \n**Cohort:** {cohort}  \n**Instructor:** {instructor or '—'}  \n**Date:** {the_date}  \n**Lesson:** {lesson}  \n**Week:** {week}")
     st.divider()
     if st.session_state.get("gen_mcqs"):
         st.markdown("### Knowledge MCQs")
@@ -457,3 +488,4 @@ with tabs[3]:
             st.markdown(f"- {r}")
 
 st.caption("ADI Builder — sleek, professional and engaging. Print-ready handouts for your instructors.")
+
