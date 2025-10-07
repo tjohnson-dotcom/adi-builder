@@ -1,10 +1,12 @@
-[theme]
-primaryColor = "#245a34"         # ADI green
-backgroundColor = "#ffffff"      # pure white background
-secondaryBackgroundColor = "#f5f5f3"  # ADI stone
-textColor = "#1f2937"            # slate grey (good contrast)
 
 [server]
-maxUploadSize = 200
-maxMessageSize = 300
+enableCORS = false
 enableXsrfProtection = true
+headless = true
+
+[theme]
+base="light"
+primaryColor="#245a34"
+backgroundColor="#ffffff"
+secondaryBackgroundColor="#f7f8f7"
+textColor="#111827"
