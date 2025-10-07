@@ -4,6 +4,15 @@ from datetime import date
 from uuid import uuid4
 import streamlit as st
 
+# put near the top of app.py
+try:
+    import fitz  # PyMuPDF
+    PDF_ENABLED = True
+except Exception:
+    fitz = None
+    PDF_ENABLED = False
+
+
 # Optional libs (still runs if not installed)
 try:
     from docx import Document
@@ -153,6 +162,15 @@ with st.sidebar:
     st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
 # ---------- parsing ----------
+if filetype == "pdf":
+    if PDF_ENABLED:
+        # existing PDF parsing code...
+        pass
+    else:
+        st.info("PDF parsing temporarily disabled on this build.")
+        st.stop()
+
+
 def parse_upload(file, deep=False)->str:
     if not file: return ""
     nm=file.name.lower()
@@ -349,6 +367,8 @@ with tabs[3]:
     if st.session_state.src:
         st.subheader("Source (first 500 chars)")
         st.write(st.session_state.src[:500] + ("…" if len(st.session_state.src)>500 else ""))
+for k, v in {"gen": {}, "answers": [], "export_ready": False}.items():
+    st.session_state.setdefault(k, v)
 
     g=st.session_state.last; lines=[
         f"Course: {st.session_state.course}",
