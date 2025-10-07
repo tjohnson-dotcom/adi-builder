@@ -1,20 +1,42 @@
-
 {
   "courses": [
-    "Defense Technologies 101",
-    "Integrated Project & Systems",
-    "Cyber Fundamentals",
-    "Materials & Manufacturing",
-    "Electronics for Defense",
-    "Vehicle Dynamics",
-    "Command & Control Basics"
+    "GE4-EPM — Defense Technology Practices: Experimentation, Quality Management and Inspection",
+    "GE4-IPM — Integrated Project and Materials Management in Defense Technology",
+    "GE4-MRO — Military Vehicle and Aircraft MRO: Principles & Applications",
+    "CT4-COM — Computation for Chemical Technologists",
+    "CT4-EMG — Explosives Manufacturing",
+    "CT4-TFL — Thermofluids",
+    "MT4-CMG — Composite Manufacturing",
+    "MT4-CAD — Computer Aided Design",
+    "MT4-MAE — Machine Elements",
+    "EE4-MFC — Electrical Materials",
+    "EE4-PMG — PCB Manufacturing",
+    "EE4-PCT — Power Circuits & Transmission"
   ],
   "instructors": [
-    "GHAMZA LAEBE K.",
-    "Dr. A. Rahman",
-    "M. Al-Sayed",
-    "S. O'Connor",
-    "Lt. R. Hassan",
-    "N. Patel"
+    "Ben",
+    "Abdulmalik",
+    "Gerhard",
+    "Faiz Lazam",
+    "Mohammed Alfarhan",
+    "Nerdeen Tariq",
+    "Dari",
+    "Ghamza Labeeb",
+    "Michail",
+    "Meshari",
+    "Mohammed Alwuthaylah",
+    "Myra",
+    "Meshal Algurabi",
+    "Ibrahim Alrawaili",
+    "Khalil",
+    "Salem",
+    "Chetan",
+    "Yasser",
+    "Ahmed Albader",
+    "Muath",
+    "Sultan",
+    "Dr. Mashael",
+    "Noura Aldossari",
+    "Daniel"
   ]
 }
