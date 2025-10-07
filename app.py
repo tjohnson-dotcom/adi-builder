@@ -6,7 +6,7 @@ from pathlib import Path
 
 # ---------- Page config & build tag
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
-st.caption("Build tag: 2025-10-07T23:20 full-safe-ADI-look")
+st.caption("Build tag: 2025-10-07T23:32 full-safe-ADI-polished")
 
 # ---------- Styles (ALL CSS inside this block)
 st.markdown('''
@@ -29,8 +29,8 @@ section[data-testid="stSidebar"]{ background:#fff; border-right:1px solid #e5e7e
 .adi-banner{
   background: linear-gradient(90deg, var(--adi-green) 0%, var(--adi-green-2) 100%);
   color:#fff; font-weight:700; letter-spacing:.3px;
-  padding:14px 18px; border-radius:10px; margin:8px 0 18px 0;
-  box-shadow:0 2px 6px rgba(0,0,0,.08);
+  padding:14px 18px; border-radius:8px; margin:8px 0 18px 0;
+  box-shadow:0 2px 4px rgba(0,0,0,.06);
 }
 
 /* Uploader */
@@ -66,8 +66,33 @@ button[kind], button {
   background: var(--adi-green) !important;
   border-color: var(--adi-green) !important;
   color:#fff !important;
+  padding: 10px 14px !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
 }
 button:hover{ filter:brightness(0.95)!important; }
+
+/* Softer expander look */
+div[data-testid="stExpander"] {
+  border: 1px solid rgba(30,77,43,.25) !important;
+  border-radius: 10px !important;
+}
+div[data-testid="stExpander"] > details[open] > summary {
+  box-shadow: 0 0 0 2px rgba(30,77,43,.25) inset !important;
+}
+
+/* Tabs: flatter with active underline */
+div[role="tablist"] button[role="tab"]{
+  background: transparent !important;
+  border: none !important;
+  color: #374151 !important;
+  padding: 8px 12px !important;
+}
+div[role="tablist"] button[aria-selected="true"]{
+  color: var(--adi-green) !important;
+  box-shadow: inset 0 -3px 0 0 var(--adi-green) !important;
+  font-weight: 700 !important;
+}
 
 /* ===== Pointer + hover fix (uploader, selects, multiselects, buttons) ===== */
 /* Make interactive bits feel clickable */
@@ -108,10 +133,30 @@ section[data-testid="stSidebar"] [aria-haspopup="listbox"]:hover {
   box-shadow: 0 0 0 2px var(--adi-green) inset !important;
 }
 
-/* Expander accents */
-details > summary{ border-radius:10px !important; }
-details[open] > summary{ box-shadow: 0 0 0 2px var(--adi-green) inset !important; }
-summary:focus-visible{ outline:2px solid var(--adi-green) !important; outline-offset:2px; }
+/* === Global picker hover & pointer (MAIN content) === */
+div[data-testid="stSelectbox"] button,
+div[data-testid="stMultiSelect"] button,
+[data-baseweb="select"] div[role="button"]{
+  cursor: pointer !important;
+  transition: box-shadow .12s ease-in-out;
+}
+div[data-testid="stSelectbox"] button:hover,
+div[data-testid="stMultiSelect"] button:hover,
+[data-baseweb="select"] div[role="button"]:hover{
+  box-shadow: 0 0 0 2px var(--adi-green) inset !important;
+}
+
+/* Number inputs (Lesson, Week) – ring on hover */
+[data-baseweb="input"] { transition: box-shadow .12s ease-in-out; }
+[data-baseweb="input"]:hover { box-shadow: 0 0 0 2px var(--adi-green) inset !important; }
+
+/* Dropdown menu styling + hover */
+[data-baseweb="menu"]{
+  border: 1px solid rgba(30,77,43,.25) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,.08) !important;
+}
+[data-baseweb="menu"] li{ cursor: pointer !important; }
+[data-baseweb="menu"] li:hover{ background: rgba(30,77,43,.08) !important; }
 </style>
 ''', unsafe_allow_html=True)
 
