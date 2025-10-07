@@ -1,7 +1,8 @@
 
 import streamlit as st
-import io, random, textwrap
+import io, random, textwrap, json
 from datetime import date
+from pathlib import Path
 
 # ------------------------
 # Optional PDF support
@@ -73,8 +74,31 @@ div[data-testid="stMarkdownContainer"] code {{
 """, unsafe_allow_html=True)
 
 # ------------------------
-# Helpers
+# Persistence for lists
 # ------------------------
+CFG_FILE = Path("adi_modules.json")
+DEFAULT_CFG = {
+    "courses": ["Defense Technologies 101"],
+    "instructors": ["Instructor A"]
+}
+
+def load_cfg():
+    try:
+        if CFG_FILE.exists():
+            return json.loads(CFG_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return DEFAULT_CFG.copy()
+
+def save_cfg(cfg):
+    try:
+        CFG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        st.warning(f"Could not save config: {e}")
+
+if "cfg" not in st.session_state:
+    st.session_state.cfg = load_cfg()
+
 def ensure_state():
     defaults = {
         "gen_mcqs": [],
@@ -82,12 +106,53 @@ def ensure_state():
         "gen_rev": [],
         "answer_key": [],
         "export_ready": False,
+        "adding_courses": False,
+        "adding_instructors": False,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
+# helpers to edit a persistent list with + / - buttons
+def edit_list(label: str, items_key: str):
+    items = st.session_state.cfg.get(items_key, [])
+    if not isinstance(items, list):
+        items = []
+        st.session_state.cfg[items_key] = items
+
+    c1, c2, c3 = st.columns([5,1,1])
+    selected = c1.selectbox(label, items, index=0 if items else None, key=f"sel_{items_key}")
+    add = c2.button("＋", key=f"add_{items_key}")
+    rm  = c3.button("−", key=f"rm_{items_key}")
+
+    if add:
+        st.session_state[f"adding_{items_key}"] = True
+    if rm and selected:
+        try:
+            items.remove(selected)
+            save_cfg(st.session_state.cfg)
+            st.rerun()
+        except ValueError:
+            pass
+
+    if st.session_state.get(f"adding_{items_key}"):
+        new_val = st.text_input(f"Add new {label.lower()}", key=f"new_{items_key}")
+        csa, csb = st.columns([1,1])
+        if csa.button("Save", key=f"save_{items_key}"):
+            if new_val:
+                if new_val not in items:
+                    items.append(new_val)
+                    save_cfg(st.session_state.cfg)
+                st.session_state[f"adding_{items_key}"] = False
+                st.rerun()
+        if csb.button("Cancel", key=f"cancel_{items_key}"):
+            st.session_state[f"adding_{items_key}"] = False
+
+    return selected
+
+# ------------------------
+# File parsing
+# ------------------------
 def detect_filetype(uploaded_file) -> str:
-    """Return 'pdf' | 'pptx' | 'docx' | 'txt' (fallback from name/MIME)."""
     name = (uploaded_file.name or "").lower()
     if name.endswith(".pdf"):   return "pdf"
     if name.endswith(".pptx"):  return "pptx"
@@ -253,16 +318,22 @@ def export_txt_mcqs(mcqs, answer_key=None, include_answers=False) -> bytes:
 ensure_state()
 
 with st.sidebar:
-    st.image("https://raw.githubusercontent.com/fortana-co/asset-host/main/adi-logo-placeholder.png", use_column_width=True)
+    # Local logo with graceful fallback
+    logo_path = Path("adi_logo.png")
+    if logo_path.exists():
+        st.image(str(logo_path), use_column_width=True)
+    else:
+        st.markdown("<small style='color:#6b7280'>Logo not found (adi_logo.png). Add it to the repo root.</small>", unsafe_allow_html=True)
+
     st.subheader("Upload (optional)")
     uploaded_file = st.file_uploader("Drag and drop file here", type=["txt", "docx", "pptx", "pdf"])
     deep_scan = st.toggle("Deep scan source (slower, better coverage)", value=False)
     st.divider()
 
     st.subheader("Course details")
-    course = st.text_input("Course name", value="Defense Technologies 101")
+    course = edit_list("Course name", "courses")
     cohort = st.text_input("Class / Cohort", value="D1-C01")
-    instructor = st.text_input("Instructor name", value="")
+    instructor = edit_list("Instructor name", "instructors")
     the_date = st.date_input("Date", value=date.today())
 
     st.subheader("Context")
@@ -282,9 +353,9 @@ st.markdown(
 topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
 # Bloom policy bands
-low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=week <= 4)
-med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=5 <= week <= 9)
-high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=week >= 10)
+low_expander = st.expander("**Low (Weeks 1–4)** — Remember / Understand", expanded=True if week <= 4 else False)
+med_expander = st.expander("**Medium (Weeks 5–9)** — Apply / Analyse", expanded=True if 5 <= week <= 9 else False)
+high_expander = st.expander("**High (Weeks 10–14)** — Evaluate / Create", expanded=True if week >= 10 else False)
 
 with low_expander:
     low = st.multiselect("Low verbs", BLOOM_VERBS_LOW, default=BLOOM_VERBS_LOW[:3], key="lowverbs")
