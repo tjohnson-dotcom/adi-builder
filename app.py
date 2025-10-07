@@ -35,9 +35,9 @@ section[data-testid="stSidebar"]{ background:#fff; border-right:1px solid #e5e7e
 
 /* Uploader */
 div[data-testid="stFileUploaderDropzone"]{
-  border:2px dashed var(--adi-green) !important;
+  border:3px dotted var(--adi-green) !important;
   border-radius:12px !important;
-  background:#fff !important;
+  background:#ffffff !important;
 }
 
 /* Chip colors — label first, then order fallback */
@@ -105,6 +105,8 @@ button {
 }
 
 /* Hover feedback */
+/* Uploader hover transition */
+div[data-testid="stFileUploaderDropzone"]{ transition: box-shadow .12s ease-in-out, border-color .12s ease-in-out; }
 div[data-testid="stFileUploaderDropzone"]:hover {
   box-shadow: 0 0 0 3px var(--adi-green) inset !important;
 }
