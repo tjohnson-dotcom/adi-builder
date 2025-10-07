@@ -39,7 +39,7 @@ div.low-band>div>div{{background:var(--band-low)!important;}}
 div.med-band>div>div{{background:var(--band-med)!important;}}
 div.high-band>div>div{{background:var(--band-high)!important;}}
 
-/* FINAL selectors — tags recolor regardless of DOM shifts */
+/* Primary wrappers (still useful) */
 #low-wrap  [data-baseweb="tag"]{{
   background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; font-weight:600;
 }}
@@ -49,10 +49,16 @@ div.high-band>div>div{{background:var(--band-high)!important;}}
 #high-wrap [data-baseweb="tag"]{{
   background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; font-weight:600;
 }}
-/* Safety net: fallback by aria-label if wrappers fail */
-div[aria-label="Low verbs"]    [data-baseweb="tag"]{{ background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; }}
-div[aria-label="Medium verbs"] [data-baseweb="tag"]{{ background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; }}
-div[aria-label="High verbs"]   [data-baseweb="tag"]{{ background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; }}
+
+/* Fallback by field label (works on all modern browsers) */
+div[aria-label="Low verbs"]    [data-baseweb="tag"]{{ background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; font-weight:600; }}
+div[aria-label="Medium verbs"] [data-baseweb="tag"]{{ background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; font-weight:600; }}
+div[aria-label="High verbs"]   [data-baseweb="tag"]{{ background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; font-weight:600; }}
+
+/* Robust :has() parent targeting (Chrome/Edge) */
+div:has(> div[aria-label="Low verbs"])    [data-baseweb="tag"]{{ background:var(--low-bg)!important; border:1px solid var(--low-border)!important; color:var(--low-text)!important; font-weight:600; }}
+div:has(> div[aria-label="Medium verbs"]) [data-baseweb="tag"]{{ background:var(--med-bg)!important; border:1px solid var(--med-border)!important; color:var(--med-text)!important; font-weight:600; }}
+div:has(> div[aria-label="High verbs"])   [data-baseweb="tag"]{{ background:var(--high-bg)!important; border:1px solid var(--high-border)!important; color:var(--high-text)!important; font-weight:600; }}
 
 /* Click cues */
 div[data-baseweb="tab"] button{{border-radius:999px!important;cursor:pointer;}}
@@ -242,7 +248,7 @@ def main():
         st.markdown('<div class="low-band">', unsafe_allow_html=True)
         st.markdown('<div id="low-wrap">', unsafe_allow_html=True)
         low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
-        st.markdown('</div>', unsafe_allow_html=True)  # close #low-wrap
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ---- Medium
@@ -384,4 +390,3 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Unexpected error: {e}"); st.stop()
-
