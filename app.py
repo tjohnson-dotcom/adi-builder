@@ -1,4 +1,4 @@
-# ADI Builder — Lesson Activities & Questions (classic-v3.9)
+# ADI Builder — Lesson Activities & Questions (classic-v3.10 / safe-select + MCQ generator)
 import streamlit as st
 import json, io, datetime, re
 from docx import Document
@@ -16,11 +16,9 @@ STYLES = """
   --med:#f8e6c9;  --med-b:#efc989;  --med-t:#4a3514;
   --high:#dfe6ff; --high-b:#9db4ff; --high-t:#101a3d;
 }
-/* Banner */
 [data-testid="stHeader"] { background: transparent; }
 .stApp header { background: transparent; }
 div.block-container{padding-top:1rem;}
-/* Logo sizing */
 .adi-logo{width:160px;margin:6px 0 12px 0}
 
 /* Drag & drop dashed box */
@@ -33,14 +31,14 @@ div[data-testid="stFileUploaderDropzone"]:hover{
   box-shadow:0 0 0 3px var(--adi-green) inset!important;
 }
 
-/* Make interactive bits feel clickable */
+/* Clickable affordances */
 div[data-testid="stFileUploaderDropzone"],
 div[data-testid="stSelectbox"] button,
 div[data-testid="stMultiSelect"] button,
 button[kind], button { cursor:pointer!important; }
 :focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px; }
 
-/* Verb band containers + colored chips */
+/* Verb band styling */
 .band{
   border:1px solid rgba(36,90,52,.18)!important;
   border-radius:10px!important;
@@ -62,14 +60,17 @@ button[kind], button { cursor:pointer!important; }
   background:var(--high)!important;border:1px solid var(--high-b)!important;
   color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important
 }
-/* Stronger active ring (4px) for projectors */
+/* Stronger active ring */
 .band.low.active  {box-shadow:0 0 0 4px var(--low-b) inset!important;background:#eaf6ef!important}
 .band.med.active  {box-shadow:0 0 0 4px var(--med-b) inset!important;background:#fcf2e3!important}
 .band.high.active {box-shadow:0 0 0 4px var(--high-b) inset!important;background:#eef1ff!important}
 
-/* Cards */
+/* MCQ Cards / actions */
 .mcq-card{margin:6px 0}
-/* Secondary (outline) buttons for per-question downloads — robust selector */
+hr.thin{border:none;border-top:1px solid #e5e7eb;margin:8px 0}
+.mcq-top-row{margin-bottom:6px}
+
+/* Outline buttons for per-question downloads (robust) */
 .secondary .stDownloadButton > button,
 .secondary button{
   background:transparent!important;color:var(--adi-green)!important;
@@ -77,13 +78,8 @@ button[kind], button { cursor:pointer!important; }
 }
 .secondary .stDownloadButton > button:hover,
 .secondary button:hover{background:rgba(36,90,52,.06)!important}
-/* Action rows + radio spacing */
+/* Action row */
 .mcq-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 0 0}
-.mcq-card .stRadio{margin:0 0 6px 0;padding:2px 0}
-
-/* Thin rule & compact header row */
-hr.thin{border:none;border-top:1px solid #e5e7eb;margin:8px 0}
-.mcq-top-row{margin-bottom:6px}
 
 /* Tabs hover/active cues */
 .stTabs [role="tab"][aria-selected="true"]{border-bottom:2px solid var(--adi-green);font-weight:700}
@@ -99,13 +95,13 @@ LOW  = ["define","identify","list","recall","describe","label"]
 MED  = ["apply","demonstrate","solve","illustrate","classify","compare"]
 HIGH = ["evaluate","synthesize","design","justify","critique","create"]
 
-COURSES    = [
+COURSES = [
     "GE4-IPM — Integrated Project & Materials Mgmt",
     "GE4-EPM — Defense Technology Practices",
     "CT4-COM — Computation for Chemical Technologists"
 ]
-COHORTS    = ["D1-C01","D1-M01","D1-M02","D2-C01"]
-INSTRUCTORS= ["Daniel","Ghamza Labeeb","Abdulmalik","Nerdeen Tariq"]
+COHORTS = ["D1-C01","D1-M01","D1-M02","D2-C01"]
+INSTRUCTORS = ["Daniel","Ghamza Labeeb","Abdulmalik","Nerdeen Tariq"]
 
 # ---------- PREFS ----------
 def load_prefs():
@@ -125,9 +121,9 @@ def init_state():
     ss.setdefault("week", prefs.get("week", 1))
     ss.setdefault("lesson", prefs.get("lesson", 1))
     ss.setdefault("deep_scan", prefs.get("deep_scan", False))
-    ss.setdefault("sel_courses", prefs.get("sel_courses", ""))
-    ss.setdefault("sel_cohorts", prefs.get("sel_cohorts", ""))
-    ss.setdefault("sel_instructors", prefs.get("sel_instructors", ""))
+    ss.setdefault("sel_courses", prefs.get("sel_courses", COURSES[0] if COURSES else ""))
+    ss.setdefault("sel_cohorts", prefs.get("sel_cohorts", COHORTS[0] if COHORTS else ""))
+    ss.setdefault("sel_instructors", prefs.get("sel_instructors", INSTRUCTORS[0] if INSTRUCTORS else ""))
     ss.setdefault("mcqs", [
         {"stem":"Explain the role of inspection in quality management.",
          "options":["To verify conformance","To set company policy","To hire staff","To control budgets"],
@@ -136,16 +132,6 @@ def init_state():
     ss.setdefault("include_key", True)
 
 init_state()
-
-def persist_state():
-    save_prefs({
-        "week": st.session_state.week,
-        "lesson": st.session_state.lesson,
-        "deep_scan": st.session_state.deep_scan,
-        "sel_courses": st.session_state.sel_courses,
-        "sel_cohorts": st.session_state.sel_cohorts,
-        "sel_instructors": st.session_state.sel_instructors,
-    })
 
 # ---------- HELPERS ----------
 def _slug(s:str)->str:
@@ -207,6 +193,28 @@ def export_txt_all(items, include_key=True)->bytes:
         out.append("")
     return ("\n".join(out)).encode("utf-8")
 
+# ---- NEW: MCQ generator (topic + selected verbs) ----
+def generate_mcqs(n, topic, low_verbs, med_verbs, high_verbs):
+    """Create n simple MCQs from the current topic + selected verbs."""
+    verbs = [*(low_verbs or []), *(med_verbs or []), *(high_verbs or [])] or ["explain"]
+    topic_text = (topic or "").strip() or "this lesson"
+
+    out = []
+    for i in range(n):
+        v = verbs[i % len(verbs)]
+        stem = f"{v.capitalize()} the key idea related to {topic_text}."
+        out.append({
+            "stem": stem,
+            "options": [
+                "To verify conformance",
+                "To set company policy",
+                "To hire staff",
+                "To control budgets",
+            ],
+            "correct": 0,
+        })
+    st.session_state.mcqs = out
+
 # ---------- SIDEBAR ----------
 with st.sidebar:
     try:
@@ -221,7 +229,6 @@ with st.sidebar:
                          label_visibility="collapsed")
     if f is not None:
         with st.spinner("Scanning file…"):
-            # (Hook for future parsing.)
             pass
         st.success(f"✅ Uploaded: **{f.name}**")
         try: st.toast(f"File '{f.name}' uploaded", icon="📄")
@@ -230,20 +237,23 @@ with st.sidebar:
     st.checkbox("Deep scan source (slower, better coverage)", key="deep_scan")
     st.markdown("---")
     st.subheader("Course details")
+
+    # ---- SAFE: sanitize persisted values BEFORE widgets ----
+    if st.session_state.sel_courses not in COURSES and COURSES:
+        st.session_state.sel_courses = COURSES[0]
+    if st.session_state.sel_cohorts not in COHORTS and COHORTS:
+        st.session_state.sel_cohorts = COHORTS[0]
+    if st.session_state.sel_instructors not in INSTRUCTORS and INSTRUCTORS:
+        st.session_state.sel_instructors = INSTRUCTORS[0]
+
     st.selectbox("Course name", COURSES,
-                 index=0 if st.session_state.sel_courses=="" else
-                 max(0, COURSES.index(st.session_state.sel_courses))
-                 if st.session_state.sel_courses in COURSES else 0,
+                 index=COURSES.index(st.session_state.sel_courses) if COURSES else 0,
                  key="sel_courses")
     st.selectbox("Class / Cohort", COHORTS,
-                 index=0 if st.session_state.sel_cohorts=="" else
-                 max(0, COHORTS.index(st.session_state.sel_cohorts))
-                 if st.session_state.sel_cohorts in COHORTS else 0,
+                 index=COHORTS.index(st.session_state.sel_cohorts) if COHORTS else 0,
                  key="sel_cohorts")
     st.selectbox("Instructor name", INSTRUCTORS,
-                 index=0 if st.session_state.sel_instructors=="" else
-                 max(0, INSTRUCTORS.index(st.session_state.sel_instructors))
-                 if st.session_state.sel_instructors in INSTRUCTORS else 0,
+                 index=INSTRUCTORS.index(st.session_state.sel_instructors) if INSTRUCTORS else 0,
                  key="sel_instructors")
 
     st.write("**Date**")
@@ -254,7 +264,8 @@ with st.sidebar:
         st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
     with cols[1]:
         st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
-    # persist
+
+    # persist after the widgets
     save_prefs({
         "week": st.session_state.week,
         "lesson": st.session_state.lesson,
@@ -280,17 +291,17 @@ except Exception: pass
 # Verb sections
 with st.expander("Low (Weeks 1–4) — Remember / Understand", True):
     st.markdown(f'<div class="band low {"active" if active_band=="low" else ""}">', unsafe_allow_html=True)
-    low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
+    lowverbs = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with st.expander("Medium (Weeks 5–9) — Apply / Analyse", True):
     st.markdown(f'<div class="band med {"active" if active_band=="med" else ""}">', unsafe_allow_html=True)
-    med = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
+    medverbs = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with st.expander("High (Weeks 10–14) — Evaluate / Create", True):
     st.markdown(f'<div class="band high {"active" if active_band=="high" else ""}">', unsafe_allow_html=True)
-    high = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
+    highverbs = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Tabs with URL bookmark (keeps URL updated)
@@ -308,6 +319,12 @@ with tabs[0]:
         how_many = st.selectbox("How many?", [5,10,15,20], index=1)
     with cols[1]:
         st.checkbox("Answer key", key="include_key")
+    # NEW: Generate button inside MCQs tab
+    with cols[2]:
+        if st.button("Generate from verbs/topic"):
+            generate_mcqs(how_many, topic, st.session_state.lowverbs, st.session_state.medverbs, st.session_state.highverbs)
+            try: st.toast(f"Generated {how_many} MCQs", icon="✨")
+            except Exception: pass
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('<hr class="thin">', unsafe_allow_html=True)
 
