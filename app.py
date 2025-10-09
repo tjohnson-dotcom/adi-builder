@@ -29,6 +29,11 @@ st.set_page_config(
 BUILD_TAG = "2025-10-10 • sticky+hover v2"
 st.caption(f"Build: {BUILD_TAG}")
 st.markdown('<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>', unsafe_allow_html=True)
+# --- Sticky top banner ---
+st.markdown(
+    '<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>',
+    unsafe_allow_html=True
+)
 
 # ========= 2) Global CSS (pointer/hover/focus; dashed uploader; band) =========
 CSS = """
