@@ -5,6 +5,8 @@ from typing import List
 from datetime import date
 
 import streamlit as st
+BUILD_TAG = "2025-10-10 • sticky+hover v2"
+st.caption(f"Build: {BUILD_TAG}")
 
 # -------------------- PAGE & THEME --------------------
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
