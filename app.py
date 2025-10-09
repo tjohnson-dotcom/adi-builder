@@ -1,440 +1,542 @@
-# ADI Builder — Lesson Activities & Questions (classic-v3.10.1 / safe-select + MCQ generator + unique keys)
+# app.py
+# ADI Builder — Lesson Activities & Questions (safe build)
+
+import io
+import random
+import itertools
+import re
+from datetime import date
+
 import streamlit as st
-import json, io, datetime, re
-from docx import Document
-from docx.shared import Pt
 
-APP_TITLE = "ADI Builder — Lesson Activities & Questions"
-PREFS_FILE = "adi_prefs.json"
+# --------------------------- THEME & STYLE ---------------------------
 
-# ---------- THEME & STYLES ----------
-STYLES = """
+st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
+
+BASE_GREEN = "#245a34"
+DARK_GREEN = "#153a27"
+
+STYLE = f"""
 <style>
-:root{
-  --adi-green:#245a34; --adi-green-50:#eaf6ef;
-  --low:#cfe8d9;  --low-b:#96d1b4;  --low-t:#0c3a23;
-  --med:#f8e6c9;  --med-b:#efc989;  --med-t:#4a3514;
-  --high:#dfe6ff; --high-b:#9db4ff; --high-t:#101a3d;
-}
-[data-testid="stHeader"] { background: transparent; }
-.stApp header { background: transparent; }
-div.block-container{padding-top:1rem;}
-.adi-logo{width:160px;margin:6px 0 12px 0}
+/* App banner */
+.block-container {{
+  padding-top: 0.5rem;
+  padding-bottom: 3rem;
+}}
+h1, h2, h3, h4 {{ color: {DARK_GREEN}; }}
 
-/* Drag & drop dashed box */
-div[data-testid="stFileUploaderDropzone"]{
-  border:2px dashed var(--adi-green)!important;
-  border-radius:12px!important;
-  background:#fff;
-}
-div[data-testid="stFileUploaderDropzone"]:hover{
-  box-shadow:0 0 0 3px var(--adi-green) inset!important;
-}
-
-/* Clickable affordances */
+/* Pointer + hover affordances */
 div[data-testid="stFileUploaderDropzone"],
 div[data-testid="stSelectbox"] button,
 div[data-testid="stMultiSelect"] button,
-button[kind], button { cursor:pointer!important; }
-:focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px; }
+button[kind], button {{
+  cursor: pointer !important;
+}}
+div[data-testid="stSelectbox"] button:hover,
+div[data-testid="stMultiSelect"] button:hover {{
+  box-shadow: 0 0 0 2px {BASE_GREEN} inset !important;
+}}
 
-/* Verb band styling */
-.band{
-  border:1px solid rgba(36,90,52,.18)!important;
-  border-radius:10px!important;
-  padding:10px!important;
-  background:#f8f9fa!important;
-  transition: box-shadow .12s, background-color .12s, opacity .12s
-}
-.band:not(.active){opacity:.92}
-.band:not(.active):hover{opacity:1}
-.band.low  [data-baseweb="tag"]{
-  background:var(--low)!important;border:1px solid var(--low-b)!important;
-  color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important
-}
-.band.med  [data-baseweb="tag"]{
-  background:var(--med)!important;border:1px solid var(--med-b)!important;
-  color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important
-}
-.band.high [data-baseweb="tag"]{
-  background:var(--high)!important;border:1px solid var(--high-b)!important;
-  color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important
-}
-/* Stronger active ring */
-.band.low.active  {box-shadow:0 0 0 4px var(--low-b) inset!important;background:#eaf6ef!important}
-.band.med.active  {box-shadow:0 0 0 4px var(--med-b) inset!important;background:#fcf2e3!important}
-.band.high.active {box-shadow:0 0 0 4px var(--high-b) inset!important;background:#eef1ff!important}
+/* Keyboard focus ring */
+:focus-visible {{
+  outline: 2px solid {BASE_GREEN} !important;
+  outline-offset: 2px;
+}}
 
-/* MCQ Cards / actions */
-.mcq-card{margin:6px 0}
-hr.thin{border:none;border-top:1px solid #e5e7eb;margin:8px 0}
-.mcq-top-row{margin-bottom:6px}
+/* Dashed dropzone */
+div[data-testid="stFileUploaderDropzone"] {{
+  border: 2px dashed {BASE_GREEN} !important;
+  border-radius: 10px !important;
+}}
 
-/* Outline buttons for per-question downloads (robust) */
-.secondary .stDownloadButton > button,
-.secondary button{
-  background:transparent!important;color:var(--adi-green)!important;
-  border:2px solid var(--adi-green)!important;border-radius:10px!important;font-weight:700!important
-}
-.secondary .stDownloadButton > button:hover,
-.secondary button:hover{background:rgba(36,90,52,.06)!important}
-/* Action row */
-.mcq-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 0 0}
+/* Active band frames */
+.band {{
+  border: 1px solid #dfe5df;
+  border-radius: 10px;
+  padding: 6px 8px 2px 8px;
+  margin-bottom: 10px;
+}}
+.band.active {{
+  border: 2px solid {BASE_GREEN};
+  box-shadow: 0 0 0 2px rgba(36,90,52,0.10);
+}}
+.band-title {{
+  font-weight: 600;
+  color: {DARK_GREEN};
+  margin-bottom: 6px;
+}}
 
-/* Tabs hover/active cues */
-.stTabs [role="tab"][aria-selected="true"]{border-bottom:2px solid var(--adi-green);font-weight:700}
-.stTabs [role="tab"]:hover{ text-decoration: underline; }
+hr.thin {{
+  border: none;
+  border-top: 1px solid #e7ece7;
+  margin: 0.6rem 0 0.8rem 0;
+}}
 </style>
 """
+st.markdown(STYLE, unsafe_allow_html=True)
 
-st.set_page_config(page_title="ADI Builder", page_icon="📘", layout="wide")
-st.markdown(STYLES, unsafe_allow_html=True)
 
-# ---------- DATA ----------
-LOW  = ["define","identify","list","recall","describe","label"]
-MED  = ["apply","demonstrate","solve","illustrate","classify","compare"]
-HIGH = ["evaluate","synthesize","design","justify","critique","create"]
+# --------------------------- SESSION DEFAULTS ---------------------------
 
-COURSES = [
-    "GE4-IPM — Integrated Project & Materials Mgmt",
-    "GE4-EPM — Defense Technology Practices",
-    "CT4-COM — Computation for Chemical Technologists"
-]
-COHORTS = ["D1-C01","D1-M01","D1-M02","D2-C01"]
-INSTRUCTORS = ["Daniel","Ghamza Labeeb","Abdulmalik","Nerdeen Tariq"]
+def ss_default(name, value):
+    if name not in st.session_state:
+        st.session_state[name] = value
 
-# ---------- PREFS ----------
-def load_prefs():
-    try:
-        with open(PREFS_FILE,"r",encoding="utf-8") as f: return json.load(f)
-    except Exception: return {}
+ss_default("lowverbs", ["define", "identify", "list"])
+ss_default("medverbs", ["apply", "demonstrate", "solve"])
+ss_default("highverbs", ["evaluate", "synthesize", "design"])
+ss_default("mcqs", [])
+ss_default("activities", [])
+ss_default("source_text", "")
+ss_default("lesson", 1)
+ss_default("week", 1)
 
-def save_prefs(d:dict):
-    try:
-        with open(PREFS_FILE,"w",encoding="utf-8") as f: json.dump(d,f)
-    except Exception: pass
 
-prefs = load_prefs()
+# --------------------------- HELPERS ---------------------------
 
-def init_state():
-    ss = st.session_state
-    ss.setdefault("week", prefs.get("week", 1))
-    ss.setdefault("lesson", prefs.get("lesson", 1))
-    ss.setdefault("deep_scan", prefs.get("deep_scan", False))
-    ss.setdefault("sel_courses", prefs.get("sel_courses", COURSES[0] if COURSES else ""))
-    ss.setdefault("sel_cohorts", prefs.get("sel_cohorts", COHORTS[0] if COHORTS else ""))
-    ss.setdefault("sel_instructors", prefs.get("sel_instructors", INSTRUCTORS[0] if INSTRUCTORS else ""))
-    ss.setdefault("mcqs", [
-        {"stem":"Explain the role of inspection in quality management.",
-         "options":["To verify conformance","To set company policy","To hire staff","To control budgets"],
-         "correct":0}
-    ])
-    ss.setdefault("include_key", True)
+def ctx_filename(prefix: str) -> str:
+    """Simple context-based filename base, always safe."""
+    course = st.session_state.get("course", "Course")
+    cohort = st.session_state.get("cohort", "Cohort")
+    instr = st.session_state.get("instructor", "Instructor")
+    wk = st.session_state.get("week", 1)
+    return f"{prefix}__{course}__{cohort}__W{wk}"
 
-init_state()
+def harvest_keywords(text: str, k=6):
+    """Super-light keyword grabber (safe, optional)."""
+    if not text:
+        return []
+    stop = set("""
+        the a an and or of in on at by for to from with into over after before
+        is are was were be being been this that those these there here as it its
+        we you they he she him her them i me my our your their not no yes
+    """.split())
+    words = re.findall(r"[A-Za-z]{5,}", text.lower())
+    words = [w for w in words if w not in stop]
+    scored = {}
+    for w in words:
+        scored[w] = scored.get(w, 0) + 1 + len(w)/20.0
+    return [w.capitalize() for w, _ in sorted(scored.items(), key=lambda x: -x[1])[:k]]
 
-# ---------- HELPERS ----------
-def _slug(s:str)->str:
-    if not s: return "NA"
-    s = re.sub(r"\s+","_", str(s))
-    s = re.sub(r"[^A-Za-z0-9_\-]","", s)
-    return s[:60]
 
-def ctx_filename(base:str, qnum=None):
-    c  = _slug(st.session_state.get('sel_courses',''))
-    coh= _slug(st.session_state.get('sel_cohorts',''))
-    wk = _slug(st.session_state.get('week',''))
-    if qnum is None:
-        return f"{base}__{c}__{coh}__W{wk}"
-    return f"{base}__{c}__{coh}__W{wk}__Q{qnum}"
+# --------------------------- MCQ GENERATOR ---------------------------
 
-def export_docx_one(item, idx=1)->bytes:
-    doc = Document()
-    doc.add_heading(f"Question {idx}", level=1)
-    p = doc.add_paragraph(item["stem"])
-    p.style.font.size = Pt(12)
-    letters = ["A","B","C","D"]
-    for i,opt in enumerate(item["options"]):
-        doc.add_paragraph(f"{letters[i]}. {opt}")
-    doc.add_paragraph("")
-    doc.add_paragraph(f"Answer: {letters[item['correct']]}")
-    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
-    return buf.getvalue()
-
-def export_txt_one(item, idx=1)->bytes:
-    letters = ["A","B","C","D"]
-    lines = [f"Q{idx}: {item['stem']}"]
-    for i,opt in enumerate(item["options"]):
-        lines.append(f"{letters[i]}. {opt}")
-    lines.append(f"Answer: {letters[item['correct']]}")
-    return ("\n".join(lines)).encode("utf-8")
-
-def export_docx_all(items, include_key=True)->bytes:
-    doc = Document()
-    doc.add_heading("ADI Knowledge MCQs", level=0)
-    letters = ["A","B","C","D"]
-    for i,it in enumerate(items, start=1):
-        doc.add_heading(f"Q{i}", level=1)
-        doc.add_paragraph(it["stem"])
-        for j,opt in enumerate(it["options"]):
-            doc.add_paragraph(f"{letters[j]}. {opt}")
-        if include_key: doc.add_paragraph(f"Answer: {letters[it['correct']]}")
-    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
-    return buf.getvalue()
-
-def export_txt_all(items, include_key=True)->bytes:
-    letters = ["A","B","C","D"]
-    out=[]
-    for i,it in enumerate(items, start=1):
-        out.append(f"Q{i}: {it['stem']}")
-        for j,opt in enumerate(it["options"]):
-            out.append(f"{letters[j]}. {opt}")
-        if include_key: out.append(f"Answer: {letters[it['correct']]}")
-        out.append("")
-    return ("\n".join(out)).encode("utf-8")
-
-# ---- MCQ generator (topic + selected verbs) ----
 def generate_mcqs(n, topic, low_verbs, med_verbs, high_verbs):
-    """Create n simple MCQs from the current topic + selected verbs."""
-    verbs = [*(low_verbs or []), *(med_verbs or []), *(high_verbs or [])] or ["explain"]
+    """
+    Generate n varied MCQs using Bloom-aligned stems, rotating option banks,
+    shuffling correct-answer positions, and preventing duplicates.
+    """
     topic_text = (topic or "").strip() or "this lesson"
 
+    # Band by week
+    band = "low"
+    try:
+        wk = int(st.session_state.week)
+        if 5 <= wk <= 9:
+            band = "med"
+        elif wk >= 10:
+            band = "high"
+    except Exception:
+        pass
+
+    # Verbs by band with safe fallback
+    if band == "low":
+        verbs = (low_verbs or []) or ["define", "identify", "list"]
+    elif band == "med":
+        verbs = (med_verbs or []) or ["apply", "demonstrate", "solve"]
+    else:
+        verbs = (high_verbs or []) or ["evaluate", "synthesize", "design"]
+
+    STEMS = {
+        "low": [
+            "Which statement best **{verb}s** the idea related to **{topic}**?",
+            "What does the term connected to **{topic}** primarily mean?",
+            "Identify the choice that correctly **{verb}s** **{topic}**.",
+        ],
+        "med": [
+            "Which action would you take to **{verb}** **{topic}**?",
+            "Choose the example that correctly **{verb}s** **{topic}**.",
+            "What is a sensible next step to **{verb}** **{topic}**?",
+        ],
+        "high": [
+            "Which option best allows you to **{verb}** **{topic}**?",
+            "Evaluate the approach that would **{verb}** **{topic}** most effectively.",
+            "Which design would best **{verb}** **{topic}**?",
+        ],
+    }
+
+    OPTION_SETS = {
+        "low": [
+            {"correct": "A clear, accurate statement of the key idea",
+             "distractors": ["An unrelated fact", "A vague claim", "A contradictory statement"]},
+            {"correct": "The definition that matches the concept",
+             "distractors": ["A narrow example only", "A personal opinion", "An off-topic description"]},
+            {"correct": "A concise identification of the concept",
+             "distractors": ["A procedural step", "A tool choice", "A result from a different topic"]},
+        ],
+        "med": [
+            {"correct": "An applied example that successfully uses the concept",
+             "distractors": ["A restated definition", "A trivial detail", "An unrelated policy"]},
+            {"correct": "A reasonable step that progresses the task",
+             "distractors": ["A step from a different process", "A redundant action", "A goal with no action"]},
+            {"correct": "A practical choice that would work in practice",
+             "distractors": ["A purely theoretical note", "A historical aside", "A conflicting requirement"]},
+        ],
+        "high": [
+            {"correct": "A justified option with clear criteria and trade-offs",
+             "distractors": ["A superficial claim", "A one-line summary", "A choice without rationale"]},
+            {"correct": "A design that optimizes constraints and objectives",
+             "distractors": ["A workaround that ignores constraints", "A non-comparable option", "An anecdotal preference"]},
+            {"correct": "An evaluation that weighs evidence and impact",
+             "distractors": ["An assertion with no evidence", "A definition only", "An unrelated measurement"]},
+        ],
+    }
+
+    kw = harvest_keywords(st.session_state.get("source_text", ""), k=6)
+
+    def add_keywords(distractors):
+        if not kw:
+            return distractors
+        extra = []
+        for kword in kw[:3]:
+            extra.append(f"A detail focusing on {kword}")
+        return (distractors + extra)[:max(3, len(distractors))]
+
     out = []
+    used = set()
+    stems = itertools.cycle(STEMS[band])
+    banks = itertools.cycle(OPTION_SETS[band])
+
     for i in range(n):
-        v = verbs[i % len(verbs)]
-        stem = f"{v.capitalize()} the key idea related to {topic_text}."
-        out.append({
-            "stem": stem,
-            "options": [
-                "To verify conformance",
-                "To set company policy",
-                "To hire staff",
-                "To control budgets",
-            ],
-            "correct": 0,
-        })
+        verb = verbs[i % len(verbs)]
+        stem_tpl = next(stems)
+        stem = stem_tpl.format(verb=verb, topic=topic_text)
+        bank = next(banks).copy()
+        bank["distractors"] = add_keywords(bank["distractors"])
+
+        options = [bank["correct"], *bank["distractors"][:3]]
+        random.shuffle(options)
+        correct_idx = options.index(bank["correct"])
+
+        sig = (stem, bank["correct"])
+        if sig in used:
+            random.shuffle(options)
+            correct_idx = options.index(bank["correct"])
+        used.add(sig)
+
+        out.append({"stem": stem, "options": options, "correct": correct_idx})
+
     st.session_state.mcqs = out
 
-# ---------- SIDEBAR ----------
-with st.sidebar:
-    try:
-        st.image("adi_logo.png", use_column_width=False, output_format="PNG",
-                 caption=None, clamp=False, channels="RGB", width=160)
-    except Exception:
-        st.markdown("<div class='adi-logo'></div>", unsafe_allow_html=True)
 
-    st.write("**Upload (optional)**")
-    f = st.file_uploader("Drag and drop file here",
-                         type=["txt","docx","pptx","pdf"],
-                         label_visibility="collapsed")
+def export_mcqs_docx(mcqs):
+    from docx import Document
+    from docx.shared import Pt
+    doc = Document()
+    doc.add_heading("Knowledge MCQs", level=0)
+    for i, q in enumerate(mcqs, 1):
+        doc.add_heading(f"Q{i}", level=1)
+        doc.add_paragraph(q["stem"])
+        labels = ["A", "B", "C", "D"]
+        for j, opt in enumerate(q["options"]):
+            doc.add_paragraph(f"{labels[j]}. {opt}")
+        ans = labels[q["correct"]]
+        p = doc.add_paragraph(f"Answer: {ans}")
+        p.style.font.size = Pt(10)
+    buf = io.BytesIO()
+    doc.save(buf); buf.seek(0)
+    return buf.getvalue()
+
+
+def export_mcqs_txt(mcqs):
+    labels = ["A", "B", "C", "D"]
+    lines = []
+    for i, q in enumerate(mcqs, 1):
+        lines.append(f"Q{i}: {q['stem']}")
+        for j, opt in enumerate(q["options"]):
+            lines.append(f"  {labels[j]}. {opt}")
+        lines.append(f"Answer: {labels[q['correct']]}")
+        lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+# --------------------------- ACTIVITIES GENERATOR ---------------------------
+
+def generate_activities(n, minutes, group_label, topic, low_verbs, med_verbs, high_verbs):
+    verbs = [*(low_verbs or []), *(med_verbs or []), *(high_verbs or [])]
+    if not verbs:
+        verbs = ["discuss", "apply", "evaluate"]
+    t = (topic or "").strip() or "today’s content"
+
+    templates = [
+        lambda v: [
+            f"In your {group_label.lower()}, {v} the key idea in {t}.",
+            "Identify two examples from the uploaded material or your notes.",
+            "Prepare a 1-minute share-out."
+        ],
+        lambda v: [
+            f"Create a quick diagram/flow of how you would {v} {t}.",
+            "Annotate with 3–4 keywords.",
+            "Trade with another group and give one piece of feedback."
+        ],
+        lambda v: [
+            f"Write two quiz questions that require learners to {v} {t}.",
+            "Swap with neighbours and answer each other’s questions.",
+            "As a class, discuss common answer patterns."
+        ],
+    ]
+
+    acts = []
+    for i in range(n):
+        v = verbs[i % len(verbs)]
+        steps = templates[i % len(templates)](v)
+        acts.append({
+            "title": f"{v.capitalize()} — {t}",
+            "minutes": minutes,
+            "group": group_label,
+            "steps": steps
+        })
+    st.session_state.activities = acts
+
+
+def export_activities_docx(acts):
+    from docx import Document
+    from docx.shared import Pt
+    doc = Document()
+    doc.add_heading("Skills Activities", level=0)
+    for i, a in enumerate(acts, 1):
+        doc.add_heading(f"Activity {i}: {a['title']}", level=1)
+        p = doc.add_paragraph(f"Time: {a['minutes']} min  |  Group: {a['group']}")
+        p.style.font.size = Pt(11)
+        for j, step in enumerate(a["steps"], 1):
+            doc.add_paragraph(f"{j}. {step}")
+    buf = io.BytesIO(); doc.save(buf); buf.seek(0)
+    return buf.getvalue()
+
+
+def export_activities_txt(acts):
+    lines = ["Skills Activities", ""]
+    for i, a in enumerate(acts, 1):
+        lines.append(f"Activity {i}: {a['title']}")
+        lines.append(f"Time: {a['minutes']} min  |  Group: {a['group']}")
+        for j, step in enumerate(a["steps"], 1):
+            lines.append(f"{j}. {step}")
+        lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+# --------------------------- SIDEBAR (UPLOAD & CONTEXT) ---------------------------
+
+with st.sidebar:
+    st.image("adi_logo.png", width=160, caption=None, use_container_width=False)
+    st.markdown("### Upload (optional)")
+    f = st.file_uploader("Drag and drop file here", type=["txt", "docx", "pptx", "pdf"])
+
     if f is not None:
         with st.spinner("Scanning file…"):
-            pass
-        st.success(f"✅ Uploaded: **{f.name}**")
-        try: st.toast(f"File '{f.name}' uploaded", icon="📄")
-        except Exception: pass
+            text = ""
+            try:
+                if f.type == "text/plain":
+                    text = f.read().decode("utf-8", errors="ignore")
+                elif f.name.lower().endswith(".docx"):
+                    from docx import Document
+                    d = Document(f)
+                    text = "\n".join(p.text for p in d.paragraphs)
+                elif f.name.lower().endswith(".pptx"):
+                    from pptx import Presentation
+                    p = Presentation(f)
+                    parts = []
+                    for s in p.slides:
+                        for shp in s.shapes:
+                            if hasattr(shp, "text"): parts.append(shp.text)
+                    text = "\n".join(parts)
+                elif f.name.lower().endswith(".pdf"):
+                    import fitz  # PyMuPDF
+                    pdf = fitz.open(stream=f.read(), filetype="pdf")
+                    parts = [page.get_text() for page in pdf]
+                    text = "\n".join(parts)
+            except Exception:
+                text = ""
+            st.session_state.source_text = text
+        try:
+            st.toast(f"Uploaded: {f.name}", icon="✅")
+        except Exception:
+            st.success(f"Uploaded: {f.name}")
 
-    st.checkbox("Deep scan source (slower, better coverage)", key="deep_scan")
-    st.markdown("---")
-    st.subheader("Course details")
+    st.markdown("### Course details")
+    st.session_state.course = st.selectbox("Course name", [
+        "GE4-IPM — Integrated Project & Materials Mgmt in Defense Technology",
+        "CT4-COM — Computation for Chemical Technologists",
+        "CT4-EMG — Explosives Manufacturing",
+        "MT4-CMG — Composite Manufacturing",
+    ], index=0)
 
-    # ---- SAFE: sanitize persisted values BEFORE widgets ----
-    if st.session_state.sel_courses not in COURSES and COURSES:
-        st.session_state.sel_courses = COURSES[0]
-    if st.session_state.sel_cohorts not in COHORTS and COHORTS:
-        st.session_state.sel_cohorts = COHORTS[0]
-    if st.session_state.sel_instructors not in INSTRUCTORS and INSTRUCTORS:
-        st.session_state.sel_instructors = INSTRUCTORS[0]
+    st.session_state.cohort = st.selectbox("Class / Cohort", [
+        "D1-C01", "D1-M01", "D1-M02", "D2-C01", "D2-M01"
+    ], index=0)
 
-    st.selectbox("Course name", COURSES,
-                 index=COURSES.index(st.session_state.sel_courses) if COURSES else 0,
-                 key="sel_courses")
-    st.selectbox("Class / Cohort", COHORTS,
-                 index=COHORTS.index(st.session_state.sel_cohorts) if COHORTS else 0,
-                 key="sel_cohorts")
-    st.selectbox("Instructor name", INSTRUCTORS,
-                 index=INSTRUCTORS.index(st.session_state.sel_instructors) if INSTRUCTORS else 0,
-                 key="sel_instructors")
+    st.session_state.instructor = st.selectbox("Instructor name", [
+        "Daniel", "Ghamza Labeeb", "Abdulmalik", "Gerhard", "Nerdeen Tariq", "Dari"
+    ], index=0)
 
-    st.write("**Date**")
-    st.date_input("", value=datetime.date.today(), label_visibility="collapsed")
-    st.write("**Context**")
-    cols = st.columns(2)
-    with cols[0]:
-        st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
-    with cols[1]:
-        st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
+    st.markdown("### Date")
+    st.date_input("Date", value=date.today(), format="YYYY/MM/DD")
 
-    # persist after the widgets
-    save_prefs({
-        "week": st.session_state.week,
-        "lesson": st.session_state.lesson,
-        "deep_scan": st.session_state.deep_scan,
-        "sel_courses": st.session_state.sel_courses,
-        "sel_cohorts": st.session_state.sel_cohorts,
-        "sel_instructors": st.session_state.sel_instructors,
-    })
+    st.markdown("### Context")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.session_state.lesson = st.number_input("Lesson", min_value=1, max_value=14, value=int(st.session_state.lesson), step=1)
+    with c2:
+        st.session_state.week = st.number_input("Week", min_value=1, max_value=14, value=int(st.session_state.week), step=1)
 
-# ---------- MAIN ----------
-st.markdown(f"### {APP_TITLE}")
-topic = st.text_area("Topic / Outcome (optional)",
-                     placeholder="e.g., Integrated Project and …")
 
-# Active band from week
-active_band = 'low'
-try:
-    wk = int(st.session_state.week)
-    if 5 <= wk <= 9: active_band='med'
-    elif wk >= 10:   active_band='high'
-except Exception: pass
+# --------------------------- MAIN LAYOUT ---------------------------
 
-# Verb sections
-with st.expander("Low (Weeks 1–4) — Remember / Understand", True):
-    st.markdown(f'<div class="band low {"active" if active_band=="low" else ""}">', unsafe_allow_html=True)
-    lowverbs = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown(f"### ADI Builder — Lesson Activities & Questions")
 
-with st.expander("Medium (Weeks 5–9) — Apply / Analyse", True):
-    st.markdown(f'<div class="band med {"active" if active_band=="med" else ""}">', unsafe_allow_html=True)
-    medverbs = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
-    st.markdown('</div>', unsafe_allow_html=True)
+topic = st.text_area("Topic / Outcome (optional)", placeholder="e.g., Integrated Project and ...", height=80)
 
-with st.expander("High (Weeks 10–14) — Evaluate / Create", True):
-    st.markdown(f'<div class="band high {"active" if active_band=="high" else ""}">', unsafe_allow_html=True)
-    highverbs = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
-    st.markdown('</div>', unsafe_allow_html=True)
+# Active band by week (visual highlight)
+wk = int(st.session_state.week)
+active = "low"
+if 5 <= wk <= 9: active = "med"
+elif wk >= 10:  active = "high"
 
-# Tabs with URL bookmark (keeps URL updated)
-tab_names = ["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"]
-tabs = st.tabs(tab_names)
-
-# ----- MCQs TAB -----
-with tabs[0]:
-    st.query_params["tab"] = "mcq"
-    st.subheader("Knowledge MCQs (ADI Policy)")
-
-    st.markdown('<div class="mcq-top-row">', unsafe_allow_html=True)
-    cols = st.columns([1,1,1,2])
-    with cols[0]:
-        how_many = st.selectbox("How many?", [5,10,15,20], index=1)
-    with cols[1]:
-        st.checkbox("Answer key", key="include_key")
-    # Generate button inside MCQs tab (unique key)
-    with cols[2]:
-        if st.button("Generate from verbs/topic", key="gen_mcq_btn"):
-            generate_mcqs(how_many, topic, st.session_state.lowverbs, st.session_state.medverbs, st.session_state.highverbs)
-            try: st.toast(f"Generated {how_many} MCQs", icon="✨")
-            except Exception: pass
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('<hr class="thin">', unsafe_allow_html=True)
-
-    letters = ["A","B","C","D"]
-    for i,item in enumerate(st.session_state.mcqs):
-        with st.container(border=True):
-            st.markdown(f"**Q{i+1}**")
-            item["stem"] = st.text_area("Question", value=item["stem"], key=f"stem_{i}")
-            c1,c2 = st.columns(2)
-            with c1:
-                item["options"][0] = st.text_input("A", value=item["options"][0], key=f"a_{i}")
-                item["options"][1] = st.text_input("B", value=item["options"][1], key=f"b_{i}")
-            with c2:
-                item["options"][2] = st.text_input("C", value=item["options"][2], key=f"c_{i}")
-                item["options"][3] = st.text_input("D", value=item["options"][3], key=f"d_{i}")
-            item["correct"] = letters.index(st.radio("Correct answer", letters, index=item["correct"], horizontal=True, key=f"corr_{i}"))
-            st.caption("Answer key above controls the correct option.")
-
-            st.markdown('<div class="mcq-actions">', unsafe_allow_html=True)
-            st.markdown('<div class="secondary">', unsafe_allow_html=True)
-            clicked_docx = st.download_button(
-                f"⬇️ Download DOCX (Q{i+1})",
-                data=export_docx_one(item, idx=i+1),
-                file_name=ctx_filename("ADI_MCQ", qnum=i+1)+".docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key=f"dl_docx_q{i}",
-                disabled=not bool(item["stem"].strip()),
-                help="Download DOCX for this specific question"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown('<div class="secondary">', unsafe_allow_html=True)
-            clicked_txt = st.download_button(
-                f"⬇️ Download TXT (Q{i+1})",
-                data=export_txt_one(item, idx=i+1),
-                file_name=ctx_filename("ADI_MCQ", qnum=i+1)+".txt",
-                mime="text/plain",
-                key=f"dl_txt_q{i}",
-                disabled=not bool(item["stem"].strip()),
-                help="Download plain-text version for this question"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            if clicked_docx or clicked_txt:
-                try: st.toast("Export started", icon="⬇️")
-                except Exception: pass
-
-    st.markdown("")
-    col1,col2,col3 = st.columns([1,1,2])
-    with col1:
-        if st.button("➕ Add blank question", key="add_q_btn"):
-            st.session_state.mcqs.append(
-                {"stem":"New question...", "options":["Option A","Option B","Option C","Option D"], "correct":0}
-            )
-    with col2:
-        if st.button("➖ Remove last", key="rem_q_btn"):
-            if st.session_state.mcqs:
-                st.session_state.mcqs.pop()
-
-    with col3:
-        clicked_all_docx = st.download_button(
-            "⬇️ Download DOCX (All MCQs)",
-            data=export_docx_all(st.session_state.mcqs, st.session_state.include_key),
-            file_name=ctx_filename("ADI_Knowledge_MCQs")+".docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            disabled=not bool(st.session_state.mcqs),
-            help="Download a DOCX with all questions",
-            key="dl_all_docx"
-        )
-
-    clicked_all_txt = st.download_button(
-        "⬇️ Download TXT (All MCQs)",
-        data=export_txt_all(st.session_state.mcqs, st.session_state.include_key),
-        file_name=ctx_filename("ADI_Knowledge_MCQs")+".txt",
-        mime="text/plain",
-        disabled=not bool(st.session_state.mcqs),
-        help="Download a TXT with all questions",
-        key="dl_all_txt"
+def band_container(title, key_band, verbs_key, default):
+    css_class = "band active" if active == key_band else "band"
+    st.markdown(f"<div class='{css_class}'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='band-title'>{title}</div>", unsafe_allow_html=True)
+    st.session_state[verbs_key] = st.multiselect(
+        label="", options=default, default=st.session_state.get(verbs_key, default),
+        key=f"{verbs_key}_ms"
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if clicked_all_docx or clicked_all_txt:
-        try: st.toast("Export started", icon="⬇️")
-        except Exception: pass
+band_container("Low (Weeks 1–4) — Remember / Understand", "low", "lowverbs",
+               ["define", "identify", "list", "recall", "describe", "label"])
+band_container("Medium (Weeks 5–9) — Apply / Analyse", "med", "medverbs",
+               ["apply", "demonstrate", "solve", "illustrate", "classify", "compare"])
+band_container("High (Weeks 10–14) — Evaluate / Create", "high", "highverbs",
+               ["evaluate", "synthesize", "design", "justify", "critique", "create"])
 
-# ----- Skills Activities -----
+tabs = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
+
+
+# --------------------------- TAB: MCQs ---------------------------
+
+with tabs[0]:
+    st.query_params["tab"] = "mcqs"
+
+    left, right = st.columns([1, 1])
+    with left:
+        how_many = st.selectbox("How many MCQs?", [5, 10, 15, 20], index=1, key="mcq_count_sb")
+    with right:
+        answer_key = st.checkbox("Include answer key in export", value=True, key="include_ans_key")
+
+    if st.button("Generate from verbs/topic", key="gen_mcq_btn"):
+        generate_mcqs(
+            how_many, topic,
+            st.session_state.lowverbs, st.session_state.medverbs, st.session_state.highverbs
+        )
+        try:
+            st.toast(f"Generated {how_many} MCQs", icon="🧪")
+        except Exception:
+            pass
+
+    # Render MCQs (editable)
+    labels = ["A", "B", "C", "D"]
+    if st.session_state.mcqs:
+        st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+        for i, q in enumerate(st.session_state.mcqs, 1):
+            with st.container(border=True):
+                st.markdown(f"**Q{i}**")
+                q["stem"] = st.text_area("Question", value=q["stem"], key=f"stem_{i}")
+                cols = st.columns(2)
+                for j in range(4):
+                    with cols[j % 2]:
+                        q["options"][j] = st.text_input(f"{labels[j]}", value=q["options"][j], key=f"opt_{i}_{j}")
+                q["correct"] = st.radio("Correct answer", labels, index=q["correct"], horizontal=True, key=f"ans_{i}")
+
+        # Exports
+        colx, coly = st.columns(2)
+        with colx:
+            st.download_button(
+                "⬇️ Download DOCX (All MCQs)",
+                data=export_mcqs_docx(st.session_state.mcqs),
+                file_name=ctx_filename("ADI_Knowledge_MCQs") + ".docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="dl_mcq_docx"
+            )
+        with coly:
+            st.download_button(
+                "⬇️ Download TXT (All MCQs)",
+                data=export_mcqs_txt(st.session_state.mcqs),
+                file_name=ctx_filename("ADI_Knowledge_MCQs") + ".txt",
+                mime="text/plain",
+                key="dl_mcq_txt"
+            )
+    else:
+        st.info("Use **Generate from verbs/topic** to create MCQs.")
+
+
+# --------------------------- TAB: SKILLS ACTIVITIES ---------------------------
+
 with tabs[1]:
     st.query_params["tab"] = "skills"
     st.subheader("Skills Activities")
-    a1,a2,a3 = st.columns(3)
+
+    a1, a2, a3, a4 = st.columns([1,1,1,1.2])
     with a1:
-        acts = st.selectbox("How many activities?", [1,2,3], index=0)
+        acts_count = st.selectbox("How many activities?", [1, 2, 3], index=0, key="acts_count")
     with a2:
-        mins = st.selectbox("Minutes per activity", list(range(5,61,5)), index=1)
+        minutes = st.selectbox("Minutes per activity", list(range(5, 61, 5)), index=1, key="acts_minutes")
     with a3:
-        group = st.selectbox("Group size", ["Solo (1)","Pairs (2)","Triads (3)","Groups of 4"], index=0)
-    # unique key for this separate button
-    st.button("Generate from verbs/topic", key="gen_skills_btn")
+        group_label = st.selectbox("Group size", ["Solo (1)", "Pairs (2)", "Triads (3)", "Groups of 4"], index=0, key="acts_group")
 
-# ----- Revision -----
+    with a4:
+        if st.button("Generate from verbs/topic", key="gen_skills_btn"):
+            generate_activities(
+                acts_count, minutes, group_label, topic,
+                st.session_state.lowverbs, st.session_state.medverbs, st.session_state.highverbs
+            )
+            try:
+                st.toast(f"Generated {acts_count} activities", icon="🧩")
+            except Exception:
+                pass
+
+    if st.session_state.activities:
+        st.markdown("<hr class='thin'>", unsafe_allow_html=True)
+        for i, a in enumerate(st.session_state.activities, 1):
+            with st.container(border=True):
+                st.markdown(f"**Activity {i}: {a['title']}**")
+                st.caption(f"Time: {a['minutes']} min  |  Group: {a['group']}")
+                for j, step in enumerate(a["steps"], 1):
+                    st.write(f"{j}. {step}")
+
+        colx, coly = st.columns(2)
+        with colx:
+            st.download_button(
+                "⬇️ Download DOCX (All Activities)",
+                data=export_activities_docx(st.session_state.activities),
+                file_name=ctx_filename("ADI_Skills_Activities") + ".docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="dl_acts_docx"
+            )
+        with coly:
+            st.download_button(
+                "⬇️ Download TXT (All Activities)",
+                data=export_activities_txt(st.session_state.activities),
+                file_name=ctx_filename("ADI_Skills_Activities") + ".txt",
+                mime="text/plain",
+                key="dl_acts_txt"
+            )
+    else:
+        st.info("Use **Generate from verbs/topic** to create activities.")
+
+
+# --------------------------- TABS: PLACEHOLDERS ---------------------------
+
 with tabs[2]:
-    st.query_params["tab"] = "revision"
-    st.subheader("Revision")
-    st.info("Revision worksheet generator coming next.")
-
-# ----- Print Summary -----
+    st.write("Revision — coming soon.")
 with tabs[3]:
-    st.query_params["tab"] = "summary"
-    st.subheader("Print Summary")
-    st.write("Course:", st.session_state.sel_courses)
-    st.write("Cohort:", st.session_state.sel_cohorts)
-    st.write("Instructor:", st.session_state.sel_instructors)
-    st.write("Week/Lesson:", st.session_state.week, "/", st.session_state.lesson)
+    st.write("Print summary — coming soon.")
