@@ -4,7 +4,7 @@ import io, os, json, random, hashlib, sys, platform
 from datetime import date
 from pathlib import Path
 
-BUILD_TAG = "2025-10-09T20:30 ADI classic-v3 • dashed uploader • editable MCQs • per-Q downloads • diagnostics"
+BUILD_TAG = "2025-10-09T20:55 ADI classic-v3.1 • stronger dashed uploader • robust row highlight"
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
 st.caption("Build tag: " + BUILD_TAG)
 
@@ -27,40 +27,50 @@ st.markdown('''
   box-shadow:0 1px 3px rgba(0,0,0,.06);
   margin:8px 0 12px 0;
 }
+
+/* === Robust dashed uploader (streamlit 1.36–1.37) === */
+div[data-testid="stFileUploaderDropzone"],
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"],
-section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"],
-div[data-testid="stFileUploaderDropzone"]{
-  border:4px dashed var(--adi-green) !important;
-  border-radius:12px !important;
-  background:rgba(36,90,52,.05) !important;
-  padding:14px !important; min-height:84px !important;
-  transition:box-shadow .12s, background-color .12s, border-color .12s;
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]{
+  border: 4px dashed var(--adi-green) !important;
+  border-radius: 12px !important;
+  background: rgba(36,90,52,.05) !important;
+  min-height: 84px !important;
+  padding: 14px !important;
+  transition: box-shadow .12s, background-color .12s, border-color .12s;
 }
+div[data-testid="stFileUploaderDropzone"]:hover,
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]:hover,
-section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]:hover,
-div[data-testid="stFileUploaderDropzone"]:hover{
-  box-shadow:0 0 0 4px var(--adi-green) inset !important;
-  background:rgba(36,90,52,.10) !important;
+section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]:hover{
+  box-shadow: 0 0 0 4px var(--adi-green) inset !important;
+  background: rgba(36,90,52,.10) !important;
 }
-div[aria-label="Low verbs"]    [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
-div[aria-label="Medium verbs"] [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
-div[aria-label="High verbs"]   [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
-div[aria-label="Low verbs"],
-div[aria-label="Medium verbs"],
-div[aria-label="High verbs"]{
+
+/* === Chip colours per level === */
+div[aria-label*="Low verbs"]    [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
+div[aria-label*="Medium verbs"] [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
+div[aria-label*="High verbs"]   [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
+
+/* === Row containers + highlight when any tag is selected === */
+div[aria-label*="Low verbs"],
+div[aria-label*="Medium verbs"],
+div[aria-label*="High verbs"]{
   border:1px solid rgba(36,90,52,.18)!important;
   border-radius:10px!important;
   padding:6px!important;
+  background:#f8f9fa!important;
 }
-div[aria-label="Low verbs"]{    background: var(--low)  !important; }
-div[aria-label="Medium verbs"]{ background: var(--med)  !important; }
-div[aria-label="High verbs"]{   background: var(--high) !important; }
-div[aria-label="Low verbs"]:focus-within{    box-shadow:0 0 0 3px var(--low-b)  inset!important; }
-div[aria-label="Medium verbs"]:focus-within{ box-shadow:0 0 0 3px var(--med-b)  inset!important; }
-div[aria-label="High verbs"]:focus-within{   box-shadow:0 0 0 3px var(--high-b) inset!important; }
-div[aria-label="Low verbs"]:has([data-baseweb="tag"]){    box-shadow:0 0 0 3px var(--low-b)  inset!important; }
-div[aria-label="Medium verbs"]:has([data-baseweb="tag"]){ box-shadow:0 0 0 3px var(--med-b)  inset!important; }
-div[aria-label="High verbs"]:has([data-baseweb="tag"]){   box-shadow:0 0 0 3px var(--high-b) inset!important; }
+div[aria-label*="Low verbs"]:has([data-baseweb="tag"]){
+  box-shadow:0 0 0 3px var(--low-b) inset!important; background:#eaf6ef!important;
+}
+div[aria-label*="Medium verbs"]:has([data-baseweb="tag"]){
+  box-shadow:0 0 0 3px var(--med-b) inset!important; background:#fcf2e3!important;
+}
+div[aria-label*="High verbs"]:has([data-baseweb="tag"]){
+  box-shadow:0 0 0 3px var(--high-b) inset!important; background:#eef1ff!important;
+}
+
+/* Tabs + buttons */
 div[role="tablist"] button[role="tab"]{
   background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important
 }
@@ -69,14 +79,26 @@ div[role="tablist"] button[aria-selected="true"]{
 }
 button[kind], button{background:var(--adi-green)!important;border-color:var(--adi-green)!important;color:#fff!important;border-radius:10px!important;font-weight:700!important}
 button:hover{filter:brightness(.96)!important}
-div[data-testid="stSelectbox"] button, div[data-testid="stMultiSelect"] button,
-[data-baseweb="select"] div[role="button"], section[data-testid="stSidebar"] div[data-testid="stSelectbox"] button{
-  cursor:pointer!important; background:#f7f7f7!important; border:1px solid rgba(36,90,52,.18)!important; border-radius:10px!important; transition:box-shadow .12s
+
+/* Pointer + hover feedback for selects */
+div[data-testid="stSelectbox"] button,
+div[data-testid="stMultiSelect"] button,
+[data-baseweb="select"] div[role="button"],
+section[data-testid="stSidebar"] div[data-testid="stSelectbox"] button{
+  cursor:pointer!important;
+  background:#f7f7f7!important;
+  border:1px solid rgba(36,90,52,.18)!important;
+  border-radius:10px!important;
+  transition: box-shadow .12s;
 }
-div[data-testid="stSelectbox"] button:hover, div[data-testid="stMultiSelect"] button:hover,
-[data-baseweb="select"] div[role="button"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important }
-[data-baseweb="input"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important }
+div[data-testid="stSelectbox"] button:hover,
+div[data-testid="stMultiSelect"] button:hover,
+[data-baseweb="select"] div[role="button"]:hover{
+  box-shadow:0 0 0 2px var(--adi-green) inset!important;
+}
 :focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px }
+
+/* Cards + download panel */
 .mcq-card{
   border:1px solid rgba(36,90,52,.18);
   border-radius:12px; padding:12px; background:#fff; margin:10px 0;
@@ -292,7 +314,7 @@ def diagnostics_panel(cfg, build_tag=BUILD_TAG):
         ("cfg:courses", str(len(cfg.get("courses", [])))),
         ("cfg:cohorts", str(len(cfg.get("cohorts", [])))),
         ("cfg:instructors", str(len(cfg.get("instructors", [])))),
-        ("css:row-highlight", "uses :focus-within + :has() — modern browsers")
+        ("css:row-highlight", "uses :has() — modern browsers")
     ]
     st.table({"key":[k for k,_ in rows], "value":[v for _,v in rows]})
 
@@ -508,3 +530,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
