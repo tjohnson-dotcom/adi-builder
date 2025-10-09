@@ -1,11 +1,10 @@
 
-
 import streamlit as st
 import io, os, json, random, hashlib, sys, platform
 from datetime import date
 from pathlib import Path
 
-BUILD_TAG = "2025-10-09T21:12 ADI classic-v3.3 • dashed uploader • verb highlights • sticky Week/Lesson (+prefs file)"
+BUILD_TAG = "2025-10-09T21:12 ADI classic-v3.5 • dashed uploader • verb highlights • sticky Week/Lesson (+prefs file)"
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
 st.caption("Build tag: " + BUILD_TAG)
 
@@ -32,11 +31,22 @@ div[data-testid="stFileUploaderDropzone"]:hover{box-shadow:0 0 0 4px var(--adi-g
 div[aria-label*="Low verbs"]    [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label*="Medium verbs"] [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label*="High verbs"]   [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
-/* Row highlight when chips present */
+/* Row highlight when chips present (kept for fallback) */
 div[aria-label*="Low verbs"],div[aria-label*="Medium verbs"],div[aria-label*="High verbs"]{border:1px solid rgba(36,90,52,.18)!important;border-radius:10px!important;padding:6px!important;background:#f8f9fa!important}
 div[aria-label*="Low verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--low-b) inset!important;background:#eaf6ef!important}
 div[aria-label*="Medium verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--med-b) inset!important;background:#fcf2e3!important}
 div[aria-label*="High verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--high-b) inset!important;background:#eef1ff!important}
+
+/* Band-colored chips + active week ring */
+.band.low  [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
+.band.med  [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
+.band.high [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
+
+.band{border:1px solid rgba(36,90,52,.18)!important;border-radius:10px!important;padding:6px!important;background:#f8f9fa!important}
+.band.low.active  {box-shadow:0 0 0 3px var(--low-b) inset!important;background:#eaf6ef!important}
+.band.med.active  {box-shadow:0 0 0 3px var(--med-b) inset!important;background:#fcf2e3!important}
+.band.high.active {box-shadow:0 0 0 3px var(--high-b) inset!important;background:#eef1ff!important}
+
 /* Tabs + buttons */
 div[role="tablist"] button[role="tab"]{background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important}
 div[role="tablist"] button[aria-selected="true"]{color:var(--adi-green)!important;box-shadow:inset 0 -3px 0 0 var(--adi-green)!important;font-weight:700!important}
@@ -348,14 +358,40 @@ def main():
 
     topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
 
-    with st.expander("Low (Weeks 1–4) — Remember / Understand", True):
-        low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
-    with st.expander("Medium (Weeks 5–9) — Apply / Analyse", False):
-        med = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
-    with st.expander("High (Weeks 10–14) — Evaluate / Create", False):
-        high = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
+    # Compute active band from Week (1-4 LOW, 5-9 MED, 10-14 HIGH)
+    active_band = 'low'
+    try:
+        wk = int(st.session_state.week)
+        if 5 <= wk <= 9:
+            active_band = 'med'
+        elif wk >= 10:
+            active_band = 'high'
+    except Exception:
+        pass
 
-    tabs = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
+    with st.expander("Low (Weeks 1–4) — Remember / Understand", True):
+        st.markdown(f'<div class="band low ' + ('active' if active_band=="low" else '') + '">', unsafe_allow_html=True)
+        low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("Medium (Weeks 5–9) — Apply / Analyse", False):
+        st.markdown(f'<div class="band med ' + ('active' if active_band=="med" else '') + '">', unsafe_allow_html=True)
+        med = st.multiselect("Medium verbs", MED, default=MED[:3], key="medverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("High (Weeks 10–14) — Evaluate / Create", False):
+        st.markdown(f'<div class="band high ' + ('active' if active_band=="high" else '') + '">', unsafe_allow_html=True)
+        high = st.multiselect("High verbs", HIGH, default=HIGH[:3], key="highverbs")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Sticky tab bookmark via URL query param (?tab=mcq|skills|revision|summary)
+    tab_names = ["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"]
+    alias_to_index = {"mcq":0, "skills":1, "revision":2, "summary":3}
+    index_to_alias = {v:k for k,v in alias_to_index.items()}
+    qp = st.query_params
+    current_alias = qp.get("tab", ["mcq"])[0]
+    if current_alias not in alias_to_index:
+        current_alias = "mcq"
+    tabs = st.tabs(tab_names)
+
 
     text = ""
     if uploaded is not None:
@@ -376,6 +412,7 @@ def main():
         st.session_state["last_sig"] = None
 
     with tabs[0]:
+        st.query_params["tab"] = "mcq"
         c1,c2,c3 = st.columns([1,1,2])
         with c1:
             n = st.selectbox("How many?", [5,10,15,20], index=1)
@@ -438,6 +475,7 @@ def main():
                                mime="text/plain")
 
     with tabs[1]:
+        st.query_params["tab"] = "skills"
         left, right = st.columns([2,2])
         with left:
             act_choices = [("1 per lesson",1),("2 per lesson",2),("3 per lesson",3)]
@@ -484,6 +522,7 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
 
     with tabs[2]:
+        st.query_params["tab"] = "revision"
         n_rev = st.selectbox("How many revision prompts?", [3,5,8,10], index=0, key="n_rev")
         if st.button("Generate Revision"):
             revs = [f"{i+1}. {random.choice(low or LOW).capitalize()} key points on **{w}** in a 5-bullet summary."
@@ -512,6 +551,7 @@ def main():
             st.markdown('</div>', unsafe_allow_html=True)
 
     with tabs[3]:
+        st.query_params["tab"] = "summary"
         st.subheader("Print Summary")
         st.markdown(f"**Course:** {st.session_state.get('sel_courses','—')}  \n**Cohort:** {st.session_state.get('sel_cohorts','—')}  \n**Instructor:** {st.session_state.get('sel_instructors','—')}  \n**Date:** {date.today()}  \n**Lesson:** {st.session_state.lesson}  \n**Week:** {st.session_state.week}")
         st.divider()
@@ -528,5 +568,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
