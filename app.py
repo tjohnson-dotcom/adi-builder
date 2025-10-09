@@ -4,18 +4,30 @@ import io
 from typing import List
 from datetime import date
 
-import streamlit as st
-BUILD_TAG = "2025-10-10 • sticky+hover v2"
-st.caption(f"Build: {BUILD_TAG}")
-import streamlit as st
-# ... other imports
+iimport streamlit as st
+# other imports ...
 
-# 1) MUST be first Streamlit call:
+# 1) FIRST Streamlit call on the page
 st.set_page_config(
     page_title="ADI Builder — Lesson Activities & Questions",
     page_icon="🧭",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+# 2) Now it's safe to show build tag
+BUILD_TAG = "2025-10-10 • sticky+hover v2"
+st.caption(f"Build: {BUILD_TAG}")
+
+# 3) Now inject CSS, show logo, etc.
+st.markdown("""
+<style>
+/* your sticky+hover v2 CSS */
+</style>
+""", unsafe_allow_html=True)
+
+# ...rest of your app
+
 )
 
 # 2) Safe to show build tag now
