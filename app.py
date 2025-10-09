@@ -1,6 +1,4 @@
-
-
-# ADI Builder — Lesson Activities & Questions (classic-v3.8)
+# ADI Builder — Lesson Activities & Questions (classic-v3.9)
 import streamlit as st
 import json, io, datetime, re
 from docx import Document
@@ -26,8 +24,14 @@ div.block-container{padding-top:1rem;}
 .adi-logo{width:160px;margin:6px 0 12px 0}
 
 /* Drag & drop dashed box */
-div[data-testid="stFileUploaderDropzone"]{border:2px dashed var(--adi-green)!important;border-radius:12px!important;background:#fff;}
-div[data-testid="stFileUploaderDropzone"]:hover{box-shadow:0 0 0 3px var(--adi-green) inset!important}
+div[data-testid="stFileUploaderDropzone"]{
+  border:2px dashed var(--adi-green)!important;
+  border-radius:12px!important;
+  background:#fff;
+}
+div[data-testid="stFileUploaderDropzone"]:hover{
+  box-shadow:0 0 0 3px var(--adi-green) inset!important;
+}
 
 /* Make interactive bits feel clickable */
 div[data-testid="stFileUploaderDropzone"],
@@ -37,24 +41,53 @@ button[kind], button { cursor:pointer!important; }
 :focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px; }
 
 /* Verb band containers + colored chips */
-.band{border:1px solid rgba(36,90,52,.18)!important;border-radius:10px!important;padding:10px!important;background:#f8f9fa!important;transition: box-shadow .12s, background-color .12s, opacity .12s}
+.band{
+  border:1px solid rgba(36,90,52,.18)!important;
+  border-radius:10px!important;
+  padding:10px!important;
+  background:#f8f9fa!important;
+  transition: box-shadow .12s, background-color .12s, opacity .12s
+}
 .band:not(.active){opacity:.92}
 .band:not(.active):hover{opacity:1}
-.band.low  [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
-.band.med  [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
-.band.high [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
-.band.low.active  {box-shadow:0 0 0 3px var(--low-b) inset!important;background:#eaf6ef!important}
-.band.med.active  {box-shadow:0 0 0 3px var(--med-b) inset!important;background:#fcf2e3!important}
-.band.high.active {box-shadow:0 0 0 3px var(--high-b) inset!important;background:#eef1ff!important}
+.band.low  [data-baseweb="tag"]{
+  background:var(--low)!important;border:1px solid var(--low-b)!important;
+  color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important
+}
+.band.med  [data-baseweb="tag"]{
+  background:var(--med)!important;border:1px solid var(--med-b)!important;
+  color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important
+}
+.band.high [data-baseweb="tag"]{
+  background:var(--high)!important;border:1px solid var(--high-b)!important;
+  color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important
+}
+/* Stronger active ring (4px) for projectors */
+.band.low.active  {box-shadow:0 0 0 4px var(--low-b) inset!important;background:#eaf6ef!important}
+.band.med.active  {box-shadow:0 0 0 4px var(--med-b) inset!important;background:#fcf2e3!important}
+.band.high.active {box-shadow:0 0 0 4px var(--high-b) inset!important;background:#eef1ff!important}
 
 /* Cards */
-.mcq-card{margin:8px 0}
-/* Secondary (outline) buttons for per-question downloads */
-.secondary button{background:transparent!important;color:var(--adi-green)!important;border:2px solid var(--adi-green)!important;border-radius:10px!important;font-weight:700!important}
+.mcq-card{margin:6px 0}
+/* Secondary (outline) buttons for per-question downloads — robust selector */
+.secondary .stDownloadButton > button,
+.secondary button{
+  background:transparent!important;color:var(--adi-green)!important;
+  border:2px solid var(--adi-green)!important;border-radius:10px!important;font-weight:700!important
+}
+.secondary .stDownloadButton > button:hover,
 .secondary button:hover{background:rgba(36,90,52,.06)!important}
 /* Action rows + radio spacing */
-.mcq-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 2px 0}
-.mcq-card .stRadio{margin:0 0 8px 0;padding:2px 0}
+.mcq-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:6px 0 0 0}
+.mcq-card .stRadio{margin:0 0 6px 0;padding:2px 0}
+
+/* Thin rule & compact header row */
+hr.thin{border:none;border-top:1px solid #e5e7eb;margin:8px 0}
+.mcq-top-row{margin-bottom:6px}
+
+/* Tabs hover/active cues */
+.stTabs [role="tab"][aria-selected="true"]{border-bottom:2px solid var(--adi-green);font-weight:700}
+.stTabs [role="tab"]:hover{ text-decoration: underline; }
 </style>
 """
 
@@ -66,8 +99,12 @@ LOW  = ["define","identify","list","recall","describe","label"]
 MED  = ["apply","demonstrate","solve","illustrate","classify","compare"]
 HIGH = ["evaluate","synthesize","design","justify","critique","create"]
 
-COURSES   = ["GE4-IPM — Integrated Project & Materials Mgmt","GE4-EPM — Defense Technology Practices","CT4-COM — Computation for Chemical Technologists"]
-COHORTS   = ["D1-C01","D1-M01","D1-M02","D2-C01"]
+COURSES    = [
+    "GE4-IPM — Integrated Project & Materials Mgmt",
+    "GE4-EPM — Defense Technology Practices",
+    "CT4-COM — Computation for Chemical Technologists"
+]
+COHORTS    = ["D1-C01","D1-M01","D1-M02","D2-C01"]
 INSTRUCTORS= ["Daniel","Ghamza Labeeb","Abdulmalik","Nerdeen Tariq"]
 
 # ---------- PREFS ----------
@@ -92,7 +129,9 @@ def init_state():
     ss.setdefault("sel_cohorts", prefs.get("sel_cohorts", ""))
     ss.setdefault("sel_instructors", prefs.get("sel_instructors", ""))
     ss.setdefault("mcqs", [
-        {"stem":"Explain the role of inspection in quality management.", "options":["To verify conformance","To set company policy","To hire staff","To control budgets"], "correct":0}
+        {"stem":"Explain the role of inspection in quality management.",
+         "options":["To verify conformance","To set company policy","To hire staff","To control budgets"],
+         "correct":0}
     ])
     ss.setdefault("include_key", True)
 
@@ -159,7 +198,7 @@ def export_docx_all(items, include_key=True)->bytes:
 
 def export_txt_all(items, include_key=True)->bytes:
     letters = ["A","B","C","D"]
-    out=[] 
+    out=[]
     for i,it in enumerate(items, start=1):
         out.append(f"Q{i}: {it['stem']}")
         for j,opt in enumerate(it["options"]):
@@ -171,11 +210,15 @@ def export_txt_all(items, include_key=True)->bytes:
 # ---------- SIDEBAR ----------
 with st.sidebar:
     try:
-        st.image("adi_logo.png", use_column_width=False, output_format="PNG", caption=None, clamp=False, channels="RGB", width=160)
+        st.image("adi_logo.png", use_column_width=False, output_format="PNG",
+                 caption=None, clamp=False, channels="RGB", width=160)
     except Exception:
         st.markdown("<div class='adi-logo'></div>", unsafe_allow_html=True)
+
     st.write("**Upload (optional)**")
-    f = st.file_uploader("Drag and drop file here", type=["txt","docx","pptx","pdf"], label_visibility="collapsed")
+    f = st.file_uploader("Drag and drop file here",
+                         type=["txt","docx","pptx","pdf"],
+                         label_visibility="collapsed")
     if f is not None:
         with st.spinner("Scanning file…"):
             # (Hook for future parsing.)
@@ -187,10 +230,21 @@ with st.sidebar:
     st.checkbox("Deep scan source (slower, better coverage)", key="deep_scan")
     st.markdown("---")
     st.subheader("Course details")
-
-    st.selectbox("Course name", COURSES, index=0 if st.session_state.sel_courses=="" else max(0, COURSES.index(st.session_state.sel_courses)) if st.session_state.sel_courses in COURSES else 0, key="sel_courses")
-    st.selectbox("Class / Cohort", COHORTS, index=0 if st.session_state.sel_cohorts=="" else max(0, COHORTS.index(st.session_state.sel_cohorts)) if st.session_state.sel_cohorts in COHORTS else 0, key="sel_cohorts")
-    st.selectbox("Instructor name", INSTRUCTORS, index=0 if st.session_state.sel_instructors=="" else max(0, INSTRUCTORS.index(st.session_state.sel_instructors)) if st.session_state.sel_instructors in INSTRUCTORS else 0, key="sel_instructors")
+    st.selectbox("Course name", COURSES,
+                 index=0 if st.session_state.sel_courses=="" else
+                 max(0, COURSES.index(st.session_state.sel_courses))
+                 if st.session_state.sel_courses in COURSES else 0,
+                 key="sel_courses")
+    st.selectbox("Class / Cohort", COHORTS,
+                 index=0 if st.session_state.sel_cohorts=="" else
+                 max(0, COHORTS.index(st.session_state.sel_cohorts))
+                 if st.session_state.sel_cohorts in COHORTS else 0,
+                 key="sel_cohorts")
+    st.selectbox("Instructor name", INSTRUCTORS,
+                 index=0 if st.session_state.sel_instructors=="" else
+                 max(0, INSTRUCTORS.index(st.session_state.sel_instructors))
+                 if st.session_state.sel_instructors in INSTRUCTORS else 0,
+                 key="sel_instructors")
 
     st.write("**Date**")
     st.date_input("", value=datetime.date.today(), label_visibility="collapsed")
@@ -200,11 +254,20 @@ with st.sidebar:
         st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
     with cols[1]:
         st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
-    persist_state()
+    # persist
+    save_prefs({
+        "week": st.session_state.week,
+        "lesson": st.session_state.lesson,
+        "deep_scan": st.session_state.deep_scan,
+        "sel_courses": st.session_state.sel_courses,
+        "sel_cohorts": st.session_state.sel_cohorts,
+        "sel_instructors": st.session_state.sel_instructors,
+    })
 
 # ---------- MAIN ----------
 st.markdown(f"### {APP_TITLE}")
-topic = st.text_area("Topic / Outcome (optional)", placeholder="e.g., Integrated Project and …")
+topic = st.text_area("Topic / Outcome (optional)",
+                     placeholder="e.g., Integrated Project and …")
 
 # Active band from week
 active_band = 'low'
@@ -238,15 +301,17 @@ tabs = st.tabs(tab_names)
 with tabs[0]:
     st.query_params["tab"] = "mcq"
     st.subheader("Knowledge MCQs (ADI Policy)")
+
+    st.markdown('<div class="mcq-top-row">', unsafe_allow_html=True)
     cols = st.columns([1,1,1,2])
     with cols[0]:
         how_many = st.selectbox("How many?", [5,10,15,20], index=1)
     with cols[1]:
         st.checkbox("Answer key", key="include_key")
-    st.markdown("---")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="thin">', unsafe_allow_html=True)
 
     letters = ["A","B","C","D"]
-    # Render cards
     for i,item in enumerate(st.session_state.mcqs):
         with st.container(border=True):
             st.markdown(f"**Q{i+1}**")
@@ -260,7 +325,7 @@ with tabs[0]:
                 item["options"][3] = st.text_input("D", value=item["options"][3], key=f"d_{i}")
             item["correct"] = letters.index(st.radio("Correct answer", letters, index=item["correct"], horizontal=True, key=f"corr_{i}"))
             st.caption("Answer key above controls the correct option.")
-            # Per-question downloads (outline / secondary) + disabled until stem has text
+
             st.markdown('<div class="mcq-actions">', unsafe_allow_html=True)
             st.markdown('<div class="secondary">', unsafe_allow_html=True)
             clicked_docx = st.download_button(
@@ -269,9 +334,11 @@ with tabs[0]:
                 file_name=ctx_filename("ADI_MCQ", qnum=i+1)+".docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key=f"dl_docx_q{i}",
-                disabled=not bool(item["stem"].strip())
+                disabled=not bool(item["stem"].strip()),
+                help="Download DOCX for this specific question"
             )
             st.markdown('</div>', unsafe_allow_html=True)
+
             st.markdown('<div class="secondary">', unsafe_allow_html=True)
             clicked_txt = st.download_button(
                 f"⬇️ Download TXT (Q{i+1})",
@@ -279,10 +346,12 @@ with tabs[0]:
                 file_name=ctx_filename("ADI_MCQ", qnum=i+1)+".txt",
                 mime="text/plain",
                 key=f"dl_txt_q{i}",
-                disabled=not bool(item["stem"].strip())
+                disabled=not bool(item["stem"].strip()),
+                help="Download plain-text version for this question"
             )
             st.markdown('</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+
             if clicked_docx or clicked_txt:
                 try: st.toast("Export started", icon="⬇️")
                 except Exception: pass
@@ -291,7 +360,9 @@ with tabs[0]:
     col1,col2,col3 = st.columns([1,1,2])
     with col1:
         if st.button("➕ Add blank question"):
-            st.session_state.mcqs.append({"stem":"New question...", "options":["Option A","Option B","Option C","Option D"], "correct":0})
+            st.session_state.mcqs.append(
+                {"stem":"New question...", "options":["Option A","Option B","Option C","Option D"], "correct":0}
+            )
     with col2:
         if st.button("➖ Remove last"):
             if st.session_state.mcqs:
@@ -303,15 +374,19 @@ with tabs[0]:
             data=export_docx_all(st.session_state.mcqs, st.session_state.include_key),
             file_name=ctx_filename("ADI_Knowledge_MCQs")+".docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            disabled=not bool(st.session_state.mcqs)
+            disabled=not bool(st.session_state.mcqs),
+            help="Download a DOCX with all questions"
         )
+
     clicked_all_txt = st.download_button(
         "⬇️ Download TXT (All MCQs)",
         data=export_txt_all(st.session_state.mcqs, st.session_state.include_key),
         file_name=ctx_filename("ADI_Knowledge_MCQs")+".txt",
         mime="text/plain",
-        disabled=not bool(st.session_state.mcqs)
+        disabled=not bool(st.session_state.mcqs),
+        help="Download a TXT with all questions"
     )
+
     if clicked_all_docx or clicked_all_txt:
         try: st.toast("Export started", icon="⬇️")
         except Exception: pass
@@ -343,4 +418,3 @@ with tabs[3]:
     st.write("Cohort:", st.session_state.sel_cohorts)
     st.write("Instructor:", st.session_state.sel_instructors)
     st.write("Week/Lesson:", st.session_state.week, "/", st.session_state.lesson)
-
