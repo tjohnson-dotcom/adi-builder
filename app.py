@@ -1,116 +1,62 @@
 
+
 import streamlit as st
 import io, os, json, random, hashlib, sys, platform
 from datetime import date
 from pathlib import Path
 
-BUILD_TAG = "2025-10-09T20:55 ADI classic-v3.1 • stronger dashed uploader • robust row highlight"
+BUILD_TAG = "2025-10-09T21:12 ADI classic-v3.3 • dashed uploader • verb highlights • sticky Week/Lesson (+prefs file)"
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
 st.caption("Build tag: " + BUILD_TAG)
 
+# ---------------- Styles ----------------
 st.markdown('''
 <style>
 :root{
   --adi-green:#245a34;
   --text:#111827;
-  --bg:#ffffff;
-  --panel:#f7f7f7;
   --low:#cfe8d9;  --low-b:#1e4d2b;  --low-t:#123222;
   --med:#f8e6c9;  --med-b:#a97d2b;  --med-t:#3a2a11;
   --high:#dfe6ff; --high-b:#3f3ac7; --high-t:#17155a;
 }
 .block-container{padding-top:0.6rem !important}
-.adi-banner{
-  background:var(--adi-green);
-  color:#fff; font-weight:700;
-  padding:12px 16px; border-radius:8px;
-  box-shadow:0 1px 3px rgba(0,0,0,.06);
-  margin:8px 0 12px 0;
-}
-
-/* === Robust dashed uploader (streamlit 1.36–1.37) === */
+.adi-banner{background:var(--adi-green);color:#fff;font-weight:700;padding:12px 16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin:8px 0 12px 0}
+/* Uploader — robust dashed */
 div[data-testid="stFileUploaderDropzone"],
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"],
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]{
-  border: 4px dashed var(--adi-green) !important;
-  border-radius: 12px !important;
-  background: rgba(36,90,52,.05) !important;
-  min-height: 84px !important;
-  padding: 14px !important;
-  transition: box-shadow .12s, background-color .12s, border-color .12s;
+  border:4px dashed var(--adi-green)!important;border-radius:12px!important;background:rgba(36,90,52,.05)!important;min-height:84px!important;padding:14px!important;transition:box-shadow .12s, background-color .12s, border-color .12s
 }
-div[data-testid="stFileUploaderDropzone"]:hover,
-div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]:hover,
-section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]:hover{
-  box-shadow: 0 0 0 4px var(--adi-green) inset !important;
-  background: rgba(36,90,52,.10) !important;
-}
-
-/* === Chip colours per level === */
+div[data-testid="stFileUploaderDropzone"]:hover{box-shadow:0 0 0 4px var(--adi-green) inset!important;background:rgba(36,90,52,.10)!important}
+/* Chips */
 div[aria-label*="Low verbs"]    [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label*="Medium verbs"] [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label*="High verbs"]   [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
-
-/* === Row containers + highlight when any tag is selected === */
-div[aria-label*="Low verbs"],
-div[aria-label*="Medium verbs"],
-div[aria-label*="High verbs"]{
-  border:1px solid rgba(36,90,52,.18)!important;
-  border-radius:10px!important;
-  padding:6px!important;
-  background:#f8f9fa!important;
-}
-div[aria-label*="Low verbs"]:has([data-baseweb="tag"]){
-  box-shadow:0 0 0 3px var(--low-b) inset!important; background:#eaf6ef!important;
-}
-div[aria-label*="Medium verbs"]:has([data-baseweb="tag"]){
-  box-shadow:0 0 0 3px var(--med-b) inset!important; background:#fcf2e3!important;
-}
-div[aria-label*="High verbs"]:has([data-baseweb="tag"]){
-  box-shadow:0 0 0 3px var(--high-b) inset!important; background:#eef1ff!important;
-}
-
+/* Row highlight when chips present */
+div[aria-label*="Low verbs"],div[aria-label*="Medium verbs"],div[aria-label*="High verbs"]{border:1px solid rgba(36,90,52,.18)!important;border-radius:10px!important;padding:6px!important;background:#f8f9fa!important}
+div[aria-label*="Low verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--low-b) inset!important;background:#eaf6ef!important}
+div[aria-label*="Medium verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--med-b) inset!important;background:#fcf2e3!important}
+div[aria-label*="High verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var(--high-b) inset!important;background:#eef1ff!important}
 /* Tabs + buttons */
-div[role="tablist"] button[role="tab"]{
-  background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important
-}
-div[role="tablist"] button[aria-selected="true"]{
-  color:var(--adi-green)!important; box-shadow:inset 0 -3px 0 0 var(--adi-green)!important; font-weight:700!important
-}
-button[kind], button{background:var(--adi-green)!important;border-color:var(--adi-green)!important;color:#fff!important;border-radius:10px!important;font-weight:700!important}
+div[role="tablist"] button[role="tab"]{background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important}
+div[role="tablist"] button[aria-selected="true"]{color:var(--adi-green)!important;box-shadow:inset 0 -3px 0 0 var(--adi-green)!important;font-weight:700!important}
+button[kind],button{background:#245a34!important;border-color:#245a34!important;color:#fff!important;border-radius:10px!important;font-weight:700!important}
 button:hover{filter:brightness(.96)!important}
-
-/* Pointer + hover feedback for selects */
-div[data-testid="stSelectbox"] button,
-div[data-testid="stMultiSelect"] button,
-[data-baseweb="select"] div[role="button"],
-section[data-testid="stSidebar"] div[data-testid="stSelectbox"] button{
-  cursor:pointer!important;
-  background:#f7f7f7!important;
-  border:1px solid rgba(36,90,52,.18)!important;
-  border-radius:10px!important;
-  transition: box-shadow .12s;
-}
-div[data-testid="stSelectbox"] button:hover,
-div[data-testid="stMultiSelect"] button:hover,
-[data-baseweb="select"] div[role="button"]:hover{
-  box-shadow:0 0 0 2px var(--adi-green) inset!important;
-}
-:focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px }
-
-/* Cards + download panel */
-.mcq-card{
-  border:1px solid rgba(36,90,52,.18);
-  border-radius:12px; padding:12px; background:#fff; margin:10px 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-}
-.download-panel{ border:2px dashed var(--adi-green); border-radius:14px; padding:14px; margin-top:12px; background:#fff; }
+/* Pointer cues */
+div[data-testid="stSelectbox"] button,div[data-testid="stMultiSelect"] button,[data-baseweb="select"] div[role="button"]{cursor:pointer!important;background:#f7f7f7!important;border:1px solid rgba(36,90,52,.18)!important;border-radius:10px!important;transition:box-shadow .12s}
+div[data-testid="stSelectbox"] button:hover,div[data-testid="stMultiSelect"] button:hover,[data-baseweb="select"] div[role="button"]:hover{box-shadow:0 0 0 2px #245a34 inset!important}
+:focus-visible{outline:2px solid #245a34!important;outline-offset:2px}
+/* Cards */
+.mcq-card{border:1px solid rgba(36,90,52,.18);border-radius:12px;padding:12px;background:#fff;margin:10px 0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.download-panel{border:2px dashed #245a34;border-radius:14px;padding:14px;margin-top:12px;background:#fff}
 </style>
 ''', unsafe_allow_html=True)
 
-# ----------------- Data persistence -----------------
+# --------------- Persistence: data + user prefs ---------------
 DATA_DIR = Path(os.getenv("DATA_DIR",".")); DATA_DIR.mkdir(parents=True, exist_ok=True)
 CFG_FILE = DATA_DIR / "adi_modules.json"
+PREF_FILE = DATA_DIR / "adi_prefs.json"
+
 SEED_CFG = {
     "courses":[
         "GE4-EPM — Defense Technology Practices: Experimental, Quality, Inspection",
@@ -139,26 +85,45 @@ SEED_CFG = {
         "Ahmed Albader","Muath","Sultan","Dr. Mashael","Noura Aldossari","Daniel"
     ]
 }
+
 def load_cfg():
     try:
-        if CFG_FILE.exists():
-            return json.loads(CFG_FILE.read_text(encoding="utf-8"))
-        return SEED_CFG.copy()
+        return json.loads(CFG_FILE.read_text(encoding="utf-8")) if CFG_FILE.exists() else SEED_CFG.copy()
     except Exception:
         return SEED_CFG.copy()
 
 def save_cfg(cfg):
     CFG_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
+def load_prefs():
+    try:
+        return json.loads(PREF_FILE.read_text(encoding="utf-8")) if PREF_FILE.exists() else {}
+    except Exception:
+        return {}
+
+def save_prefs(prefs:dict):
+    try:
+        PREF_FILE.write_text(json.dumps(prefs, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
 if "cfg" not in st.session_state:
     st.session_state.cfg = load_cfg()
+if "prefs" not in st.session_state:
+    st.session_state.prefs = load_prefs()
 
-# ----------------- Helpers -----------------
+# --------------- Helpers ---------------
 def edit_list(label, key, placeholder):
     items = st.session_state.cfg.get(key, [])
     opts=[f"Select {placeholder}"]+items
+    # initialize from prefs for new sessions
+    sel_key = f"sel_{key}"
+    if sel_key not in st.session_state:
+        pref_val = st.session_state.prefs.get(sel_key, opts[0])
+        st.session_state[sel_key] = pref_val if pref_val in opts else opts[0]
+
     c1,c2,c3=st.columns([5,1,1])
-    choice=c1.selectbox(label, opts, index=0, key=f"sel_{key}")
+    choice=c1.selectbox(label, opts, index=opts.index(st.session_state[sel_key]) if st.session_state[sel_key] in opts else 0, key=sel_key)
     add=c2.button("＋", key=f"add_{key}"); rm=c3.button("−", key=f"rm_{key}")
     selected=None if choice==opts[0] else choice
     if add: st.session_state[f"adding_{key}"]=True
@@ -171,10 +136,13 @@ def edit_list(label, key, placeholder):
         if colA.button("Save", key=f"save_{key}"):
             if new_val and new_val not in items:
                 items.append(new_val); st.session_state.cfg[key]=items; save_cfg(st.session_state.cfg)
+                # update selection to new item
+                st.session_state[sel_key] = new_val
             st.session_state[f"adding_{key}"]=False
         if colB.button("Cancel", key=f"cancel_{key}"): st.session_state[f"adding_{key}"]=False
     return selected
 
+# Upload parsing
 try:
     import fitz  # pymupdf
     PDF_ENABLED=True
@@ -246,6 +214,7 @@ def gen_mcqs_struct(n, verbs, txt):
         out.append({"stem": q, "options": opts, "correct": correct})
     return out
 
+# Exporters
 def export_docx_from_state(mcqs, include_key=True, title="Knowledge MCQs"):
     from docx import Document
     doc=Document(); doc.add_heading(title, level=1)
@@ -284,6 +253,7 @@ def export_txt_one(item, idx=1):
     lines.append(f"Correct: {['A','B','C','D'][item['correct']]}")
     return ("\n".join(lines)).encode('utf-8')
 
+# Diagnostics
 def diagnostics_panel(cfg, build_tag=BUILD_TAG):
     rows = []
     try:
@@ -314,11 +284,21 @@ def diagnostics_panel(cfg, build_tag=BUILD_TAG):
         ("cfg:courses", str(len(cfg.get("courses", [])))),
         ("cfg:cohorts", str(len(cfg.get("cohorts", [])))),
         ("cfg:instructors", str(len(cfg.get("instructors", [])))),
+        ("prefs:path", str(Path(os.getenv("DATA_DIR",".")).joinpath("adi_prefs.json").resolve())),
         ("css:row-highlight", "uses :has() — modern browsers")
     ]
     st.table({"key":[k for k,_ in rows], "value":[v for _,v in rows]})
 
+# ---------------- UI ----------------
 def main():
+    # Make Week/Lesson sticky across reruns + restarts
+    if "week" not in st.session_state:
+        st.session_state.week = int(st.session_state.prefs.get("week", 1))
+    if "lesson" not in st.session_state:
+        st.session_state.lesson = int(st.session_state.prefs.get("lesson", 1))
+    if "deep" not in st.session_state:
+        st.session_state.deep = bool(st.session_state.prefs.get("deep", False))
+
     if "mcqs" not in st.session_state: st.session_state.mcqs = []
     if "upload_meta" not in st.session_state: st.session_state.upload_meta=None
     if "last_sig" not in st.session_state: st.session_state.last_sig=None
@@ -330,7 +310,8 @@ def main():
 
         st.subheader("Upload (optional)")
         uploaded = st.file_uploader("Drag and drop file here", type=["txt","docx","pptx","pdf"], key="uploader")
-        deep = st.toggle("Deep scan source (slower, better coverage)", value=False)
+        deep = st.toggle("Deep scan source (slower, better coverage)", value=st.session_state.deep)
+        st.session_state.deep = deep  # keep in state
         status = st.empty()
         st.caption("Quick scan reads the first 10 PDF pages. Turn on deep scan for full documents.")
         st.divider()
@@ -343,9 +324,22 @@ def main():
 
         st.subheader("Context")
         c1,c2 = st.columns(2)
-        lesson = c1.number_input("Lesson", 1, 50, 1, step=1)
-        week   = c2.number_input("Week", 1, 20, 1, step=1)
+        with c1:
+            st.number_input("Lesson", 1, 50, key="lesson", step=1)
+        with c2:
+            st.number_input("Week", 1, 20, key="week", step=1)
         st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
+
+        # Save prefs on every sidebar render (cheap + robust)
+        st.session_state.prefs.update({
+            "week": st.session_state.week,
+            "lesson": st.session_state.lesson,
+            "deep": st.session_state.deep,
+            "sel_courses": st.session_state.get("sel_courses","Select course"),
+            "sel_cohorts": st.session_state.get("sel_cohorts","Select cohort"),
+            "sel_instructors": st.session_state.get("sel_instructors","Select instructor"),
+        })
+        save_prefs(st.session_state.prefs)
 
         with st.expander("Diagnostics", expanded=False):
             diagnostics_panel(st.session_state.cfg)
@@ -369,11 +363,15 @@ def main():
         if st.session_state["last_sig"] != sig:
             ftype = detect_filetype(uploaded)
             data  = uploaded.getvalue()
-            text, note = parse_upload_cached(data, ftype, deep)
+            with st.spinner("Scanning file…"):
+                text, note = parse_upload_cached(data, ftype, deep)
             st.session_state["upload_meta"] = {"name": uploaded.name, "type": ftype, "note": note}
             st.session_state["last_sig"] = sig
         meta = st.session_state["upload_meta"]
-        status.markdown(f"✅ **Uploaded:** {meta['name']}  \n_Type:_ {meta['type']} — {meta['note']}")
+        if meta:
+            status.success(f"Uploaded: {meta['name']}  —  {meta['type']}  •  {meta['note']}")
+            try: st.toast(f"{meta['name']} uploaded ✓", icon="✅")
+            except Exception: pass
     else:
         st.session_state["last_sig"] = None
 
@@ -515,7 +513,7 @@ def main():
 
     with tabs[3]:
         st.subheader("Print Summary")
-        st.markdown(f"**Course:** {course or '—'}  \n**Cohort:** {cohort or '—'}  \n**Instructor:** {instructor or '—'}  \n**Date:** {the_date}  \n**Lesson:** {lesson}  \n**Week:** {week}")
+        st.markdown(f"**Course:** {st.session_state.get('sel_courses','—')}  \n**Cohort:** {st.session_state.get('sel_cohorts','—')}  \n**Instructor:** {st.session_state.get('sel_instructors','—')}  \n**Date:** {date.today()}  \n**Lesson:** {st.session_state.lesson}  \n**Week:** {st.session_state.week}")
         st.divider()
         if st.session_state.mcqs:
             st.markdown("### Knowledge MCQs")
@@ -530,4 +528,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
