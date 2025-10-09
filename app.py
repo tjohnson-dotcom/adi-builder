@@ -1,4 +1,4 @@
-# ADI Builder — Lesson Activities & Questions (classic-v3.10 / safe-select + MCQ generator)
+# ADI Builder — Lesson Activities & Questions (classic-v3.10.1 / safe-select + MCQ generator + unique keys)
 import streamlit as st
 import json, io, datetime, re
 from docx import Document
@@ -193,7 +193,7 @@ def export_txt_all(items, include_key=True)->bytes:
         out.append("")
     return ("\n".join(out)).encode("utf-8")
 
-# ---- NEW: MCQ generator (topic + selected verbs) ----
+# ---- MCQ generator (topic + selected verbs) ----
 def generate_mcqs(n, topic, low_verbs, med_verbs, high_verbs):
     """Create n simple MCQs from the current topic + selected verbs."""
     verbs = [*(low_verbs or []), *(med_verbs or []), *(high_verbs or [])] or ["explain"]
@@ -319,9 +319,9 @@ with tabs[0]:
         how_many = st.selectbox("How many?", [5,10,15,20], index=1)
     with cols[1]:
         st.checkbox("Answer key", key="include_key")
-    # NEW: Generate button inside MCQs tab
+    # Generate button inside MCQs tab (unique key)
     with cols[2]:
-        if st.button("Generate from verbs/topic"):
+        if st.button("Generate from verbs/topic", key="gen_mcq_btn"):
             generate_mcqs(how_many, topic, st.session_state.lowverbs, st.session_state.medverbs, st.session_state.highverbs)
             try: st.toast(f"Generated {how_many} MCQs", icon="✨")
             except Exception: pass
@@ -376,12 +376,12 @@ with tabs[0]:
     st.markdown("")
     col1,col2,col3 = st.columns([1,1,2])
     with col1:
-        if st.button("➕ Add blank question"):
+        if st.button("➕ Add blank question", key="add_q_btn"):
             st.session_state.mcqs.append(
                 {"stem":"New question...", "options":["Option A","Option B","Option C","Option D"], "correct":0}
             )
     with col2:
-        if st.button("➖ Remove last"):
+        if st.button("➖ Remove last", key="rem_q_btn"):
             if st.session_state.mcqs:
                 st.session_state.mcqs.pop()
 
@@ -392,7 +392,8 @@ with tabs[0]:
             file_name=ctx_filename("ADI_Knowledge_MCQs")+".docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             disabled=not bool(st.session_state.mcqs),
-            help="Download a DOCX with all questions"
+            help="Download a DOCX with all questions",
+            key="dl_all_docx"
         )
 
     clicked_all_txt = st.download_button(
@@ -401,7 +402,8 @@ with tabs[0]:
         file_name=ctx_filename("ADI_Knowledge_MCQs")+".txt",
         mime="text/plain",
         disabled=not bool(st.session_state.mcqs),
-        help="Download a TXT with all questions"
+        help="Download a TXT with all questions",
+        key="dl_all_txt"
     )
 
     if clicked_all_docx or clicked_all_txt:
@@ -419,7 +421,8 @@ with tabs[1]:
         mins = st.selectbox("Minutes per activity", list(range(5,61,5)), index=1)
     with a3:
         group = st.selectbox("Group size", ["Solo (1)","Pairs (2)","Triads (3)","Groups of 4"], index=0)
-    st.button("Generate from verbs/topic")
+    # unique key for this separate button
+    st.button("Generate from verbs/topic", key="gen_skills_btn")
 
 # ----- Revision -----
 with tabs[2]:
