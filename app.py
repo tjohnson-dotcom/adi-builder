@@ -4,7 +4,7 @@ import io, os, json, random, hashlib, sys, platform
 from datetime import date
 from pathlib import Path
 
-BUILD_TAG = "2025-10-09T21:12 ADI classic-v3.5 • dashed uploader • verb highlights • sticky Week/Lesson (+prefs file)"
+BUILD_TAG = "2025-10-09T21:12 ADI classic-v3.6 • dashed uploader • verb highlights • sticky Week/Lesson (+prefs file)"
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
 st.caption("Build tag: " + BUILD_TAG)
 
@@ -46,6 +46,12 @@ div[aria-label*="High verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 3px var
 .band.low.active  {box-shadow:0 0 0 3px var(--low-b) inset!important;background:#eaf6ef!important}
 .band.med.active  {box-shadow:0 0 0 3px var(--med-b) inset!important;background:#fcf2e3!important}
 .band.high.active {box-shadow:0 0 0 3px var(--high-b) inset!important;background:#eef1ff!important}
+
+/* Subtle dim for non-active bands so active pops */
+.band{transition: box-shadow .12s, background-color .12s, opacity .12s}
+.band:not(.active){opacity:.92}
+.band:not(.active):hover{opacity:1}
+
 
 /* Tabs + buttons */
 div[role="tablist"] button[role="tab"]{background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important}
@@ -568,3 +574,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
