@@ -1,47 +1,107 @@
 
-
 import streamlit as st
 import io, os, json, random, hashlib
 from datetime import date
 from pathlib import Path
 
+# ---------- Page config & build tag
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🗂️", layout="wide")
-st.caption("Build tag: 2025-10-08T00:08 classic-v3-ADI + editable-MCQs")
+st.caption("Build tag: 2025-10-08T00:22 classic-v3-ADI • dashed uploader • editable MCQs • per-question downloads")
 
+# ---------- Styles (Classic v3 – Stable ADI look) ----------
 st.markdown('''
 <style>
+/* ========= Classic v3 – Stable ========= */
 :root{
-  --adi-green:#245a34;
+  --adi-green:#245a34;      /* ADI primary */
+  --text:#111827;
+  --bg:#ffffff;
+  --panel:#f7f7f7;
   --low:#cfe8d9;  --low-b:#1e4d2b;  --low-t:#123222;
   --med:#f8e6c9;  --med-b:#a97d2b;  --med-t:#3a2a11;
   --high:#dfe6ff; --high-b:#3f3ac7; --high-t:#17155a;
 }
+
+/* Page + banner */
 .block-container{padding-top:0.6rem !important}
-.adi-banner{ background:var(--adi-green); color:#fff; font-weight:700; padding:12px 16px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); margin:8px 0 12px 0; }
+.adi-banner{
+  background:var(--adi-green);
+  color:#fff; font-weight:700;
+  padding:12px 16px; border-radius:8px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);
+  margin: 8px 0 12px 0;
+}
+
+/* ===== Uploader — bullet-proof dashed frame ===== */
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"],
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"],
-div[data-testid="stFileUploaderDropzone"]{ border:4px dashed var(--adi-green) !important; border-radius:12px !important; background:rgba(36,90,52,.05) !important; padding:14px !important; min-height:84px !important; transition:box-shadow .12s, background-color .12s, border-color .12s; }
+div[data-testid="stFileUploaderDropzone"]{
+  border:4px dashed var(--adi-green) !important;
+  border-radius:12px !important;
+  background:rgba(36,90,52,.05) !important;
+  padding:14px !important; min-height:84px !important;
+  transition:box-shadow .12s, background-color .12s, border-color .12s;
+}
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]:hover,
 section[data-testid="stSidebar"] div[data-testid="stFileUploaderDropzone"]:hover,
-div[data-testid="stFileUploaderDropzone"]:hover{ box-shadow:0 0 0 4px var(--adi-green) inset !important; background:rgba(36,90,52,.10) !important; }
+div[data-testid="stFileUploaderDropzone"]:hover{
+  box-shadow:0 0 0 4px var(--adi-green) inset !important;
+  background:rgba(36,90,52,.10) !important;
+}
+
+/* ===== Chips by label (robust) ===== */
 div[aria-label="Low verbs"]    [data-baseweb="tag"]{background:var(--low)!important;border:1px solid var(--low-b)!important;color:var(--low-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label="Medium verbs"] [data-baseweb="tag"]{background:var(--med)!important;border:1px solid var(--med-b)!important;color:var(--med-t)!important;border-radius:9999px!important;font-weight:700!important}
 div[aria-label="High verbs"]   [data-baseweb="tag"]{background:var(--high)!important;border:1px solid var(--high-b)!important;color:var(--high-t)!important;border-radius:9999px!important;font-weight:700!important}
-div[aria-label="Low verbs"], div[aria-label="Medium verbs"], div[aria-label="High verbs"]{ background:#f7f7f7 !important; border:1px solid rgba(36,90,52,.18)!important; border-radius:10px!important; padding:6px!important; }
+
+/* Verb rows: tinted backgrounds + ring on hover/focus + stay highlighted with chips */
+div[aria-label="Low verbs"], div[aria-label="Medium verbs"], div[aria-label="High verbs"]{
+  border:1px solid rgba(36,90,52,.18)!important; border-radius:10px!important; padding:6px!important;
+}
+div[aria-label="Low verbs"]{ background: var(--low) !important; }
+div[aria-label="Medium verbs"]{ background: var(--med) !important; }
+div[aria-label="High verbs"]{ background: var(--high) !important; }
+
 div[aria-label="Low verbs"]:hover, div[aria-label="Low verbs"]:focus-within{box-shadow:0 0 0 2px var(--low-b) inset!important}
 div[aria-label="Medium verbs"]:hover, div[aria-label="Medium verbs"]:focus-within{box-shadow:0 0 0 2px var(--med-b) inset!important}
 div[aria-label="High verbs"]:hover, div[aria-label="High verbs"]:focus-within{box-shadow:0 0 0 2px var(--high-b) inset!important}
-div[role="tablist"] button[role="tab"]{ background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important }
-div[role="tablist"] button[aria-selected="true"]{ color:var(--adi-green)!important; box-shadow:inset 0 -3px 0 0 var(--adi-green)!important; font-weight:700!important }
+
+div[aria-label="Low verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 2px var(--low-b) inset!important}
+div[aria-label="Medium verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 2px var(--med-b) inset!important}
+div[aria-label="High verbs"]:has([data-baseweb="tag"]){box-shadow:0 0 0 2px var(--high-b) inset!important}
+
+/* Tabs: classic flat with ADI underline */
+div[role="tablist"] button[role="tab"]{
+  background:transparent!important;border:none!important;color:#374151!important;padding:8px 12px!important
+}
+div[role="tablist"] button[aria-selected="true"]{
+  color:var(--adi-green)!important; box-shadow:inset 0 -3px 0 0 var(--adi-green)!important; font-weight:700!important
+}
+
+/* Buttons */
 button[kind], button{background:var(--adi-green)!important;border-color:var(--adi-green)!important;color:#fff!important;border-radius:10px!important;font-weight:700!important}
 button:hover{filter:brightness(.96)!important}
-div[data-testid="stSelectbox"] button, div[data-testid="stMultiSelect"] button, [data-baseweb="select"] div[role="button"], section[data-testid="stSidebar"] div[data-testid="stSelectbox"] button{ cursor:pointer!important; background:#f7f7f7!important; border:1px solid rgba(36,90,52,.18)!important; border-radius:10px!important; transition:box-shadow .12s }
-div[data-testid="stSelectbox"] button:hover, div[data-testid="stMultiSelect"] button:hover, [data-baseweb="select"] div[role="button"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important }
-[data-baseweb="input"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important } :focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px }
-.mcq-card{ border:1px solid rgba(36,90,52,.18); border-radius:12px; padding:12px; background:#fff; margin:10px 0; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+
+/* Pointer + hover for pickers (main + sidebar) */
+div[data-testid="stSelectbox"] button, div[data-testid="stMultiSelect"] button,
+[data-baseweb="select"] div[role="button"], section[data-testid="stSidebar"] div[data-testid="stSelectbox"] button{
+  cursor:pointer!important; background:#f7f7f7!important; border:1px solid rgba(36,90,52,.18)!important; border-radius:10px!important; transition:box-shadow .12s
+}
+div[data-testid="stSelectbox"] button:hover, div[data-testid="stMultiSelect"] button:hover,
+[data-baseweb="select"] div[role="button"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important }
+[data-baseweb="input"]:hover{ box-shadow:0 0 0 2px var(--adi-green) inset!important }
+:focus-visible{ outline:2px solid var(--adi-green)!important; outline-offset:2px }
+
+/* Editable MCQ cards */
+.mcq-card{
+  border:1px solid rgba(36,90,52,.18);
+  border-radius:12px; padding:12px; background:#fff; margin:10px 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
 </style>
 ''', unsafe_allow_html=True)
 
+# ---------- Config persistence
 DATA_DIR = Path(os.getenv("DATA_DIR",".")); DATA_DIR.mkdir(parents=True, exist_ok=True)
 CFG_FILE = DATA_DIR / "adi_modules.json"
 SEED_CFG = {"courses":["GE4-IPM — Integrated Project & Materials Mgmt","Defense Technologies 101"],
@@ -74,6 +134,7 @@ def edit_list(label, key, placeholder):
         if colB.button("Cancel", key=f"cancel_{key}"): st.session_state[f"adding_{key}"]=False
     return selected
 
+# ---------- Upload parsing
 try:
     import fitz
     PDF_ENABLED=True
@@ -92,20 +153,19 @@ def parse_upload_cached(b:bytes, t:str, deep:bool):
     try:
         if t=="pdf":
             if not PDF_ENABLED: return "", "PDF parsing disabled"
-            import fitz
             doc=fitz.open(stream=b, filetype="pdf")
             total=len(doc); limit = total if deep else min(10,total)
-            text="\n".join(doc[p].get_text("text") for p in range(limit))
+            text="\\n".join(doc[p].get_text("text") for p in range(limit))
             return text, f"Parsed {limit}/{total} pages ({'deep' if deep else 'quick'})"
         if t=="pptx":
             from pptx import Presentation
             prs=Presentation(io.BytesIO(b))
             texts=[getattr(s,'text','') for slide in prs.slides for s in slide.shapes if hasattr(s,'text')]
-            return "\n".join(texts), f"Parsed {len(prs.slides)} slides"
+            return "\\n".join(texts), f"Parsed {len(prs.slides)} slides"
         if t=="docx":
             from docx import Document
             doc=Document(io.BytesIO(b))
-            return "\n".join(p.text for p in doc.paragraphs), f"Parsed {len(doc.paragraphs)} paragraphs"
+            return "\\n".join(p.text for p in doc.paragraphs), f"Parsed {len(doc.paragraphs)} paragraphs"
         return b.decode("utf-8",errors="ignore"), "Parsed text file"
     except Exception as e:
         return "", f"Error: {e}"
@@ -117,6 +177,7 @@ def file_signature(uploaded, deep)->str:
     except Exception:
         return f"{uploaded.name}|{deep}|unknown"
 
+# ---------- Verb banks & helpers
 LOW  = ["define","identify","list","recall","describe","label"]
 MED  = ["apply","demonstrate","solve","illustrate","classify","compare"]
 HIGH = ["evaluate","synthesize","design","justify","critique","create"]
@@ -125,12 +186,13 @@ def pick_terms(text,k=20):
     if not text:
         corpus=["safety","procedure","system","component","principle","policy","mission","calibration","diagnostics","maintenance"]
     else:
-        toks=[w.strip(".,:;()[]{}!?\"'").lower() for w in text.split()]
+        toks=[w.strip(".,:;()[]{}!?\\\"'").lower() for w in text.split()]
         toks=[w for w in toks if w.isalpha() and 3<=len(w)<=14]
         stops=set("the of and to in for is are be a an on from with that this these those which using as by or it at we you they can may into over under".split())
         corpus=[w for w in toks if w not in stops] or ["concept","process","system","protocol","hazard","control"]
     random.shuffle(corpus); return corpus[:k]
 
+# MCQ generator returns editable structure
 def gen_mcqs_struct(n, verbs, txt):
     terms=pick_terms(txt, max(20,n*5)); out=[]
     for i in range(n):
@@ -146,6 +208,7 @@ def gen_mcqs_struct(n, verbs, txt):
         out.append({"stem": q, "options": opts, "correct": correct})
     return out
 
+# ---------- Export helpers (whole set & per-question) ----------
 def export_docx_from_state(mcqs, include_key=True, title="Knowledge MCQs"):
     from docx import Document
     doc=Document(); doc.add_heading(title, level=1)
@@ -166,14 +229,35 @@ def export_txt_from_state(mcqs, include_key=True):
     if include_key:
         lines.append("Answer Key")
         for i,item in enumerate(mcqs, start=1): lines.append(f"Q{i}: {['A','B','C','D'][item['correct']]}")
-    return ("\n".join(lines)).encode("utf-8")
+    return ("\\n".join(lines)).encode("utf-8")
 
+def export_docx_one(item, idx=1, title_prefix='Knowledge MCQ'):
+    from docx import Document
+    doc=Document(); doc.add_heading(f"{title_prefix} {idx}", level=1)
+    r=doc.add_paragraph().add_run(item['stem']); r.bold=True
+    for j,opt in enumerate(item['options'], start=1): doc.add_paragraph(f"{chr(64+j)}. {opt}")
+    doc.add_heading('Answer Key', level=2)
+    doc.add_paragraph(f"Correct: {['A','B','C','D'][item['correct']]}")
+    bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+def export_txt_one(item, idx=1):
+    lines=[f"{item['stem']}"]
+    for j,opt in enumerate(item['options'], start=1): lines.append(f"{chr(64+j)}. {opt}")
+    lines.append("")
+    lines.append(f"Correct: {['A','B','C','D'][item['correct']]}")
+    return ("\\n".join(lines)).encode('utf-8')
+
+# ---------- UI ----------
 def main():
+    # state
     if "mcqs" not in st.session_state: st.session_state.mcqs = []
     if "upload_meta" not in st.session_state: st.session_state.upload_meta=None
     if "last_sig" not in st.session_state: st.session_state.last_sig=None
+    if "gen_acts" not in st.session_state: st.session_state.gen_acts=[]
 
+    # Sidebar: logo + controls
     with st.sidebar:
+        # Logo (safe even if file is missing)
         logo_path = Path("adi_logo.png")
         if logo_path.exists(): st.image(str(logo_path), use_column_width=True)
         st.subheader("Upload (optional)")
@@ -195,13 +279,10 @@ def main():
         week   = c2.number_input("Week", 1, 20, 1, step=1)
         st.caption("ADI policy: Weeks 1–4 Low, 5–9 Medium, 10–14 High.")
 
+    # Top banner
     st.markdown('<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>', unsafe_allow_html=True)
 
     topic = st.text_area("Topic / Outcome (optional)", height=80, placeholder="e.g., Integrated Project and ...")
-
-    LOW  = ["define","identify","list","recall","describe","label"]
-    MED  = ["apply","demonstrate","solve","illustriate","classify","compare"]
-    HIGH = ["evaluate","synthesize","design","justify","critique","create"]
 
     with st.expander("Low (Weeks 1–4) — Remember / Understand", True):
         low = st.multiselect("Low verbs", LOW, default=LOW[:3], key="lowverbs")
@@ -212,6 +293,7 @@ def main():
 
     tabs = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
 
+    # parse upload once
     text = ""
     if uploaded is not None:
         sig = file_signature(uploaded, deep)
@@ -222,10 +304,11 @@ def main():
             st.session_state["upload_meta"] = {"name": uploaded.name, "type": ftype, "note": note}
             st.session_state["last_sig"] = sig
         meta = st.session_state["upload_meta"]
-        status.markdown(f"✅ **Uploaded:** {meta['name']}  \n_Type:_ {meta['type']} — {meta['note']}")
+        status.markdown(f"✅ **Uploaded:** {meta['name']}  \\n_Type:_ {meta['type']} — {meta['note']}")
     else:
         st.session_state["last_sig"] = None
 
+    # ---------- Tab 1: Editable MCQs ----------
     with tabs[0]:
         c1,c2,c3 = st.columns([1,1,2])
         with c1:
@@ -237,11 +320,13 @@ def main():
                 verbs = (low or []) + (med or []) + (high or [])
                 st.session_state.mcqs = gen_mcqs_struct(n, verbs or LOW, text)
 
+        # Editable list of MCQs
         if st.session_state.mcqs:
             for i,item in enumerate(st.session_state.mcqs):
                 st.markdown('<div class="mcq-card">', unsafe_allow_html=True)
                 st.markdown(f"**Question {i+1}**")
                 item["stem"] = st.text_area(f"Stem {i+1}", item["stem"], key=f"stem_{i}")
+                # two-column grid for options
                 colA, colB = st.columns(2)
                 with colA:
                     item["options"][0] = st.text_input(f"A", item["options"][0], key=f"optA_{i}")
@@ -252,6 +337,25 @@ def main():
                 item["correct"] = ["A","B","C","D"].index(
                     st.radio("Correct answer", ["A","B","C","D"], index=item["correct"], horizontal=True, key=f"corr_{i}")
                 )
+
+                # Per-question downloads
+                cold1, cold2 = st.columns(2)
+                with cold1:
+                    st.download_button(
+                        f"⬇️ Download DOCX (Q{i+1})",
+                        data=export_docx_one(item, idx=i+1),
+                        file_name=f"ADI_MCQ_Q{i+1}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_docx_q{i}"
+                    )
+                with cold2:
+                    st.download_button(
+                        f"⬇️ Download TXT (Q{i+1})",
+                        data=export_txt_one(item, idx=i+1),
+                        file_name=f"ADI_MCQ_Q{i+1}.txt",
+                        mime="text/plain",
+                        key=f"dl_txt_q{i}"
+                    )
                 st.markdown('</div>', unsafe_allow_html=True)
 
             col1,col2,col3 = st.columns(3)
@@ -262,16 +366,17 @@ def main():
                 if st.button("➖ Remove last"):
                     if st.session_state.mcqs: st.session_state.mcqs.pop()
             with col3:
-                st.download_button("⬇️ Download DOCX",
+                st.download_button("⬇️ Download DOCX (All MCQs)",
                                    data=export_docx_from_state(st.session_state.mcqs, include_key),
                                    file_name="ADI_Knowledge_MCQs.docx",
                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-            st.download_button("⬇️ Download TXT",
+            st.download_button("⬇️ Download TXT (All MCQs)",
                                data=export_txt_from_state(st.session_state.mcqs, include_key),
                                file_name="ADI_Knowledge_MCQs.txt",
                                mime="text/plain")
 
+    # ---------- Tab 2: Activities (1–3 per lesson, minutes 5–60, group size 1–4) ----------
     with tabs[1]:
         left, right = st.columns([2,2])
         with left:
@@ -295,39 +400,41 @@ def main():
             if not verbs: verbs = MED
             acts = [f"{i+1}. {random.choice(verbs).capitalize()} a {mins}-minute activity for groups of {group_size} focusing on **{w}**."
                     for i,w in enumerate(terms)]
-            st.session_state["gen_acts"] = acts; st.success("Activities generated. See below.")
-        if st.session_state.get("gen_acts"):
-            for a in st.session_state["gen_acts"]: st.markdown(f"- {a}")
+            st.session_state.gen_acts = acts; st.success("Activities generated. See below.")
+        if st.session_state.gen_acts:
+            for a in st.session_state.gen_acts: st.markdown(f"- {a}")
+            # Exporters
             from docx import Document
             def export_docx_list(lines, title):
                 doc=Document(); doc.add_heading(title, level=1)
                 for ln in lines: doc.add_paragraph(ln)
                 bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
-            def export_txt_list(lines): return ("\n".join(lines)).encode("utf-8")
+            def export_txt_list(lines): return ("\\n".join(lines)).encode("utf-8")
             st.download_button("⬇️ Download DOCX (Activities)",
-                               data=export_docx_list(st.session_state["gen_acts"], "Skills Activities"),
+                               data=export_docx_list(st.session_state.gen_acts, "Skills Activities"),
                                file_name="ADI_Skills_Activities.docx",
                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             st.download_button("⬇️ Download TXT (Activities)",
-                               data=export_txt_list(st.session_state["gen_acts"]),
+                               data=export_txt_list(st.session_state.gen_acts),
                                file_name="ADI_Skills_Activities.txt",
                                mime="text/plain")
 
+    # ---------- Tab 3: Revision ----------
     with tabs[2]:
         n_rev = st.selectbox("How many revision prompts?", [3,5,8,10], index=0, key="n_rev")
         if st.button("Generate Revision"):
-            LOW  = ["define","identify","list","recall","describe","label"]
             revs = [f"{i+1}. {random.choice(low or LOW).capitalize()} key points on **{w}** in a 5-bullet summary."
                     for i,w in enumerate(pick_terms(text, max(10,n_rev*2))[:n_rev])]
             st.session_state["gen_rev"] = revs; st.success("Revision prompts generated.")
         if st.session_state.get("gen_rev"):
             for r in st.session_state["gen_rev"]: st.markdown(f"- {r}")
+            # Exporters
             from docx import Document
             def export_docx_list(lines, title):
                 doc=Document(); doc.add_heading(title, level=1)
                 for ln in lines: doc.add_paragraph(ln)
                 bio=io.BytesIO(); doc.save(bio); return bio.getvalue()
-            def export_txt_list(lines): return ("\n".join(lines)).encode("utf-8")
+            def export_txt_list(lines): return ("\\n".join(lines)).encode("utf-8")
             st.download_button("⬇️ Download DOCX (Revision)",
                                data=export_docx_list(st.session_state["gen_rev"], "Revision Prompts"),
                                file_name="ADI_Revision_Prompts.docx",
@@ -337,9 +444,10 @@ def main():
                                file_name="ADI_Revision_Prompts.txt",
                                mime="text/plain")
 
+    # ---------- Tab 4: Print Summary ----------
     with tabs[3]:
         st.subheader("Print Summary")
-        st.markdown(f"**Course:** {course or '—'}  \n**Cohort:** {cohort or '—'}  \n**Instructor:** {instructor or '—'}  \n**Date:** {the_date}  \n**Lesson:** {lesson}  \n**Week:** {week}")
+        st.markdown(f"**Course:** {course or '—'}  \\n**Cohort:** {cohort or '—'}  \\n**Instructor:** {instructor or '—'}  \\n**Date:** {the_date}  \\n**Lesson:** {lesson}  \\n**Week:** {week}")
         st.divider()
         if st.session_state.mcqs:
             st.markdown("### Knowledge MCQs")
@@ -347,8 +455,8 @@ def main():
                 st.markdown(f"**{i}. {item['stem']}**")
                 for j,opt in enumerate(item["options"], start=1): st.markdown(f"{chr(64+j)}. {opt}")
                 st.write("")
-        if st.session_state.get("gen_acts"):
-            st.markdown("### Skills Activities"); [st.markdown(f"- {a}") for a in st.session_state["gen_acts"]]
+        if st.session_state.gen_acts:
+            st.markdown("### Skills Activities"); [st.markdown(f"- {a}") for a in st.session_state.gen_acts]
         if st.session_state.get("gen_rev"):
             st.markdown("### Revision"); [st.markdown(f"- {r}") for r in st.session_state["gen_rev"]]
 
