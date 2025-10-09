@@ -202,41 +202,103 @@ with st.sidebar:
     st.caption("Quick scan reads the first 10 PDF pages. Turn on deep scan for full documents.")
     deep_scan = st.toggle("Deep scan source (slower, better coverage)", value=False)
 
-    st.markdown("---")
-    st.write("**Course details**")
+    st.markdown("""
+<style>
+:root { --adi:#245a34; --adi-dark:#153a27; }
 
-    cols = st.columns([1,0.25,0.25])
-    with cols[0]:
-        course = st.selectbox("Course name", COURSES, index=0, key="course")
-    with cols[1]:
-        st.button("＋", key="add_course", help="Add a course (admin flow)")
-    with cols[2]:
-        st.button("－", key="rem_course", help="Remove a course (admin flow)")
+/* App & container */
+html, body, [data-testid="stAppViewContainer"] { background-color:#ffffff; }
+.block-container { padding-top: 0.6rem; }
 
-    cols = st.columns([1,0.25,0.25])
-    with cols[0]:
-        cohort = st.selectbox("Class / Cohort", COHORTS, index=0, key="cohort")
-    with cols[1]:
-        st.button("＋", key="add_cohort")
-    with cols[2]:
-        st.button("－", key="rem_cohort")
+/* Sticky top banner */
+.adi-banner{
+  background: var(--adi-dark);
+  color:#fff;
+  padding:12px 16px;
+  font-weight:600;
+  border-radius: 0 0 10px 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  margin: -0.25rem -0.5rem 0.75rem;
+}
 
-    cols = st.columns([1,0.25,0.25])
-    with cols[0]:
-        instructor = st.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index("Daniel"), key="instructor")
-    with cols[1]:
-        st.button("＋", key="add_instructor")
-    with cols[2]:
-        st.button("－", key="rem_instructor")
+/* Section bands (low/med/high) */
+.band { border: 1px solid #e6ece6; padding: 10px 12px; border-radius: 10px; }
+.band + .band { margin-top: 10px; }
+.band.active { border-color: var(--adi); box-shadow: 0 0 0 2px var(--adi) inset; }
 
-    st.date_input("Date", value=date.today(), key="the_date")
+/* ---------- Core interactivity ---------- */
+div[data-testid="stFileUploaderDropzone"],
+div[data-testid="stSelectbox"] button,
+div[data-testid="stMultiSelect"] button,
+button[kind], button {
+  cursor: pointer !important;
+}
 
-    st.markdown("**Context**")
-    ctx_cols = st.columns(2)
-    with ctx_cols[0]:
-        lesson = st.number_input("Lesson", min_value=1, max_value=16, value=1, step=1, key="lesson")
-    with ctx_cols[1]:
-        week = st.number_input("Week", min_value=1, max_value=14, value=1, step=1, key="week")
+/* Robust dashed dropzone (covers old/new DOM) */
+div[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+  border: 2px dashed var(--adi) !important;
+  border-radius: 10px !important;
+}
+div[data-testid="stFileUploaderDropzone"]:hover,
+[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]:hover {
+  box-shadow: 0 0 0 3px var(--adi) inset !important;
+}
+
+/* Robust select button hover (core) */
+div[data-testid="stSelectbox"] button:hover,
+div[data-testid="stMultiSelect"] button:hover,
+[role="combobox"]:hover, 
+[data-baseweb="select"]:hover {
+  box-shadow: 0 0 0 2px var(--adi) inset !important;
+  border-color: var(--adi) !important;
+}
+
+/* Keyboard accessibility */
+:focus-visible {
+  outline: 2px solid var(--adi) !important;
+  outline-offset: 2px;
+}
+
+/* ---------- Sidebar-specific hover/focus ---------- */
+[data-testid="stSidebar"] div[data-testid="stSelectbox"] button:hover,
+[data-testid="stSidebar"] div[data-testid="stMultiSelect"] button:hover,
+[data-testid="stSidebar"] [role="combobox"]:hover,
+[data-testid="stSidebar"] [data-baseweb="select"]:hover {
+  box-shadow: 0 0 0 2px var(--adi) inset !important;
+  border-color: var(--adi) !important;
+}
+
+[data-testid="stSidebar"] input:focus-visible,
+[data-testid="stSidebar"] .stNumberInput input:focus,
+[data-testid="stSidebar"] .stDateInput input:focus,
+[data-testid="stSidebar"] div[data-testid="stSelectbox"] button:focus-visible,
+[data-testid="stSidebar"] div[data-testid="stMultiSelect"] button:focus-visible,
+[data-testid="stSidebar"] [role="combobox"]:focus-visible {
+  outline: 2px solid var(--adi) !important;
+  outline-offset: 2px;
+}
+
+[data-testid="stSidebar"] .stNumberInput input:hover,
+[data-testid="stSidebar"] .stDateInput input:hover {
+  box-shadow: 0 0 0 2px var(--adi) inset !important;
+  border-color: var(--adi) !important;
+}
+
+[data-testid="stSidebar"] div[data-testid="stSelectbox"] button,
+[data-testid="stSidebar"] div[data-testid="stMultiSelect"] button,
+[data-testid="stSidebar"] [role="combobox"],
+[data-testid="stSidebar"] [data-baseweb="select"] {
+  cursor: pointer !important;
+}
+
+/* Tabs spacing */
+.stTabs [data-baseweb="tab-list"] { gap: 6px; }
+.stTabs [data-baseweb="tab"] { padding: 6px 10px; border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
 
 # -------------------- MAIN --------------------
 st.markdown('<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>', unsafe_allow_html=True)
