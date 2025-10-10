@@ -1,4 +1,4 @@
-# app.py — ADI Builder (pills for course/class/instructor/lesson/week + robust green dropzones)
+# app.py — ADI Builder (clean UI + pills + green dashed uploaders + segmented Bloom control)
 
 import base64
 import csv
@@ -32,6 +32,8 @@ st.markdown(f"""
 
   .tight > div {{ margin-bottom:.35rem; }}
   .stButton > button {{ border-radius:10px; }}
+
+  /* Segmented control active = ADI green */
   [data-baseweb="segmented-control"] [aria-selected="true"] {{
     background:{ADI_GREEN} !important; color:white !important;
   }}
@@ -47,9 +49,8 @@ st.markdown(f"""
   .pill {{ display:inline-block; padding:2px 10px; border-radius:999px; font-size:.85rem;
           line-height:1.6; white-space:nowrap; margin-left:6px; }}
   .pill-green {{ background:{ADI_GREEN}; color:#fff; }}
-  .pill-slate {{ background:#e5e7eb; color:#111827; }}
 
-  /* GREEN DASHED DROPZONES (robust selectors for different Streamlit builds) */
+  /* Robust GREEN DASHED DROPZONES (works across Streamlit builds) */
   [data-testid="stFileUploaderDropzone"],
   div[aria-label="File dropzone"],
   div:has(> input[type="file"]) {{
@@ -255,7 +256,6 @@ with r1c[3]:
 
 with r1c[4]:
     st.selectbox("Instructor", INSTRUCTORS, key="instructor")
-    # instructor now also green to match the others
     st.markdown(f"<span class='pill pill-green'>{st.session_state.instructor}</span>",
                 unsafe_allow_html=True)
 
@@ -275,11 +275,15 @@ st.caption(
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
-    # ---- Verbs ----
-    a1, a2, a3, a4 = st.columns([.9, .9, .9, 1.6])
+    # ---- Bloom level as SEGMENTED CONTROL (green when selected) ----
+    a1, a2, a3, a4 = st.columns([1.2, .9, .9, 1.8])
     with a1:
-        st.selectbox("Bloom level", ["Low","Medium","High"],
-                     key="bloom_level", on_change=update_verbs_on_bloom_change)
+        st.segmented_control(
+            "Bloom level",
+            ["Low", "Medium", "High"],
+            key="bloom_level",
+            on_change=update_verbs_on_bloom_change,
+        )
     with a2:
         st.button("Select all", on_click=select_all_verbs)
     with a3:
