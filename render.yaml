@@ -1,6 +1,7 @@
+
 services:
   - type: web
     name: adi-builder
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run app.py"
