@@ -100,15 +100,21 @@ def export_word(mcqs:List[Dict], meta:Dict)->bytes:
     if not mcqs: return b""
     if Document is None:
         buf = io.StringIO()
-        buf.write(f"ADI Lesson — {meta.get('course','')} — {meta.get('cohort','')} — Week {meta.get('week','')}
+        course = meta.get("course", "")
+        cohort = meta.get("cohort", "")
+        week_s = meta.get("week", "")
+        header_line = f"ADI Lesson — {course} — {cohort} — Week {week_s}
 
-")
+"
+        buf.write(header_line)
         for i,q in enumerate(mcqs,1):
             buf.write(f"Q{i}. {q['stem']}
 ")
-            for j,o in enumerate(q['options'],1): buf.write(f"   {chr(64+j)}. {o}
+            for j,o in enumerate(q['options'],1):
+                buf.write(f"   {chr(64+j)}. {o}
 ")
-            if meta.get('answer_key',True): buf.write(f"Answer: {q['answer']}
+            if meta.get('answer_key',True):
+                buf.write(f"Answer: {q['answer']}
 ")
             buf.write("
 ")
