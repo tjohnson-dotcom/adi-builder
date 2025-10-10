@@ -1,2 +1,7 @@
 streamlit
 python-docx
+openai
+google-api-python-client
+PyPDF2
+python-pptx
+PyMuPDF
