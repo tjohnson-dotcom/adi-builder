@@ -1,4 +1,4 @@
-# app.py — ADI Builder (clean & minimal)
+# app.py — ADI Builder (stable + tidy: instructors & cohorts, safe verbs, clean state)
 
 import base64
 import csv
@@ -8,11 +8,10 @@ from pathlib import Path
 
 import streamlit as st
 
-# ---------------- Page & brand ----------------
+# ---------------- Page / Theme ----------------
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
 ADI_GREEN = "#245a34"
-ADI_GOLD  = "#C8A85A"
 STONE     = "#F5F4F2"
 INK       = "#1f2937"
 MUTED     = "#6b7280"
@@ -27,25 +26,36 @@ st.markdown(f"""
   }}
   .adi-topbar img {{ height:30px; }}
   .adi-topbar h1 {{ font-size:1.05rem; margin:0; line-height:1.2; }}
+
   .adi-card {{ background:{STONE}; border:1px solid #e7e5e4; border-radius:12px; padding:12px; }}
   .muted {{ color:{MUTED}; }}
+
   .tight > div {{ margin-bottom:.35rem; }}
   .stButton > button {{ border-radius:10px; }}
-  [data-baseweb="segmented-control"] [aria-selected="true"] {{ background:{ADI_GREEN} !important; color:white !important; }}
+
+  [data-baseweb="segmented-control"] [aria-selected="true"] {{
+    background:{ADI_GREEN} !important; color:white !important;
+  }}
+
+  /* Cohort grid pills */
+  .cohort-pill {{
+    display:inline-block; margin:4px 6px 0 0; padding:6px 10px; border-radius:10px;
+    border:1px solid #d6d3d1; background:white; color:{INK}; font-size:.9rem;
+  }}
+  .cohort-pill.selected {{ background:{ADI_GREEN}; color:white; border-color:{ADI_GREEN}; }}
 </style>
 """, unsafe_allow_html=True)
 
+# ---------------- Header ----------------
 def _b64(path: Path) -> str | None:
     try:
         return base64.b64encode(path.read_bytes()).decode("utf-8")
     except Exception:
         return None
 
-def header(title: str = "ADI Builder — Lesson Activities & Questions",
-           logo_path: str = "assets/adi-logo.png") -> None:
-    """Top bar with optional logo; no nested f-strings."""
+def header(title="ADI Builder — Lesson Activities & Questions", logo="assets/adi-logo.png"):
     img_html = ""
-    p = Path(logo_path)
+    p = Path(logo)
     if p.exists():
         b64 = _b64(p)
         if b64:
@@ -66,16 +76,16 @@ def init_state():
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
+    # verbs UI state
+    ss.setdefault("bloom_level", "Low")       # Low / Medium / High
+    ss.setdefault("verbs_selected", [])       # strings of verbs for current level
     ss.setdefault("generated_items", [])
-    ss.setdefault("verb_selection", [])
 init_state()
 
-# ---------------- Course catalog ----------------
-def load_courses() -> list[tuple[str, str]]:
-    items: list[tuple[str, str]] = []
-    csvp = Path("assets/courses.csv")
-    jsp  = Path("assets/courses.json")
-
+# ---------------- Data: courses / cohorts / instructors ----------------
+def load_courses() -> list[tuple[str,str]]:
+    items: list[tuple[str,str]] = []
+    csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
     if csvp.exists():
         with csvp.open("r", encoding="utf-8") as f:
             for r in csv.DictReader(f):
@@ -90,57 +100,93 @@ def load_courses() -> list[tuple[str, str]]:
             label = (r.get("label") or "").strip()
             if code and label:
                 items.append((code, label))
-
     if items:
         return items
-
-    # Fallback to keep the app runnable
+    # Fallback sample to keep app running
     return [
-        ("GE4-EPM", "Defense Technology Practices"),
-        ("GE4-IPM", "Integrated Project & Materials Mgmt"),
-        ("GE4-MRO", "Military Vehicle & Aircraft MRO"),
-        ("CT4-COM", "Computation for Chemical Technologists"),
-        ("CT4-EMG", "Explosives Manufacturing"),
-        ("CT4-TFL", "Thermofluids"),
+        ("GE4-EPM","Defense Technology Practices"),
+        ("GE4-IPM","Integrated Project & Materials Mgmt"),
+        ("GE4-MRO","Military Vehicle & Aircraft MRO"),
+        ("CT4-COM","Computation for Chemical Technologists"),
+        ("CT4-EMG","Explosives Manufacturing"),
+        ("CT4-TFL","Thermofluids"),
     ]
 
 COURSES = load_courses()
 code_to_label = dict(COURSES)
-codes = [c for c, _ in COURSES]
-
-# Set default course once
+codes = [c for c,_ in COURSES]
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# ---------------- Bloom verbs ----------------
-LOW    = ["define", "identify", "list", "recall", "describe", "classify", "match"]
-MEDIUM = ["apply", "solve", "calculate", "compare", "analyze", "demonstrate", "explain"]
-HIGH   = ["evaluate", "synthesize", "design", "justify", "critique", "optimize", "create"]
+# Cohorts (from your screenshot list)
+COHORTS = [
+    "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
+    "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
+]
 
-def bloom_focus(week: int) -> str:
+# Instructors (from your names list)
+INSTRUCTORS = [
+    "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen","Dari","Ghamza",
+    "Michail","Meshari","Mohammed Alwuthaylah","Myra","Meshal","Ibrahim","Khalil","Salem",
+    "Rana","Daniel","Ahmed Albader"
+]
+
+# Bloom verbs
+VERBS = {
+    "Low":    ["define","identify","list","recall","describe","classify","match"],
+    "Medium": ["apply","solve","calculate","compare","analyze","demonstrate","explain"],
+    "High":   ["evaluate","synthesize","design","justify","critique","optimize","create"]
+}
+
+def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-def recommended_verbs(week: int) -> list[str]:
-    return LOW if week <= 4 else (MEDIUM if week <= 9 else HIGH)
+# Safe callbacks (fixes your red error)
+def set_recommended_from_week():
+    st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
+    st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
+    st.experimental_rerun()
 
-# ---------------- Course setup (single compact row) ----------------
+def select_all_verbs():
+    st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
+
+def clear_verbs():
+    st.session_state.verbs_selected = []
+
+# ---------------- Setup Row ----------------
 st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 
-row = st.columns([2, 1.2, 1, 1, 1.6])
-with row[0]:
+r1c = st.columns([2, 1.8, .8, .8, 1.6])
+with r1c[0]:
     st.selectbox("Course (code)", options=codes,
                  index=codes.index(st.session_state.course_code) if st.session_state.course_code in codes else 0,
                  key="course_code")
     st.caption(f"<span class='muted'>{code_to_label.get(st.session_state.course_code,'')}</span>",
                unsafe_allow_html=True)
-with row[1]:
-    st.segmented_control("Class", ["D1-C01", "D1-C02", "D2-C01"], key="class_cohort")
-with row[2]:
+
+with r1c[1]:
+    # Cohort grid, single select (compact & clear)
+    st.markdown("**Class / Cohort**")
+    cohort_cols = st.columns(6)
+    for i, coh in enumerate(COHORTS):
+        with cohort_cols[i % 6]:
+            sel = (st.session_state.class_cohort == coh)
+            btn = st.button(coh, key=f"cohort-{coh}", help=coh, use_container_width=True)
+            if btn:
+                st.session_state.class_cohort = coh
+    # light badge showing current selection
+    st.caption(f"Selected: **{st.session_state.class_cohort}**")
+
+with r1c[2]:
     st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
-with row[3]:
+
+with r1c[3]:
     st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
-with row[4]:
-    st.text_input("Instructor", key="instructor")
+
+with r1c[4]:
+    st.selectbox("Instructor", INSTRUCTORS,
+                 index=INSTRUCTORS.index(st.session_state.instructor) if st.session_state.instructor in INSTRUCTORS else 0,
+                 key="instructor")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -151,94 +197,83 @@ st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 st.text_input("Topic / Outcome (optional)", key="topic_outcome",
               placeholder="e.g., Integrated Project and …")
 st.caption(
-    f"ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High | Recommended Bloom: "
-    f"**{bloom_focus(st.session_state.week)}**"
+    f"ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  "
+    f"Recommended Bloom: **{bloom_from_week(int(st.session_state.week))}**"
 )
 
-st.segmented_control("Mode", ["Knowledge", "Skills", "Revision", "Print Summary"], key="mode")
+st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
-    # VERBS — single multiselect with helpers
-    all_verbs = (
-        [f"[Low] {v}" for v in LOW] +
-        [f"[Medium] {v}" for v in MEDIUM] +
-        [f"[High] {v}" for v in HIGH]
-    )
+    # ---- Verbs (simple, stable) ----
+    vc1, vc2, vc3, vc4 = st.columns([.9, .8, .8, 1.8])
+    with vc1:
+        st.selectbox("Bloom level", ["Low","Medium","High"], key="bloom_level")
+    with vc2:
+        st.button("Select all", on_click=select_all_verbs)
+    with vc3:
+        st.button("Clear", on_click=clear_verbs)
+    with vc4:
+        st.button("Use recommended for this week", on_click=set_recommended_from_week)
 
-    # Preselect recommended once if empty
-    if not st.session_state.verb_selection:
-        rec = [f"[{bloom_focus(st.session_state.week)}] {v}" for v in recommended_verbs(st.session_state.week)]
-        st.session_state.verb_selection = rec
+    verbs_for_level = VERBS[st.session_state.bloom_level]
+    st.multiselect("Learning verbs", options=verbs_for_level, key="verbs_selected")
 
-    v1, v2, v3 = st.columns([2.4, .8, .8])
-    with v1:
-        st.multiselect("Learning verbs (Bloom)", options=all_verbs, key="verb_selection")
-    with v2:
-        if st.button("Select recommended"):
-            st.session_state.verb_selection = [f"[{bloom_focus(st.session_state.week)}] {v}"
-                                               for v in recommended_verbs(st.session_state.week)]
-    with v3:
-        if st.button("Clear"):
-            st.session_state.verb_selection = []
-
-    # Topics and generation controls
-    st.text_area("Topics (one per line)", key="topics_text", height=100,
+    # ---- Topics ----
+    st.text_area("Topics (one per line)", key="topics_text", height=110,
                  placeholder="Topic A\nTopic B\nTopic C")
 
-    c1, c2, c3 = st.columns([1, 1, 2])
+    # ---- MCQ controls ----
+    c1, c2, c3 = st.columns([1,1,2])
     with c1:
         include_key = st.checkbox("Answer key", value=True)
     with c2:
-        mcq_count = st.selectbox("MCQs", [5, 10, 15, 20], index=1)
+        mcq_count = st.selectbox("MCQs", [5,10,15,20], index=1)
     with c3:
         st.markdown("&nbsp;", unsafe_allow_html=True)
         if st.button("Generate MCQs", type="primary"):
-            lines = [t.strip() for t in st.session_state.topics_text.splitlines() if t.strip()]
-            topic0 = lines[0] if lines else "topic"
+            topics = [t.strip() for t in st.session_state.topics_text.splitlines() if t.strip()]
+            topic0 = topics[0] if topics else "topic"
             st.session_state.generated_items = [{
                 "stem": f"Sample question {i+1} on {topic0}?",
                 "options": ["A) …", "B) …", "C) …", "D) …"],
                 "answer": "A"
             } for i in range(int(mcq_count))]
 
-    # Preview & export
+    # ---- Preview & export ----
     if st.session_state.generated_items:
         st.markdown("#### Preview")
         for idx, q in enumerate(st.session_state.generated_items):
             with st.expander(f"Q{idx+1}: {q['stem'][:90]}"):
                 q["stem"] = st.text_input("Stem", value=q["stem"], key=f"stem-{idx}")
-                a, b = st.columns(2)
+                a,b = st.columns(2)
                 q["options"][0] = a.text_input("Option A", value=q["options"][0], key=f"oa-{idx}")
                 q["options"][1] = b.text_input("Option B", value=q["options"][1], key=f"ob-{idx}")
-                c, d = st.columns(2)
+                c,d = st.columns(2)
                 q["options"][2] = c.text_input("Option C", value=q["options"][2], key=f"oc-{idx}")
                 q["options"][3] = d.text_input("Option D", value=q["options"][3], key=f"od-{idx}")
-                q["answer"] = st.selectbox("Correct", ["A", "B", "C", "D"],
-                                           index=["A", "B", "C", "D"].index(q["answer"]),
-                                           key=f"ans-{idx}")
+                q["answer"] = st.selectbox("Correct", ["A","B","C","D"],
+                                           index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
 
-        # TXT
+        # TXT export
         txt = "\n\n".join(
             [f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) +
              (f"\nAnswer: {q['answer']}" if include_key else "")
-             for n, q in enumerate(st.session_state.generated_items)]
+             for n,q in enumerate(st.session_state.generated_items)]
         )
         st.download_button(
-            "Export (TXT)",
-            data=txt,
-            file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt",
+            "Export (TXT)", data=txt,
+            file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt"
         )
 
-        # DOCX (optional)
-        def to_docx(items) -> bytes | None:
+        # DOCX export (optional)
+        def as_docx(items) -> bytes | None:
             try:
                 from docx import Document
                 from docx.shared import Pt
                 doc = Document()
                 doc.add_heading(
-                    f"{st.session_state.course_code} — Lesson {st.session_state.lesson} "
-                    f"(Week {st.session_state.week})",
-                    level=1,
+                    f"{st.session_state.course_code} — Lesson {st.session_state.lesson} (Week {st.session_state.week})",
+                    level=1
                 )
                 doc.add_paragraph()
                 for i, q in enumerate(items, start=1):
@@ -251,22 +286,19 @@ if st.session_state.mode != "Print Summary":
                     doc.add_paragraph()
                 doc.styles["Normal"].font.name = "Calibri"
                 doc.styles["Normal"].font.size = Pt(11)
-                buf = BytesIO()
-                doc.save(buf)
-                return buf.getvalue()
+                buf = BytesIO(); doc.save(buf); return buf.getvalue()
             except Exception:
                 return None
 
-        docx_bytes = to_docx(st.session_state.generated_items)
+        docx_bytes = as_docx(st.session_state.generated_items)
         if docx_bytes:
             st.download_button(
-                "Export (Word .docx)",
-                data=docx_bytes,
+                "Export (Word .docx)", data=docx_bytes,
                 file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
         else:
-            st.caption("Install `python-docx` for Word export (TXT export is always available).")
+            st.caption("Install `python-docx` for Word export (TXT is always available).")
 
 else:
     # Print Summary
@@ -278,7 +310,8 @@ else:
           <h2 style="margin:0 0 .3rem 0; color:{ADI_GREEN}">{ss.course_code} — Lesson {ss.lesson} (Week {ss.week})</h2>
           <div class="muted">{code_to_label.get(ss.course_code,'')}</div>
           <div class="muted"><strong>Instructor:</strong> {ss.instructor} &nbsp;|&nbsp;
-               <strong>Bloom:</strong> {bloom_focus(ss.week)}</div>
+               <strong>Class:</strong> {ss.class_cohort} &nbsp;|&nbsp;
+               <strong>Bloom:</strong> {bloom_from_week(int(ss.week))}</div>
           <h3 style="margin:.8rem 0 .4rem 0;">Topics</h3>
           <ol style="margin-top:0;">{"".join(f"<li>{t}</li>" for t in topics_list)}</ol>
           <h3 style="margin:.8rem 0 .4rem 0;">MCQs (summary)</h3>
@@ -288,4 +321,4 @@ else:
         unsafe_allow_html=True,
     )
 
-st.markdown("</div>", unsafe_allow_html=True)  # close authoring card
+st.markdown("</div>", unsafe_allow_html=True)
