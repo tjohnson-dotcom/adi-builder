@@ -1,41 +1,66 @@
 import streamlit as st
-from ui import render_sidebar, render_course_details, render_bloom_panels
-from generators import generate_questions
-from export import export_to_word
 
-st.set_page_config(page_title="ADI Builder", layout="wide")
+# Inject custom CSS
+st.markdown("""
+<style>
+body { font-family: 'Segoe UI', sans-serif; }
+header, .adi-header {
+    background: #004d40;
+    color: #fff;
+    padding: 15px;
+    font-size: 24px;
+    font-weight: bold;
+}
+.sidebar .sidebar-content {
+    background: #004d40;
+    color: #fff;
+}
+.upload-box, .bloom-panels, .export {
+    background: #fff;
+    margin-bottom: 20px;
+    padding: 20px;
+    border-radius: 8px;
+}
+.drag-drop {
+    border: 2px dashed #004d40;
+    padding: 20px;
+    text-align: center;
+    border-radius: 8px;
+}
+.panel.low { background: #e8f5e9; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.panel.medium { background: #fffde7; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.panel.high { background: #e3f2fd; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.tag {
+    display: inline-block;
+    background: #004d40;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin: 5px;
+    cursor: pointer;
+}
+.export-btn {
+    padding: 10px 20px;
+    background: #004d40;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Sidebar with ADI branding
-render_sidebar()
+# Header
+st.markdown("<div class='adi-header'>ADI Builder — Lesson Activities & Questions</div>", unsafe_allow_html=True)
 
-# Main header
-st.markdown("<h1 style='color:#004225;'>ADI Builder — Lesson Activities & Questions</h1>", unsafe_allow_html=True)
+# Upload section
+st.markdown("<div class='upload-box'><h3>Upload (optional)</h3><div class='drag-drop'>Drag and drop file here<br><br><button class='browse-btn'>Browse files</button></div></div>", unsafe_allow_html=True)
 
-# File upload with dashed border
-uploaded_file = st.file_uploader("Upload lesson file", type=["pdf", "docx", "pptx"], label_visibility="collapsed")
-if uploaded_file:
-    st.success(f"Uploaded: {uploaded_file.name}")
+# Bloom panels
+st.markdown("<div class='bloom-panels'><h3>Bloom's Taxonomy Levels</h3>", unsafe_allow_html=True)
+st.markdown("<div class='panel low'><h4>Low (Weeks 1–4)</h4><span class='tag'>define ✕</span><span class='tag'>identify ✕</span></div>", unsafe_allow_html=True)
+st.markdown("<div class='panel medium'><h4>Medium (Weeks 5–9)</h4><span class='tag'>apply ✕</span><span class='tag'>analyze ✕</span></div>", unsafe_allow_html=True)
+st.markdown("<div class='panel high'><h4>High (Weeks 10–14)</h4><span class='tag'>evaluate ✕</span><span class='tag'>design ✕</span></div>", unsafe_allow_html=True)
 
-# Course details section
-course_info = render_course_details()
-
-# Bloom's Taxonomy panels
-selected_verbs = render_bloom_panels()
-
-# Generate questions
-if st.button("Generate Questions", use_container_width=True):
-    if selected_verbs:
-        questions = generate_questions(selected_verbs)
-        for q in questions:
-            st.markdown(f"- {q}")
-    else:
-        st.warning("Please select at least one verb.")
-
-# Export section
-st.markdown("### Export")
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Export to Word"):
-        export_to_word(course_info, selected_verbs)
-with col2:
-    st.button("Export to Google Docs (Coming Soon)")
+# Export button
+st.markdown("<div class='export'><button class='export-btn'>Export to Word</button></div>", unsafe_allow_html=True)
