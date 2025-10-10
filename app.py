@@ -186,6 +186,11 @@ with st.sidebar:
         "Deep scan source (slower, better coverage)",
         value=False
     )
+with st.sidebar:
+    try:
+        st.image("adi_logo.png", width=160)  # no container/column kwarg
+    except Exception:
+        st.markdown("**ADI Tools**")  # graceful fallback if the image is missing
 
     if upload and not st.session_state.upload_toast:
         st.toast(f"Uploaded: {upload.name}", icon="✅")
