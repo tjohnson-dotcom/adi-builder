@@ -1,13 +1,14 @@
-# app.py — ADI Builder (branded, chips, Word export)
+# app.py — ADI Builder (brand + file-driven courses + verbs + Word export)
 
-import base64
+import base64, csv, json
+from io import StringIO, BytesIO
 from pathlib import Path
 import streamlit as st
 
-# ---------- Page ----------
+# ---------------- Page ----------------
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
-# ---------- Brand ----------
+# ---------------- Brand ----------------
 ADI_GREEN = "#245a34"
 ADI_GOLD  = "#C8A85A"
 STONE     = "#F5F4F2"
@@ -33,27 +34,39 @@ st.markdown(f"""
   .adi-chip-selected {{ background:{ADI_GREEN}; color:white; border:1px solid {ADI_GREEN}; }}
   .adi-chip-selected small {{ display:block; color:{ADI_GOLD}; opacity:.95; font-style:italic; }}
 
+  /* Mode tabs */
   [data-baseweb="segmented-control"] div[role="tablist"] > div {{ border-radius:999px !important; border:1px solid #e7e5e4 !important; background:white !important; }}
   [data-baseweb="segmented-control"] div[role="tab"] {{ color:{DARK_TEXT} !important; }}
   [data-baseweb="segmented-control"] [aria-selected="true"] {{ background:{ADI_GREEN} !important; color:white !important; }}
 
   .stButton > button {{ border-radius:10px; }}
+
+  /* Verb bands */
+  .band {{ border:1px solid #e7e5e4; border-radius:12px; padding:10px; margin:.35rem 0 .6rem 0; }}
+  .band.low {{ background:#e9f3ed; border-color:#d5e7db; }}
+  .band.med {{ background:#f6f3e9; border-color:#ece6d6; }}
+  .band.high {{ background:#eef1f9; border-color:#dfe4f2; }}
+  .verb-btn button {{ border-radius:999px; padding:6px 12px; margin:4px 6px 0 0; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Header ----------
+# ---------------- Header ----------------
 def _b64_image(path: Path) -> str | None:
-    try: return base64.b64encode(path.read_bytes()).decode("utf-8")
-    except Exception: return None
+    try:
+        return base64.b64encode(path.read_bytes()).decode("utf-8")
+    except Exception:
+        return None
 
 def adi_header(title="ADI Builder — Lesson Activities & Questions", logo_path="assets/adi-logo.png"):
-    p = Path(logo_path); img_html = ""
+    p = Path(logo_path)
+    img_html = ""
     if p.exists():
         b64 = _b64_image(p)
-        if b64: img_html = f"<img src='data:image/png;base64,{b64}' alt='ADI'/>"
+        if b64:
+            img_html = f"<img src='data:image/png;base64,{b64}' alt='ADI'/>"
     st.markdown(f"<div class='adi-topbar'>{img_html}<h1>{title}</h1></div>", unsafe_allow_html=True)
 
-# ---------- Session ----------
+# ---------------- Session ----------------
 def init_state():
     ss = st.session_state
     ss.setdefault("selected_course", "GE4-EPM")
@@ -63,31 +76,67 @@ def init_state():
     ss.setdefault("week", 1)
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
-    ss.setdefault("topics_text", "")
-    ss.setdefault("include_key", True)
+    ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
+    ss.setdefault("include_key", True)  # no value= on checkbox → no yellow warning
     ss.setdefault("mcq_count", 10)
     ss.setdefault("topics", [])
     ss.setdefault("generated_items", [])
 init_state()
 
-# ---------- Data ----------
-COURSES = [
-    ("GE4-EPM", "Defense Technology Practices"),
-    ("GE4-IPM", "Integrated Project & Materials Mgmt"),
-    ("GE4-MRO", "Military Vehicle & Aircraft MRO"),
-    ("CT4-COM", "Computation for Chemical Technologists"),
-    ("CT4-EMG", "Explosives Manufacturing"),
-    ("CT4-TFL", "Thermofluids"),
-    # Add more below as needed; just keep (code, label) tuples.
-    # ("GE4-MAT", "Materials Science for Defense"),
-    # ("GE4-ELC", "Electrical Systems"),
-    # ("GE4-MEC", "Mechanics & Structures"),
-]
+# ---------------- Course catalog (file-driven) ----------------
+def load_courses_from_assets() -> list[tuple[str, str]]:
+    csv_path  = Path("assets/courses.csv")
+    json_path = Path("assets/courses.json")
+    data: list[tuple[str, str]] = []
+
+    if csv_path.exists():
+        try:
+            with csv_path.open("r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    code = (row.get("code") or "").strip()
+                    label = (row.get("label") or "").strip()
+                    if code and label:
+                        data.append((code, label))
+        except Exception:
+            pass
+    elif json_path.exists():
+        try:
+            raw = json.loads(json_path.read_text(encoding="utf-8"))
+            for item in raw:
+                code = (item.get("code") or "").strip()
+                label = (item.get("label") or "").strip()
+                if code and label:
+                    data.append((code, label))
+        except Exception:
+            pass
+
+    if data:
+        return data
+
+    # Fallback so the app still runs
+    return [
+        ("GE4-EPM", "Defense Technology Practices"),
+        ("GE4-IPM", "Integrated Project & Materials Mgmt"),
+        ("GE4-MRO", "Military Vehicle & Aircraft MRO"),
+        ("CT4-COM", "Computation for Chemical Technologists"),
+        ("CT4-EMG", "Explosives Manufacturing"),
+        ("CT4-TFL", "Thermofluids"),
+    ]
+
+if "COURSES" not in st.session_state:
+    st.session_state.COURSES = load_courses_from_assets()
+COURSES: list[tuple[str, str]] = st.session_state.COURSES
+
+# ---------------- Bloom data ----------------
+LOW_VERBS    = ["define", "identify", "list", "recall", "describe", "classify", "match"]
+MEDIUM_VERBS = ["apply", "solve", "calculate", "compare", "analyze", "demonstrate", "explain"]
+HIGH_VERBS   = ["evaluate", "synthesize", "design", "justify", "critique", "optimize", "create"]
 
 def bloom_level(week:int) -> str:
-    return "Low" if week<=4 else ("Medium" if week<=9 else "High")
+    return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# ---------- Components ----------
+# ---------------- Components ----------------
 def render_course_chip(code: str, label: str, *, col):
     sel = (st.session_state.selected_course == code)
     with col:
@@ -97,6 +146,20 @@ def render_course_chip(code: str, label: str, *, col):
             if st.button(f"{label}\n\n*{code}*", key=f"chip-{code}", use_container_width=True):
                 st.session_state.selected_course = code
                 st.rerun()
+
+def add_verb_to_topics(verb: str):
+    ss = st.session_state
+    lines = [t.strip() for t in ss.topics_text.splitlines() if t.strip()]
+    if verb not in lines:
+        ss.topics_text = (ss.topics_text.rstrip() + ("\n" if ss.topics_text.strip() else "") + verb)
+
+def verb_band(title: str, verbs: list[str], style: str, highlight: bool = False):
+    badge = f"<span style='background:{ADI_GOLD};padding:2px 8px;border-radius:999px;font-weight:600;margin-left:8px;color:black;'>Recommended</span>" if highlight else ""
+    st.markdown(f"<div class='band {style}'><strong>{title}</strong> {badge}</div>", unsafe_allow_html=True)
+    cols = st.columns(min(4, max(1, (len(verbs)+1)//2)))
+    for i, v in enumerate(verbs):
+        with cols[i % len(cols)]:
+            st.button(v, key=f"verb-{style}-{v}", on_click=add_verb_to_topics, args=(v,))
 
 def try_export_docx(course, lesson, week, items, include_key: bool) -> bytes | None:
     try:
@@ -108,39 +171,63 @@ def try_export_docx(course, lesson, week, items, include_key: bool) -> bytes | N
         for i, q in enumerate(items, start=1):
             doc.add_paragraph(f"Q{i}. {q['stem']}")
             for opt in q["options"]:
-                doc.add_paragraph(opt, style=None)
+                doc.add_paragraph(opt)
             if include_key:
                 p = doc.add_paragraph(f"Answer: {q['answer']}")
                 p.runs[0].font.bold = True
             doc.add_paragraph()
-        # set base font
         style = doc.styles['Normal']; style.font.name = 'Calibri'; style.font.size = Pt(11)
-        from io import BytesIO
         buf = BytesIO(); doc.save(buf); return buf.getvalue()
     except Exception:
         return None
 
-# ---------- Page ----------
+# ---------------- Page ----------------
 adi_header()
 
 colL, colR = st.columns([1.15, 1])
 
-# RIGHT: chips
+# RIGHT: course quick-pick + optional CSV upload
 with colR:
     st.markdown("### Course quick-pick")
-    for i in range(0, len(COURSES), 3):
-        row = COURSES[i:i+3]
-        cols = st.columns(3)
-        for (code, label), c in zip(row, cols):
-            render_course_chip(code, label, col=c)
 
-# LEFT: details & authoring (cards)
+    uploaded = st.file_uploader(
+        "Update course list (CSV with columns: code,label)",
+        type=["csv"], accept_multiple_files=False, key="courses_uploader"
+    )
+    if uploaded is not None:
+        try:
+            reader = csv.DictReader(StringIO(uploaded.getvalue().decode("utf-8")))
+            new_list: list[tuple[str, str]] = []
+            for row in reader:
+                code = (row.get("code") or "").strip()
+                label = (row.get("label") or "").strip()
+                if code and label:
+                    new_list.append((code, label))
+            if new_list:
+                st.session_state.COURSES = new_list
+                COURSES = new_list
+                st.success(f"Loaded {len(new_list)} courses from upload.")
+        except Exception as e:
+            st.error(f"Could not read CSV: {e}")
+
+    if len(COURSES) == 0:
+        st.info("No courses configured yet. Add items via assets/courses.csv.", icon="⚙️")
+    else:
+        for i in range(0, len(COURSES), 3):
+            row = COURSES[i:i+3]
+            cols = st.columns(3)
+            for (code, label), c in zip(row, cols):
+                render_course_chip(code, label, col=c)
+
+# LEFT: details & authoring
 with colL:
     st.markdown("### Course details")
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 
     codes = [c[0] for c in COURSES]
-    st.selectbox("Course name", options=codes, index=codes.index(st.session_state.selected_course), key="selected_course")
+    if st.session_state.selected_course not in codes and codes:
+        st.session_state.selected_course = codes[0]
+    st.selectbox("Course name", options=codes, index=codes.index(st.session_state.selected_course) if codes else 0, key="selected_course")
     st.selectbox("Class / Cohort", ["D1-C01","D1-C02","D2-C01"], key="class_cohort")
     st.text_input("Instructor name", key="instructor")
     c1, c2 = st.columns(2)
@@ -158,9 +245,15 @@ with colL:
     st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
     if st.session_state.mode != "Print Summary":
-        st.text_area("Enter topics (one per line)", key="topics_text", placeholder="Topic A\nTopic B\nTopic C", height=120)
-        st.checkbox("Include answer key", key="include_key", value=st.session_state.include_key)
-        st.selectbox("How many MCQs?", [5,10,15,20], key="mcq_count", index=[5,10,15,20].index(st.session_state.mcq_count))
+        wk = st.session_state.week
+        verb_band("Low (Weeks 1–4) — Remember / Understand", LOW_VERBS, "low", highlight=(wk <= 4))
+        verb_band("Medium (Weeks 5–9) — Apply / Analyze", MEDIUM_VERBS, "med", highlight=(5 <= wk <= 9))
+        verb_band("High (Weeks 10–14) — Evaluate / Create", HIGH_VERBS, "high", highlight=(wk >= 10))
+
+        st.text_area("Enter topics (one per line)", key="topics_text", height=120)
+        st.checkbox("Include answer key", key="include_key")  # no value= → no yellow warning
+        st.selectbox("How many MCQs?", [5,10,15,20], key="mcq_count",
+                     index=[5,10,15,20].index(int(st.session_state.mcq_count)) if st.session_state.mcq_count in [5,10,15,20] else 1)
 
         if st.button("Generate MCQs", type="primary"):
             ss = st.session_state
@@ -182,16 +275,23 @@ with colL:
                     c,d = st.columns(2); q["options"][2] = c.text_input("Option C", value=q["options"][2], key=f"oc-{idx}"); q["options"][3] = d.text_input("Option D", value=q["options"][3], key=f"od-{idx}")
                     q["answer"] = st.selectbox("Correct answer", ["A","B","C","D"], index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
 
-            # Export buttons
+            # Exports
             ss = st.session_state
-            txt = "\n\n".join([f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) + (f"\nAnswer: {q['answer']}" if ss.include_key else "") for n,q in enumerate(ss.generated_items)])
+            txt = "\n\n".join([
+                f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) + (f"\nAnswer: {q['answer']}" if ss.include_key else "")
+                for n, q in enumerate(ss.generated_items)
+            ])
             st.download_button("Export (TXT)", data=txt, file_name=f"{ss.selected_course}_L{ss.lesson}_W{ss.week}_mcqs.txt")
 
             docx_bytes = try_export_docx(ss.selected_course, ss.lesson, ss.week, ss.generated_items, ss.include_key)
             if docx_bytes:
-                st.download_button("Export (Word .docx)", data=docx_bytes, file_name=f"{ss.selected_course}_L{ss.lesson}_W{ss.week}_mcqs.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                st.download_button(
+                    "Export (Word .docx)", data=docx_bytes,
+                    file_name=f"{ss.selected_course}_L{ss.lesson}_W{ss.week}_mcqs.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
             else:
-                st.info("Install `python-docx` to enable Word export (TXT export still available).", icon="ℹ️")
+                st.info("Install `python-docx` to enable Word export (TXT export is always available).", icon="ℹ️")
 
     else:
         st.markdown("#### Print Summary")
