@@ -1,20 +1,14 @@
 from docx import Document
-import fitz  # PyMuPDF
+from datetime import datetime
 
-def export_to_word(questions):
+def export_to_word(course_info, verbs):
     doc = Document()
-    doc.add_heading("ADI Generated Questions", 0)
-    for i, q in enumerate(questions, 1):
-        doc.add_paragraph(f"Q{i}: {q}")
-    doc.save("ADI_Output.docx")
-
-def export_to_pdf(questions):
-    doc = fitz.open()
-    page = doc.new_page()
-    text = "\n".join([f"Q{i+1}: {q}" for i, q in enumerate(questions)])
-    page.insert_text((72, 72), text)
-    doc.save("ADI_Output.pdf")
-
-def export_to_google_docs(questions):
-    # Placeholder for Google Docs API integration
-    pass
+    doc.add_heading("ADI Builder Output", 0)
+    doc.add_paragraph(f"Course: {course_info['course']}")
+    doc.add_paragraph(f"Instructor: {course_info['instructor']}")
+    doc.add_paragraph(f"Date: {course_info['date'].strftime('%Y-%m-%d')}")
+    doc.add_heading("Selected Verbs", level=1)
+    for verb in verbs:
+        doc.add_paragraph(f"- {verb}")
+    filename = f"ADI_Output_{course_info['course'].replace(' ', '_')}.docx"
+    doc.save(filename)
