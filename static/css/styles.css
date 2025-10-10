@@ -1,0 +1,69 @@
+body {
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    background: #f9f9f9;
+}
+.adi-header {
+    background: #004d40;
+    color: #fff;
+    padding: 15px;
+    display: flex;
+    align-items: center;
+}
+.adi-logo {
+    height: 40px;
+    margin-right: 15px;
+}
+.adi-sidebar {
+    background: #004d40;
+    color: #fff;
+    padding: 20px;
+    width: 220px;
+    position: fixed;
+    height: 100%;
+}
+.adi-main {
+    margin-left: 240px;
+    padding: 20px;
+}
+.upload-box, .bloom-panels, .export {
+    background: #fff;
+    margin-bottom: 20px;
+    padding: 20px;
+    border-radius: 8px;
+}
+.drag-drop {
+    border: 2px dashed #004d40;
+    padding: 20px;
+    text-align: center;
+    border-radius: 8px;
+}
+.browse-btn {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: #004d40;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.panel.low { background: #e8f5e9; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.panel.medium { background: #fffde7; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.panel.high { background: #e3f2fd; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+.tag {
+    display: inline-block;
+    background: #004d40;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin: 5px;
+    cursor: pointer;
+}
+.export-btn {
+    padding: 10px 20px;
+    background: #004d40;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
