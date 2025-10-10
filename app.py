@@ -141,7 +141,7 @@ def export_word(mcqs: List[Dict], meta: Dict) -> bytes:
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
-}
+
 
 "
         buf.write(header_line)
