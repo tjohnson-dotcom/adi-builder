@@ -72,7 +72,7 @@ def init_state():
     ss.setdefault("class_cohort", "D1-C01")
     ss.setdefault("lesson", 1)
     ss.setdefault("week", 1)
-    ss.setdefault("instructor", "Daniel")
+    ss.setdefault("instructor", "Daniel")   # session owns the default
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
@@ -118,13 +118,13 @@ codes = [c for c,_ in COURSES]
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# Cohorts (from your screenshot list)
+# Cohorts (your list)
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
 ]
 
-# Instructors (from your names list)
+# Instructors (your names)
 INSTRUCTORS = [
     "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen","Dari","Ghamza",
     "Michail","Meshari","Mohammed Alwuthaylah","Myra","Meshal","Ibrahim","Khalil","Salem",
@@ -141,7 +141,7 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# Safe callbacks (fixes your red error)
+# Safe callbacks
 def set_recommended_from_week():
     st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
@@ -165,16 +165,12 @@ with r1c[0]:
                unsafe_allow_html=True)
 
 with r1c[1]:
-    # Cohort grid, single select (compact & clear)
     st.markdown("**Class / Cohort**")
     cohort_cols = st.columns(6)
     for i, coh in enumerate(COHORTS):
         with cohort_cols[i % 6]:
-            sel = (st.session_state.class_cohort == coh)
-            btn = st.button(coh, key=f"cohort-{coh}", help=coh, use_container_width=True)
-            if btn:
+            if st.button(coh, key=f"cohort-{coh}", use_container_width=True):
                 st.session_state.class_cohort = coh
-    # light badge showing current selection
     st.caption(f"Selected: **{st.session_state.class_cohort}**")
 
 with r1c[2]:
@@ -184,9 +180,8 @@ with r1c[3]:
     st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
 
 with r1c[4]:
-    st.selectbox("Instructor", INSTRUCTORS,
-                 index=INSTRUCTORS.index(st.session_state.instructor) if st.session_state.instructor in INSTRUCTORS else 0,
-                 key="instructor")
+    # IMPORTANT: no index= — widget uses st.session_state["instructor"] silently
+    st.selectbox("Instructor", INSTRUCTORS, key="instructor")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -204,7 +199,7 @@ st.caption(
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
-    # ---- Verbs (simple, stable) ----
+    # ---- Verbs ----
     vc1, vc2, vc3, vc4 = st.columns([.9, .8, .8, 1.8])
     with vc1:
         st.selectbox("Bloom level", ["Low","Medium","High"], key="bloom_level")
