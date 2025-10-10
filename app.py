@@ -1,4 +1,4 @@
-# app.py — ADI Builder (stable + tidy: instructors & cohorts, safe verbs, clean state)
+# app.py — ADI Builder (clean, professional UI)
 
 import base64
 import csv
@@ -37,12 +37,12 @@ st.markdown(f"""
     background:{ADI_GREEN} !important; color:white !important;
   }}
 
-  /* Cohort grid pills */
-  .cohort-pill {{
-    display:inline-block; margin:4px 6px 0 0; padding:6px 10px; border-radius:10px;
-    border:1px solid #d6d3d1; background:white; color:{INK}; font-size:.9rem;
+  /* Stronger field labels for a professional feel */
+  label:has(+ div [role="listbox"]),
+  label:has(+ div input[type="number"]),
+  label:has(+ div input[type="text"]) {{
+    font-weight: 600 !important; color: #374151 !important;
   }}
-  .cohort-pill.selected {{ background:{ADI_GREEN}; color:white; border-color:{ADI_GREEN}; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,7 +72,7 @@ def init_state():
     ss.setdefault("class_cohort", "D1-C01")
     ss.setdefault("lesson", 1)
     ss.setdefault("week", 1)
-    ss.setdefault("instructor", "Daniel")   # session owns the default
+    ss.setdefault("instructor", "Daniel")
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
@@ -118,7 +118,7 @@ codes = [c for c,_ in COURSES]
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# Cohorts (your list)
+# Cohorts (clean single list)
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
@@ -141,11 +141,16 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# Safe callbacks
-def set_recommended_from_week():
+# --- Safe callbacks ---
+def sync_bloom_from_week():
+    """Auto-apply recommended Bloom when Week changes."""
     st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
-    st.experimental_rerun()
+
+def update_verbs_on_bloom_change():
+    """Keep only valid verbs when Bloom level changes."""
+    allowed = set(VERBS[st.session_state.bloom_level])
+    st.session_state.verbs_selected = [v for v in st.session_state.verbs_selected if v in allowed]
 
 def select_all_verbs():
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
@@ -165,22 +170,31 @@ with r1c[0]:
                unsafe_allow_html=True)
 
 with r1c[1]:
-    st.markdown("**Class / Cohort**")
-    cohort_cols = st.columns(6)
-    for i, coh in enumerate(COHORTS):
-        with cohort_cols[i % 6]:
-            if st.button(coh, key=f"cohort-{coh}", use_container_width=True):
-                st.session_state.class_cohort = coh
-    st.caption(f"Selected: **{st.session_state.class_cohort}**")
+    st.selectbox("Class / Cohort", COHORTS,
+                 index=COHORTS.index(st.session_state.class_cohort)
+                       if st.session_state.class_cohort in COHORTS else 0,
+                 key="class_cohort",
+                 help="Type to search (e.g., D2-M03) or pick from the list.")
+    st.markdown(
+        f"""
+        <div style="margin-top:4px">
+          <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:{ADI_GREEN};color:#fff;font-size:.85rem;">
+            {st.session_state.class_cohort}
+          </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 with r1c[2]:
     st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
 
 with r1c[3]:
-    st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
+    st.number_input("Week", min_value=1, max_value=14, step=1,
+                    key="week", on_change=sync_bloom_from_week)
 
 with r1c[4]:
-    # IMPORTANT: no index= — widget uses st.session_state["instructor"] silently
+    # Widget uses Session State value; no index arg → no yellow warning
     st.selectbox("Instructor", INSTRUCTORS, key="instructor")
 
 st.markdown("</div>", unsafe_allow_html=True)
@@ -199,23 +213,29 @@ st.caption(
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
-    # ---- Verbs ----
-    vc1, vc2, vc3, vc4 = st.columns([.9, .8, .8, 1.8])
-    with vc1:
-        st.selectbox("Bloom level", ["Low","Medium","High"], key="bloom_level")
-    with vc2:
+    # ---- Verbs (calm & predictable) ----
+    a1, a2, a3, a4 = st.columns([.9, .9, .9, 1.6])
+    with a1:
+        st.selectbox("Bloom level", ["Low","Medium","High"],
+                     key="bloom_level", on_change=update_verbs_on_bloom_change)
+    with a2:
         st.button("Select all", on_click=select_all_verbs)
-    with vc3:
+    with a3:
         st.button("Clear", on_click=clear_verbs)
-    with vc4:
-        st.button("Use recommended for this week", on_click=set_recommended_from_week)
+    with a4:
+        st.button("Use recommended for this week", on_click=sync_bloom_from_week)
 
     verbs_for_level = VERBS[st.session_state.bloom_level]
-    st.multiselect("Learning verbs", options=verbs_for_level, key="verbs_selected")
+    st.multiselect(f"Learning verbs (selected {len(st.session_state.verbs_selected)})",
+                   options=verbs_for_level, key="verbs_selected")
 
     # ---- Topics ----
-    st.text_area("Topics (one per line)", key="topics_text", height=110,
-                 placeholder="Topic A\nTopic B\nTopic C")
+    st.text_area(
+        "Topics (one per line)",
+        key="topics_text",
+        height=110,
+        placeholder="e.g.\n- Welding safety checks\n- NDT techniques (PT, MT, UT)\n- Inspection documentation flow"
+    )
 
     # ---- MCQ controls ----
     c1, c2, c3 = st.columns([1,1,2])
