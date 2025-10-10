@@ -171,22 +171,22 @@ def export_word(mcqs: List[Dict], meta: Dict) -> bytes:
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
 
 # ====== Styles ======
-st.markdown(f"""
 <style>
-:root {{ --adi:{ADI_GREEN}; --gold:{ADI_GOLD}; --stone:{STONE_BG}; }}
-.block-container {{ padding-top: .8rem; max-width: 1480px; }}
-h1,h2,h3,h4 {{ color: var(--adi) !important; }}
-.stTabs [data-baseweb=tab-list] {{ gap:.35rem; }}
-.stTabs [data-baseweb=tab] {{ border:1px solid var(--adi); border-radius:999px; padding:.35rem .9rem; }}
-.stTabs [aria-selected=true] {{ background:var(--adi); color:#fff; }}
-.badge {{ display:inline-block; padding:.2rem .55rem; border:1px solid var(--adi); color:var(--adi); border-radius:.5rem; font-weight:700; }}
-.card {{ background:#fff; border:1px solid #e6e6e6; border-radius:1rem; padding:1rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
-.hr {{ border:0; height:1px; background:#ececec; margin:1rem 0; }}
-.stButton>button {{ border-radius:.6rem; font-weight:700; }}
-.stButton>button[kind=primary] {{ background:var(--adi); color:#fff; border-color:var(--adi); }}
-.course-chip {{ border:1px solid #999; border-radius:.4rem; padding:.4rem; font-size:.85rem; font-weight:700; text-align:center; }}
-</style>
-""", unsafe_allow_html=True)
+    :root { --adi: #245a34; --gold: #C8A85A; --stone: #F3F3F0; }
+    .block-container { padding-top: .8rem; max-width: 1480px; }
+    h1,h2,h3,h4 { color: var(--adi) !important; }
+    .stTabs [data-baseweb=tab-list] { gap:.35rem; }
+    .stTabs [data-baseweb=tab] { border:1px solid var(--adi); border-radius:999px; padding:.35rem .9rem; }
+    .stTabs [aria-selected=true] { background:var(--adi); color:#fff; }
+    .badge { display:inline-block; padding:.2rem .55rem; border:1px solid var(--adi); color:var(--adi); border-radius:.5rem; font-weight:700; }
+    .card { background:#fff; border:1px solid #e6e6e6; border-radius:1rem; padding:1rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .hr { border:0; height:1px; background:#ececec; margin:1rem 0; }
+    .stButton>button { border-radius:.6rem; font-weight:700; }
+    .stButton>button[kind=primary] { background:var(--adi); color:#fff; border-color:var(--adi); }
+    .course-chip { border:1px solid #999; border-radius:.4rem; padding:.4rem; font-size:.85rem; font-weight:700; text-align:center; }
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
 
 # ====== Sidebar ======
 with st.sidebar:
