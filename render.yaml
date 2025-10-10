@@ -1,10 +1,7 @@
 services:
   - type: web
-    name: adi-tools
+    name: adi-builder
     env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
-    autoDeploy: true
-    healthCheckPath: /healthz        # <-- Streamlit exposes /healthz
-    healthCheckTimeout: 120          # <-- free plan + cold start needs more time
