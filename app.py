@@ -1,4 +1,4 @@
-# app.py — ADI Builder (brand + file-driven courses + verbs + Word export)
+# app.py — ADI Builder (clean UX: chips-only course select, badge summary, tidy verbs)
 
 import base64, csv, json
 from io import StringIO, BytesIO
@@ -34,19 +34,17 @@ st.markdown(f"""
   .adi-chip-selected {{ background:{ADI_GREEN}; color:white; border:1px solid {ADI_GREEN}; }}
   .adi-chip-selected small {{ display:block; color:{ADI_GOLD}; opacity:.95; font-style:italic; }}
 
-  /* Mode tabs */
+  /* Mode + class pills */
   [data-baseweb="segmented-control"] div[role="tablist"] > div {{ border-radius:999px !important; border:1px solid #e7e5e4 !important; background:white !important; }}
   [data-baseweb="segmented-control"] div[role="tab"] {{ color:{DARK_TEXT} !important; }}
   [data-baseweb="segmented-control"] [aria-selected="true"] {{ background:{ADI_GREEN} !important; color:white !important; }}
 
   .stButton > button {{ border-radius:10px; }}
 
-  /* Verb bands */
-  .band {{ border:1px solid #e7e5e4; border-radius:12px; padding:10px; margin:.35rem 0 .6rem 0; }}
-  .band.low {{ background:#e9f3ed; border-color:#d5e7db; }}
-  .band.med {{ background:#f6f3e9; border-color:#ece6d6; }}
-  .band.high {{ background:#eef1f9; border-color:#dfe4f2; }}
-  .verb-btn button {{ border-radius:999px; padding:6px 12px; margin:4px 6px 0 0; }}
+  /* Verb bands (inside expanders) */
+  .verb-actions {{ display:flex; gap:.5rem; margin:.25rem 0 .5rem 0; }}
+  .verb-actions .stButton>button {{ border-radius:999px; padding:6px 12px; }}
+  .verb-pill .stButton>button {{ border-radius:999px; padding:6px 12px; margin:4px 6px 0 0; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,15 +67,15 @@ def adi_header(title="ADI Builder — Lesson Activities & Questions", logo_path=
 # ---------------- Session ----------------
 def init_state():
     ss = st.session_state
-    ss.setdefault("selected_course", "GE4-EPM")
-    ss.setdefault("class_cohort", "D1-C01")
+    ss.setdefault("selected_course", "GE4-EPM")  # chips control this
+    ss.setdefault("class_cohort", "D1-C01")      # segmented control
     ss.setdefault("instructor", "Daniel")
     ss.setdefault("lesson", 1)
     ss.setdefault("week", 1)
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
-    ss.setdefault("include_key", True)  # no value= on checkbox → no yellow warning
+    ss.setdefault("include_key", True)  # don't pass value= to widget → no yellow warning
     ss.setdefault("mcq_count", 10)
     ss.setdefault("topics", [])
     ss.setdefault("generated_items", [])
@@ -114,7 +112,7 @@ def load_courses_from_assets() -> list[tuple[str, str]]:
     if data:
         return data
 
-    # Fallback so the app still runs
+    # Fallback so it still runs if no file yet
     return [
         ("GE4-EPM", "Defense Technology Practices"),
         ("GE4-IPM", "Integrated Project & Materials Mgmt"),
@@ -128,7 +126,7 @@ if "COURSES" not in st.session_state:
     st.session_state.COURSES = load_courses_from_assets()
 COURSES: list[tuple[str, str]] = st.session_state.COURSES
 
-# ---------------- Bloom data ----------------
+# ---------------- Bloom verbs ----------------
 LOW_VERBS    = ["define", "identify", "list", "recall", "describe", "classify", "match"]
 MEDIUM_VERBS = ["apply", "solve", "calculate", "compare", "analyze", "demonstrate", "explain"]
 HIGH_VERBS   = ["evaluate", "synthesize", "design", "justify", "critique", "optimize", "create"]
@@ -138,10 +136,13 @@ def bloom_level(week:int) -> str:
 
 # ---------------- Components ----------------
 def render_course_chip(code: str, label: str, *, col):
-    sel = (st.session_state.selected_course == code)
+    selected = (st.session_state.selected_course == code)
     with col:
-        if sel:
-            st.markdown(f"<div class='adi-chip-selected'><div>{label}</div><small>{code}</small></div>", unsafe_allow_html=True)
+        if selected:
+            st.markdown(
+                f"<div class='adi-chip-selected'><div>{label}</div><small>{code}</small></div>",
+                unsafe_allow_html=True,
+            )
         else:
             if st.button(f"{label}\n\n*{code}*", key=f"chip-{code}", use_container_width=True):
                 st.session_state.selected_course = code
@@ -153,13 +154,26 @@ def add_verb_to_topics(verb: str):
     if verb not in lines:
         ss.topics_text = (ss.topics_text.rstrip() + ("\n" if ss.topics_text.strip() else "") + verb)
 
-def verb_band(title: str, verbs: list[str], style: str, highlight: bool = False):
-    badge = f"<span style='background:{ADI_GOLD};padding:2px 8px;border-radius:999px;font-weight:600;margin-left:8px;color:black;'>Recommended</span>" if highlight else ""
-    st.markdown(f"<div class='band {style}'><strong>{title}</strong> {badge}</div>", unsafe_allow_html=True)
-    cols = st.columns(min(4, max(1, (len(verbs)+1)//2)))
-    for i, v in enumerate(verbs):
-        with cols[i % len(cols)]:
-            st.button(v, key=f"verb-{style}-{v}", on_click=add_verb_to_topics, args=(v,))
+def remove_verbs_from_topics(removals: list[str]):
+    lines = [t.strip() for t in st.session_state.topics_text.splitlines()]
+    keep = [ln for ln in lines if ln not in removals]
+    st.session_state.topics_text = "\n".join(keep)
+
+def verb_band(title: str, verbs: list[str], style: str, *, expanded: bool = False):
+    with st.expander(title, expanded=expanded):
+        # action row
+        ca, cc = st.columns([1,1])
+        with ca:
+            if st.button(f"Add all ({len(verbs)})", key=f"addall-{style}"):
+                for v in verbs: add_verb_to_topics(v)
+        with cc:
+            if st.button("Clear these verbs", key=f"clear-{style}"):
+                remove_verbs_from_topics(verbs)
+        # pill grid
+        cols = st.columns(3)
+        for i, v in enumerate(verbs):
+            with cols[i % 3]:
+                st.button(v, key=f"verb-{style}-{v}", on_click=add_verb_to_topics, args=(v,))
 
 def try_export_docx(course, lesson, week, items, include_key: bool) -> bytes | None:
     try:
@@ -184,6 +198,7 @@ def try_export_docx(course, lesson, week, items, include_key: bool) -> bytes | N
 # ---------------- Page ----------------
 adi_header()
 
+# Two columns layout
 colL, colR = st.columns([1.15, 1])
 
 # RIGHT: course quick-pick + optional CSV upload
@@ -201,8 +216,7 @@ with colR:
             for row in reader:
                 code = (row.get("code") or "").strip()
                 label = (row.get("label") or "").strip()
-                if code and label:
-                    new_list.append((code, label))
+                if code and label: new_list.append((code, label))
             if new_list:
                 st.session_state.COURSES = new_list
                 COURSES = new_list
@@ -210,6 +224,7 @@ with colR:
         except Exception as e:
             st.error(f"Could not read CSV: {e}")
 
+    # chips grid
     if len(COURSES) == 0:
         st.info("No courses configured yet. Add items via assets/courses.csv.", icon="⚙️")
     else:
@@ -224,11 +239,23 @@ with colL:
     st.markdown("### Course details")
     st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 
-    codes = [c[0] for c in COURSES]
-    if st.session_state.selected_course not in codes and codes:
-        st.session_state.selected_course = codes[0]
-    st.selectbox("Course name", options=codes, index=codes.index(st.session_state.selected_course) if codes else 0, key="selected_course")
-    st.selectbox("Class / Cohort", ["D1-C01","D1-C02","D2-C01"], key="class_cohort")
+    # badge summary (no duplicate dropdown)
+    code_to_label = dict(COURSES)
+    sel_code = st.session_state.selected_course
+    sel_label = code_to_label.get(sel_code, sel_code)
+    st.markdown(
+        f"""
+        <div style="display:inline-block; margin-bottom:.5rem;">
+          <strong>Selected course:</strong>
+          <span style="background:{ADI_GREEN}; color:white; padding:2px 8px; border-radius:999px; margin-left:6px;">{sel_code}</span>
+          <span style="margin-left:8px; color:{DARK_TEXT}; opacity:.9;">— {sel_label}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # class cohort as pills
+    st.segmented_control("Class / Cohort", ["D1-C01","D1-C02","D2-C01"], key="class_cohort")
     st.text_input("Instructor name", key="instructor")
     c1, c2 = st.columns(2)
     with c1: st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
@@ -246,9 +273,9 @@ with colL:
 
     if st.session_state.mode != "Print Summary":
         wk = st.session_state.week
-        verb_band("Low (Weeks 1–4) — Remember / Understand", LOW_VERBS, "low", highlight=(wk <= 4))
-        verb_band("Medium (Weeks 5–9) — Apply / Analyze", MEDIUM_VERBS, "med", highlight=(5 <= wk <= 9))
-        verb_band("High (Weeks 10–14) — Evaluate / Create", HIGH_VERBS, "high", highlight=(wk >= 10))
+        verb_band("Low (Weeks 1–4) — Remember / Understand", LOW_VERBS, "low",   expanded=(wk <= 4))
+        verb_band("Medium (Weeks 5–9) — Apply / Analyze",    MEDIUM_VERBS, "med", expanded=(5 <= wk <= 9))
+        verb_band("High (Weeks 10–14) — Evaluate / Create",  HIGH_VERBS, "high",  expanded=(wk >= 10))
 
         st.text_area("Enter topics (one per line)", key="topics_text", height=120)
         st.checkbox("Include answer key", key="include_key")  # no value= → no yellow warning
@@ -312,3 +339,4 @@ with colL:
         """, unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)  # close Authoring card
+
