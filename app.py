@@ -1,431 +1,338 @@
-# -----------------------------
-# ADI Builder — Lesson Activities & Questions
-# A single-file, stable Streamlit app
-# -----------------------------
-import datetime
-import io
-import random
-from typing import List, Dict
+# app.py — ADI Builder (stable baseline)
+import datetime as dt
+from io import BytesIO
 
 import streamlit as st
+from docx import Document
 
-# Optional DOCX export (graceful fallback if not installed)
-try:
-    from docx import Document
-    from docx.shared import Pt
-    HAVE_DOCX = True
-except Exception:
-    HAVE_DOCX = False
-
-
-# -----------------------------
-# Page & modern query params
-# -----------------------------
+# ---------- Page config (must be first Streamlit call) ----------
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions",
-                   page_icon="🧭",
+                   page_icon="🎓",
                    layout="wide")
 
-def qp_get() -> Dict[str, str]:
-    """Modern query params (no deprecations)."""
-    return dict(st.query_params)
+BUILD_TAG = "2025-10-10 • stable-baseline"
 
-def qp_set(**kwargs):
-    st.query_params.clear()
-    for k, v in kwargs.items():
-        st.query_params[k] = str(v)
+# ---------- Safe defaults for session_state ----------
+def ss_default(key, value):
+    if key not in st.session_state:
+        st.session_state[key] = value
 
+# Single source of truth for keys
+ss_default("topic", "")
+ss_default("course", "GE4-IPM — Integrated Project & Materials Management")
+ss_default("cohort", "D1-C01")
+ss_default("instructor", "Daniel")
+ss_default("date", dt.date.today().isoformat())
+ss_default("lesson", 1)
+ss_default("week", 1)
 
-# -----------------------------
-# Defaults & safe state init (no writes after widgets)
-# -----------------------------
-VERBS_LOW  = ["define", "identify", "list", "label", "describe", "recall"]
-VERBS_MED  = ["apply", "demonstrate", "solve", "analyze", "compare", "summarize"]
-VERBS_HIGH = ["evaluate", "synthesize", "design", "create", "critique", "justify"]
+# Verb selections
+ss_default("verbs_low", ["define", "identify", "list"])
+ss_default("verbs_med", ["apply", "demonstrate", "solve"])
+ss_default("verbs_high", ["evaluate", "synthesize", "design"])
 
-COURSES = [
-    "GE4-IPM — Integrated Project & Materials Management",
-    "GE4-ELM — Engineering Logistics Management",
-    "GE4-QA  — Quality Assurance",
-]
-COHORTS = ["D1-C01", "D1-C02", "D1-C03", "D2-C01", "D2-C02"]
-INSTRUCTORS = ["Daniel", "Fatima", "Hassan", "Layla", "Noura"]
+# Generated content
+ss_default("mcqs", [])
+ss_default("skills", [])
+ss_default("revision", [])
 
-def init_state_once():
-    ss = st.session_state
-    # Single-run defaults (do NOT write after widgets are built)
-    ss.setdefault("topic", "")
-    ss.setdefault("course", COURSES[0])
-    ss.setdefault("cohort", COHORTS[0])
-    ss.setdefault("instructor", INSTRUCTORS[0])
-    ss.setdefault("date", datetime.date.today())
-    ss.setdefault("lesson", 1)
-    ss.setdefault("week", 1)
+# ---------- Styling ----------
+ADI_GREEN = "#153a27"
+BAND_BORDER = "#245a34"
+LOW_BG   = "#cfe8d9"  # light green
+MED_BG   = "#f8e6c9"  # light sand
+HIGH_BG  = "#dfe6ff"  # light blue
 
-    ss.setdefault("verbs_low",  ["define", "identify", "list"])
-    ss.setdefault("verbs_med",  ["apply", "demonstrate", "solve"])
-    ss.setdefault("verbs_high", ["evaluate", "synthesize", "design"])
-
-    ss.setdefault("how_many", 10)
-    ss.setdefault("answer_key", True)
-
-    ss.setdefault("mcqs", [])           # list of dicts {"stem","A","B","C","D","answer"}
-    ss.setdefault("activities", [])     # list of dicts
-    ss.setdefault("revision", [])       # list of strings
-
-    # Remember last selected tab across reruns
-    ss.setdefault("tab_index", 0)
-
-init_state_once()
-
-
-# -----------------------------
-# Styles (palette + chips + dashed uploader + hover)
-# -----------------------------
-st.markdown("""
+st.markdown(f"""
 <style>
-:root{
-  --adi-green:#173E2C;      /* top banner */
-  --low:#cfe8d9;            /* light green */
-  --med:#f8e6c9;            /* sand */
-  --high:#dfe6ff;           /* light blue */
-  --chip:#1f513a;           /* chip text bg */
-}
-
-/* Make the real sidebar a tad wider */
-section[data-testid="stSidebar"]{ width:340px !important; }
-section[data-testid="stSidebar"] > div{ padding-right:8px; }
-
-/* Top banner */
-.adi-banner{
-  background:var(--adi-green);
-  color:#fff; padding:10px 18px; border-radius:8px;
-  font-weight:600; letter-spacing:.2px; margin-bottom:8px;
-}
+/* Title banner */
+.adi-banner {{
+  background:{ADI_GREEN};
+  color:white;
+  padding:10px 16px;
+  border-radius:8px;
+  font-weight:600;
+  letter-spacing:.2px;
+  margin-bottom:12px;
+}}
 
 /* Verb bands */
-.band{ border:2px solid #1f513a33; border-radius:8px; padding:8px 10px; margin:6px 0;}
-.band.low     {background:var(--low);}
-.band.med     {background:var(--med);}
-.band.high    {background:var(--high);}
-.band.active  {box-shadow:0 0 0 3px #1f513a55 inset;}
+.band {{
+  border:1px solid {BAND_BORDER};
+  border-radius:8px;
+  padding:10px;
+  margin:8px 0 6px 0;
+}}
+.band.low.active   {{ background:{LOW_BG};  }}
+.band.med.active   {{ background:{MED_BG};  }}
+.band.high.active  {{ background:{HIGH_BG}; }}
 
-/* Multiselect chips look clickable */
-div[data-testid="stMultiSelect"] button{ cursor:pointer !important; }
-div[data-testid="stMultiSelect"] button:hover{
-  box-shadow:0 0 0 2px #1f513a inset !important;
-}
-
-/* dashed drop zone */
-div[data-testid="stFileUploaderDropzone"]{
-  border:2px dashed #1f513a99 !important;
-  background: #f9faf9;
-}
-div[data-testid="stFileUploaderDropzone"]:hover{
-  box-shadow:0 0 0 3px #1f513a55 inset !important;
-}
-
-/* Buttons */
-button[kind], .stButton>button{
-  background: var(--adi-green) !important;
-  color:#fff !important; border:0; border-radius:8px !important;
-}
-.stDownloadButton>button{
-  background: var(--adi-green) !important;
-  color:#fff !important; border-radius:8px !important;
-}
+/* Chips (multiselect pills) */
+[data-baseweb="tag"] {{
+  border-radius:10px !important;
+  padding:2px 8px !important;
+}}
+/* Pointer & hover affordances */
+div[data-testid="stFileUploaderDropzone"],
+div[data-testid="stSelectbox"] button,
+div[data-testid="stMultiSelect"] button,
+button[kind], button {{
+  cursor: pointer !important;
+}}
+div[data-testid="stFileUploaderDropzone"] {{
+  border:2px dashed {BAND_BORDER} !important;
+  background:#f8faf9;
+}}
+div[data-testid="stFileUploaderDropzone"]:hover {{
+  box-shadow: inset 0 0 0 3px {BAND_BORDER} !important;
+}}
+div[data-testid="stSelectbox"] button:hover,
+div[data-testid="stMultiSelect"] button:hover {{
+  box-shadow: inset 0 0 0 2px {BAND_BORDER} !important;
+}}
+/* Sidebar cards */
+.block-container {{
+  padding-top: 12px;
+}}
 </style>
 """, unsafe_allow_html=True)
 
-
-# -----------------------------
-# Helpers
-# -----------------------------
-def week_band(week:int)->str:
-    """Which band is 'active' given week."""
-    if 1 <= week <= 4:  return "low"
-    if 5 <= week <= 9:  return "med"
-    return "high"
-
-def safe_logo():
-    col_logo = st.sidebar.container()
+# ---------- Header ----------
+cols = st.columns([1, 8, 1.5])
+with cols[0]:
     try:
-        # Provide your local logo path if available
-        col_logo.image("adi_logo.png", width=140)
+        st.image("adi_logo.png", width=120)
     except Exception:
-        col_logo.markdown("**Academy of Defense Industries**")
+        pass
+with cols[1]:
+    st.markdown('<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>',
+                unsafe_allow_html=True)
+with cols[2]:
+    st.caption(f"Build: {BUILD_TAG}")
 
-def make_mcq_stem(verb:str, topic:str)->str:
-    topic = topic.strip() or "the lesson topic"
-    patterns = [
-        f"Using the verb **{verb}**, which statement best relates to {topic}?",
-        f"Which option correctly uses **{verb}** in the context of {topic}?",
-        f"For {topic}, select the best example of **{verb}**.",
-    ]
-    return random.choice(patterns)
+# ---------- Uploader + Course Details (left) ----------
+left, right = st.columns([1.2, 2.4], gap="large")
 
-def generate_mcqs(how_many:int, topic:str, verbs:List[str], answer_key:bool=True)->List[Dict]:
-    out=[]
-    bank = [
-        ("To verify conformance","To hire staff","To set company policy","To control budgets","A"),
-        ("A reduction in scrap rate","A new paint color","An office plant","A brand slogan","A"),
-        ("Record defects per batch","Paint the building","Order coffee","Organize a party","A"),
-        ("Measure mean time between failures","Buy new uniforms","Add a company holiday","Update the logo","A"),
-    ]
-    for i in range(how_many):
-        verb = random.choice(verbs or ["apply","analyze","design"])
-        stem = make_mcq_stem(verb, topic)
-        A,B,C,D,ans = random.choice(bank)
-        out.append({"stem":stem,"A":A,"B":B,"C":C,"D":D,"answer":ans if answer_key else ""})
-    return out
+with left:
+    st.subheader("Upload (optional)")
+    uploaded = st.file_uploader("Drag and drop file here",
+                                type=["txt", "docx", "pptx", "pdf"],
+                                help="Limit 200MB / file", label_visibility="collapsed")
+    if uploaded is not None:
+        st.success(f"Uploaded: **{uploaded.name}**")
 
-def generate_activities(n:int, minutes:int, group:str, topic:str)->List[Dict]:
-    topic = topic.strip() or "today’s topic"
-    templates = [
-        "In small groups, **{group}**, create a quick sketch / flow showing {topic}.",
-        "Pair up and **role-play** a scenario applying {topic} for {min} minutes.",
-        "Individually, list five risks about {topic}, then share in **{group}**.",
-        "Teams prepare a one-slide summary to **present** in {min} minutes on {topic}.",
-    ]
-    groups = {"Solo (1)":"solo","Pairs (2)":"pairs","Triads (3)":"triads","Group of 4":"groups of four"}
-    gtxt = groups.get(group, group)
-    out=[]
-    for _ in range(n):
-        t = random.choice(templates).format(group=gtxt, min=minutes, topic=topic)
-        out.append({"task":t,"minutes":minutes,"group":group})
-    return out
+    st.checkbox("Deep scan source (slower, better coverage)", value=False)
 
-def generate_revision(topic:str, verbs:List[str])->List[str]:
-    topic = topic.strip() or "the lesson"
-    prompts = [
-        f"Write a 3-sentence summary of {topic}.",
-        f"Explain {topic} to a first-year student.",
-        f"Create a quick checklist to **{random.choice(verbs or ['apply'])}** {topic}.",
-    ]
-    return prompts
+    st.subheader("Course details")
+    st.selectbox("Course name", [
+        "GE4-IPM — Integrated Project & Materials Management",
+        "GE4-EPM — Defense Tech: Experiments/QM/Inspection",
+        "GE4-MRO — Military Vehicle & Aircraft MRO",
+    ], key="course")
 
-def txt_download(label:str, filename:str, content:str):
-    st.download_button(label, data=content.encode("utf-8"),
-                       file_name=filename, mime="text/plain")
+    st.selectbox("Class / Cohort", ["D1-C01", "D1-M01", "D2-C01"], key="cohort")
+    st.selectbox("Instructor name", [
+        "Daniel", "Dr. Mashael", "Noura Aldossari", "Ahmed Albader", "Michail",
+        "Myra", "Sultan", "Chetan"
+    ], key="instructor")
 
-def mcqs_to_txt(mcqs:List[Dict])->str:
-    lines=[]
-    for i,q in enumerate(mcqs,1):
-        lines += [f"Q{i}. {q['stem']}",
-                  f"A. {q['A']}",
-                  f"B. {q['B']}",
-                  f"C. {q['C']}",
-                  f"D. {q['D']}"]
-        if q.get("answer"):
-            lines.append(f"Answer: {q['answer']}")
+    st.date_input("Date", value=dt.date.fromisoformat(st.session_state["date"]),
+                  key="date")
+
+    lc1, lc2 = st.columns(2)
+    with lc1:
+        st.number_input("Lesson", min_value=1, max_value=14, step=1, key="lesson")
+    with lc2:
+        st.number_input("Week", min_value=1, max_value=14, step=1, key="week")
+
+# ---------- Topic + Verb bands (right) ----------
+with right:
+    st.subheader("Topic / Outcome (optional)")
+    st.text_area("", key="topic",
+                 placeholder="e.g., Integrated Project and …", height=80,
+                 label_visibility="collapsed")
+
+    # Helper: band renderer
+    def verb_band(title, key, bg_class):
+        selected = st.session_state[key]
+        # Determine active class by current week
+        wk = st.session_state["week"]
+        active = (
+            (bg_class == "low"  and 1 <= wk <= 4)  or
+            (bg_class == "med"  and 5 <= wk <= 9)  or
+            (bg_class == "high" and wk >= 10)
+        )
+        klass = f"band {bg_class}" + (" active" if active else "")
+        st.markdown(f'<div class="{klass}"><strong>{title}</strong></div>', unsafe_allow_html=True)
+        st.multiselect(" ", options=ALL_VERBS[key], default=selected, key=key, label_visibility="collapsed")
+
+    # Verb dictionary for band rendering
+    ALL_VERBS = {
+        "verbs_low":  ["define", "identify", "list", "describe", "recall"],
+        "verbs_med":  ["apply", "demonstrate", "solve", "analyze", "compare"],
+        "verbs_high": ["evaluate", "synthesize", "design", "justify", "create"]
+    }
+
+    verb_band("Low (Weeks 1–4) — Remember / Understand", "verbs_low", "low")
+    verb_band("Medium (Weeks 5–9) — Apply / Analyse", "verbs_med", "med")
+    verb_band("High (Weeks 10–14) — Evaluate / Create", "verbs_high", "high")
+
+    st.caption("ADI policy: 1–3 per lesson • 5–9 Medium • 10–14 High")
+
+    # ---------- Tabs ----------
+    tabs = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
+
+    # ----- MCQs tab -----
+    with tabs[0]:
+        # How many MCQs
+        cols_mcq = st.columns([1, 2, 1])
+        with cols_mcq[0]:
+            n = st.selectbox("How many MCQs?", [5, 8, 10, 12, 15, 20], index=2, key="how_many")
+        with cols_mcq[1]:
+            st.toggle("Answer key", value=True, key="ak")
+
+        if st.button("Generate from verbs/topic", key="btn_gen_mcq"):
+            st.session_state["mcqs"] = generate_mcqs(n,
+                                                     st.session_state["topic"],
+                                                     st.session_state["verbs_low"],
+                                                     st.session_state["verbs_med"],
+                                                     st.session_state["verbs_high"])
+
+        mcqs = st.session_state["mcqs"]
+        if not mcqs:
+            st.info("No questions yet. Click **Generate from verbs/topic**.")
+        else:
+            for i, q in enumerate(mcqs, start=1):
+                st.write(f"**Q{i}**")
+                q["stem"] = st.text_area(f"Question {i} stem",
+                                         q["stem"], key=f"qstem_{i}", height=60)
+                cols_qa = st.columns(2)
+                with cols_qa[0]:
+                    q["A"] = st.text_input("A", q["A"], key=f"qa_{i}")
+                    q["B"] = st.text_input("B", q["B"], key=f"qb_{i}")
+                with cols_qa[1]:
+                    q["C"] = st.text_input("C", q["C"], key=f"qc_{i}")
+                    q["D"] = st.text_input("D", q["D"], key=f"qd_{i}")
+                if st.session_state["ak"]:
+                    q["correct"] = st.radio("Correct answer", ["A","B","C","D"],
+                                            index=["A","B","C","D"].index(q["correct"]),
+                                            key=f"qr_{i}", horizontal=True)
+                st.divider()
+
+            # Downloads
+            txt_bytes = mcqs_to_txt(mcqs).encode("utf-8")
+            st.download_button("⬇️ Download TXT (All MCQs)", txt_bytes,
+                               file_name="ADI_MCQ_All.txt", mime="text/plain",
+                               key="dl_txt_all")
+
+            docx_bytes = mcqs_to_docx_bytes(mcqs)
+            st.download_button("⬇️ Download DOCX (All MCQs)", docx_bytes,
+                               file_name="ADI_MCQ_All.docx",
+                               mime=("application/vnd.openxmlformats-"
+                                     "officedocument.wordprocessingml.document"),
+                               key="dl_docx_all")
+
+    # ----- Skills tab -----
+    with tabs[1]:
+        if st.button("Generate skills activities", key="btn_gen_skills"):
+            st.session_state["skills"] = generate_skills(st.session_state["verbs_med"],
+                                                         st.session_state["lesson"],
+                                                         st.session_state["week"])
+        if not st.session_state["skills"]:
+            st.info("No activities yet. Click **Generate skills activities**.")
+        else:
+            for i, a in enumerate(st.session_state["skills"], start=1):
+                st.markdown(f"**Activity {i}.** {a}")
+
+    # ----- Revision tab -----
+    with tabs[2]:
+        if st.button("Generate revision prompts", key="btn_gen_rev"):
+            st.session_state["revision"] = generate_revision(st.session_state["verbs_low"],
+                                                             st.session_state["verbs_high"])
+        if not st.session_state["revision"]:
+            st.info("No revision prompts yet. Click **Generate revision prompts**.")
+        else:
+            for i, r in enumerate(st.session_state["revision"], start=1):
+                st.markdown(f"**R{i}.** {r}")
+
+    # ----- Print summary tab -----
+    with tabs[3]:
+        st.subheader("Print summary")
+        st.write(f"**Course:** {st.session_state['course']}")
+        st.write(f"**Cohort:** {st.session_state['cohort']}  •  **Instructor:** {st.session_state['instructor']}")
+        st.write(f"**Date:** {st.session_state['date']}  •  **Lesson:** {st.session_state['lesson']}  •  **Week:** {st.session_state['week']}")
+        st.write(f"**Topic:** {st.session_state['topic'] or '—'}")
+        st.write("**Low verbs:**", ", ".join(st.session_state["verbs_low"]) or "—")
+        st.write("**Medium verbs:**", ", ".join(st.session_state["verbs_med"]) or "—")
+        st.write("**High verbs:**", ", ".join(st.session_state["verbs_high"]) or "—")
+
+        if st.session_state["mcqs"]:
+            st.markdown("### MCQs")
+            for i, q in enumerate(st.session_state["mcqs"], start=1):
+                st.write(f"**Q{i}.** {q['stem']}")
+                st.write(f"A. {q['A']}  |  B. {q['B']}  |  C. {q['C']}  |  D. {q['D']}")
+                st.caption(f"Answer: {q['correct']}")
+
+# ---------- Generators ----------
+def generate_mcqs(n, topic, low, med, high):
+    """Simple, safe generator (no external calls)."""
+    seeds = (high or med or low or ["analyze"])
+    qs = []
+    for i in range(n):
+        v = seeds[i % len(seeds)]
+        stem = topic.strip() or "Explain the role of inspection in quality management."
+        stem = f"Using the verb **{v}**, {stem}"
+        qs.append({
+            "stem": stem,
+            "A": "To verify conformance",   # keep placeholders clear & editable
+            "B": "To set company policy",
+            "C": "To hire staff",
+            "D": "To control budgets",
+            "correct": "A"
+        })
+    return qs
+
+def mcqs_to_txt(mcqs):
+    lines = []
+    for i, q in enumerate(mcqs, start=1):
+        lines.append(f"Q{i}. {q['stem']}")
+        lines.append(f"A. {q['A']}")
+        lines.append(f"B. {q['B']}")
+        lines.append(f"C. {q['C']}")
+        lines.append(f"D. {q['D']}")
+        lines.append(f"Answer: {q['correct']}")
         lines.append("")
     return "\n".join(lines)
 
-def mcqs_to_docx(mcqs:List[Dict], title:str="MCQs"):
+def mcqs_to_docx_bytes(mcqs):
     doc = Document()
-    doc.styles['Normal'].font.name = 'Calibri'
-    doc.styles['Normal'].font.size = Pt(11)
-    doc.add_heading(title, level=1)
-    for i,q in enumerate(mcqs,1):
+    doc.add_heading("ADI MCQs", level=1)
+    for i, q in enumerate(mcqs, start=1):
         doc.add_paragraph(f"Q{i}. {q['stem']}")
         doc.add_paragraph(f"A. {q['A']}")
         doc.add_paragraph(f"B. {q['B']}")
         doc.add_paragraph(f"C. {q['C']}")
         doc.add_paragraph(f"D. {q['D']}")
-        if q.get("answer"):
-            doc.add_paragraph(f"Answer: {q['answer']}")
+        doc.add_paragraph(f"Answer: {q['correct']}")
         doc.add_paragraph("")
-    buf = io.BytesIO()
-    doc.save(buf); buf.seek(0)
-    return buf
+    bio = BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
 
+def generate_skills(verbs_med, lesson, week):
+    if not verbs_med:
+        verbs_med = ["apply"]
+    prompts = []
+    for i, v in enumerate(verbs_med, start=1):
+        prompts.append(f"Week {week}, Lesson {lesson}: In teams of 3, **{v}** the method to a real part "
+                       f"from your project; produce a 1-page evidence sheet.")
+    return prompts
 
-# -----------------------------
-# Sidebar (sticky)
-# -----------------------------
-safe_logo()
-
-st.sidebar.subheader("Upload (optional)")
-uploaded = st.sidebar.file_uploader("Drag and drop file here", type=["txt","docx","pptx","pdf"], key="file_up")
-if uploaded:
-    st.sidebar.success(f"Uploaded **{uploaded.name}** ({uploaded.size/1024:.1f} KB)")
-st.sidebar.checkbox("Deep scan source (slower, better coverage)", key="deep_scan")
-
-st.sidebar.subheader("Course details")
-st.session_state.course = st.sidebar.selectbox("Course name", COURSES, index=COURSES.index(st.session_state.course))
-st.session_state.cohort = st.sidebar.selectbox("Class / Cohort", COHORTS, index=COHORTS.index(st.session_state.cohort))
-st.session_state.instructor = st.sidebar.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index(st.session_state.instructor))
-st.session_state.date = st.sidebar.date_input("Date", value=st.session_state.date)
-
-c1, c2 = st.sidebar.columns(2)
-with c1:
-    st.session_state.lesson = st.number_input("Lesson", 1, 99, value=int(st.session_state.lesson), step=1, key="lesson_num")
-with c2:
-    st.session_state.week = st.number_input("Week", 1, 14, value=int(st.session_state.week), step=1, key="week_num")
-
-# keep URL sticky
-qp_set(week=st.session_state.week, lesson=st.session_state.lesson)
-
-
-# -----------------------------
-# Main banner + topic
-# -----------------------------
-st.markdown('<div class="adi-banner">ADI Builder — Lesson Activities & Questions</div>', unsafe_allow_html=True)
-
-st.text_area("Topic / Outcome (optional)", key="topic",
-             placeholder="e.g., Integrated Project and …")
-
-# -----------------------------
-# Verb bands (+ color highlight by week)
-# -----------------------------
-active = week_band(st.session_state.week)
-
-def band(title:str, verbs:List[str], key:str, css_class:str):
-    cls = f"band {css_class}" + (" active" if active == css_class else "")
-    st.markdown(f'<div class="{cls}"><strong>{title}</strong></div>', unsafe_allow_html=True)
-    return st.multiselect(f"{css_class.capitalize()} verbs", options=verbs,
-                          default=st.session_state.get(key, []), key=key)
-
-st.session_state.verbs_low  = band("Low (Weeks 1–4) — Remember / Understand", VERBS_LOW,  "verbs_low",  "low")
-st.session_state.verbs_med  = band("Medium (Weeks 5–9) — Apply / Analyse",   VERBS_MED,  "verbs_med",  "med")
-st.session_state.verbs_high = band("High (Weeks 10–14) — Evaluate / Create", VERBS_HIGH, "verbs_high", "high")
-
-# -----------------------------
-# Tabs
-# -----------------------------
-tab_names = ["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"]
-tabs = st.tabs(tab_names)
-# keep index stable
-for i, t in enumerate(tabs):
-    if i == st.session_state.tab_index:
-        pass
-st.session_state.tab_index = 0  # default to first on build
-
-# ---------- Tab 0: MCQs ----------
-with tabs[0]:
-    st.caption("ADI policy: 1–3 per lesson • 5–9 Medium • 10–14 High")
-    left, right = st.columns([0.35, 0.65])
-
-    with left:
-        st.session_state.how_many = st.selectbox("How many MCQs?",
-                                                 [5, 10, 12, 15, 20],
-                                                 index=[5,10,12,15,20].index(st.session_state.how_many),
-                                                 key="how_many_sel")
-        st.session_state.answer_key = st.checkbox("Answer key", value=st.session_state.answer_key, key="ans_key")
-
-        if st.button("Generate from verbs/topic", key="btn_gen_mcq"):
-            # pick pool: if week selects band, bias that band
-            if   active == "low":  pool = st.session_state.verbs_low
-            elif active == "med":  pool = st.session_state.verbs_med
-            else:                  pool = st.session_state.verbs_high
-            verbs = pool or (st.session_state.verbs_low + st.session_state.verbs_med + st.session_state.verbs_high)
-            st.session_state.mcqs = generate_mcqs(
-                st.session_state.how_many, st.session_state.topic, verbs, st.session_state.answer_key
-            )
-
-        if st.session_state.mcqs:
-            # Downloads
-            txt_content = mcqs_to_txt(st.session_state.mcqs)
-            txt_download("⬇️ Download TXT (All MCQs)",
-                         f"ADI_MCQ__{st.session_state.course.split(' — ')[0]}__W{st.session_state.week:02d}.txt",
-                         txt_content)
-            if HAVE_DOCX:
-                buf = mcqs_to_docx(st.session_state.mcqs,
-                                   title=f"MCQs — {st.session_state.course} — W{st.session_state.week:02d}")
-                st.download_button("⬇️ Download DOCX (All MCQs)", data=buf.getvalue(),
-                                   file_name=f"ADI_MCQ__{st.session_state.course.split(' — ')[0]}__W{st.session_state.week:02d}.docx",
-                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            else:
-                st.info("DOCX export unavailable (python-docx not installed). TXT download works.")
-
-    with right:
-        if not st.session_state.mcqs:
-            st.info("No questions yet. Click **Generate from verbs/topic**.")
-        else:
-            # Editable MCQs
-            for i, q in enumerate(st.session_state.mcqs):
-                box = st.expander(f"Q{i+1}", expanded=(i==0))
-                with box:
-                    q["stem"]   = st.text_input("Question", q["stem"], key=f"stem_{i}")
-                    q["A"]      = st.text_input("A", q["A"], key=f"A_{i}")
-                    q["B"]      = st.text_input("B", q["B"], key=f"B_{i}")
-                    q["C"]      = st.text_input("C", q["C"], key=f"C_{i}")
-                    q["D"]      = st.text_input("D", q["D"], key=f"D_{i}")
-                    q["answer"] = st.radio("Correct answer", ["","A","B","C","D"], index=["","A","B","C","D"].index(q.get("answer","")),
-                                           horizontal=True, key=f"ans_{i}")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if st.button("➕ Add blank question", key="add_q"):
-                    st.session_state.mcqs.append({"stem":"", "A":"","B":"","C":"","D":"","answer":""})
-            with c2:
-                if st.session_state.mcqs and st.button("➖ Remove last", key="rem_q"):
-                    st.session_state.mcqs.pop()
-
-# ---------- Tab 1: Skills ----------
-with tabs[1]:
-    st.session_state.tab_index = 1
-    c1, c2, c3 = st.columns([0.3, 0.3, 0.4])
-    with c1:
-        n_acts = st.selectbox("How many activities?", [1,2,3], index=1, key="acts_n")
-    with c2:
-        minutes = st.selectbox("Minutes per activity", [5,10,15,20,30,45,60], index=1, key="acts_min")
-    with c3:
-        group = st.selectbox("Group size", ["Solo (1)", "Pairs (2)", "Triads (3)", "Group of 4"], index=1, key="acts_group")
-
-    if st.button("Generate Activities", key="btn_gen_acts"):
-        # choose verbs from active band to flavor text a bit
-        if   active == "low":  pool = st.session_state.verbs_low
-        elif active == "med":  pool = st.session_state.verbs_med
-        else:                  pool = st.session_state.verbs_high
-        st.session_state.activities = generate_activities(n_acts, minutes, group, st.session_state.topic)
-
-    if st.session_state.activities:
-        st.subheader("Activities")
-        for i, a in enumerate(st.session_state.activities, 1):
-            st.markdown(f"**A{i}.** {a['task']}  \n*({a['minutes']} min, {a['group']})*")
-        txt = "\n\n".join([f"A{i}. {a['task']} ({a['minutes']} min, {a['group']})" for i,a in enumerate(st.session_state.activities,1)])
-        txt_download("⬇️ Download TXT (Activities)",
-                     f"ADI_Activities__{st.session_state.course.split(' — ')[0]}__W{st.session_state.week:02d}.txt",
-                     txt)
-
-# ---------- Tab 2: Revision ----------
-with tabs[2]:
-    st.session_state.tab_index = 2
-    if st.button("Generate revision prompts", key="btn_rev"):
-        pool = (st.session_state.verbs_low + st.session_state.verbs_med + st.session_state.verbs_high)
-        st.session_state.revision = generate_revision(st.session_state.topic, pool)
-    if st.session_state.revision:
-        st.subheader("Revision")
-        for i, line in enumerate(st.session_state.revision, 1):
-            st.markdown(f"**R{i}.** {line}")
-        txt = "\n".join([f"R{i}. {line}" for i,line in enumerate(st.session_state.revision,1)])
-        txt_download("⬇️ Download TXT (Revision)",
-                     f"ADI_Revision__{st.session_state.course.split(' — ')[0]}__W{st.session_state.week:02d}.txt",
-                     txt)
-    else:
-        st.info("Click **Generate revision prompts**.")
-
-# ---------- Tab 3: Print Summary ----------
-with tabs[3]:
-    st.session_state.tab_index = 3
-    st.subheader("Print summary")
-    st.markdown(f"**Course:** {st.session_state.course}  \n"
-                f"**Cohort:** {st.session_state.cohort}  \n"
-                f"**Instructor:** {st.session_state.instructor}  \n"
-                f"**Date:** {st.session_state.date}  \n"
-                f"**Lesson:** {st.session_state.lesson}  \n"
-                f"**Week:** {st.session_state.week}")
-    st.markdown("---")
-    st.markdown(f"**Topic / Outcome**  \n{st.session_state.topic or '_(not provided)_'}")
-    st.markdown("---")
-    st.markdown("**Verbs selected**")
-    st.write({"Low": st.session_state.verbs_low,
-              "Medium": st.session_state.verbs_med,
-              "High": st.session_state.verbs_high})
-    st.markdown("---")
-    st.markdown("**Question count requested:** " + str(st.session_state.how_many))
-    if st.session_state.mcqs:
-        st.markdown(f"*MCQs generated:* **{len(st.session_state.mcqs)}**")
-    if st.session_state.activities:
-        st.markdown(f"*Activities generated:* **{len(st.session_state.activities)}**")
-    if st.session_state.revision:
-        st.markdown(f"*Revision prompts generated:* **{len(st.session_state.revision)}**")
+def generate_revision(verbs_low, verbs_high):
+    prompts = []
+    for v in (verbs_low or ["define"]):
+        prompts.append(f"Flash-cards: **{v}** five key terms from this module.")
+    for v in (verbs_high or ["evaluate"]):
+        prompts.append(f"Exit ticket: **{v}** your process and justify improvements.")
+    return prompts
