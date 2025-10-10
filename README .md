@@ -1,31 +1,32 @@
-[README_DEPLOY (1).md](https://github.com/user-attachments/files/22748273/README_DEPLOY.1.md)
-# ADI Builder — Quick Deploy (Render.com or local)
 
-## 1) Files you need in the repo
-- `app.py` (your uploaded Streamlit app)
-- `requirements.txt` (included here)
-- `.streamlit/config.toml` (included here)
-- (optional) `adi_logo.png`
+# ADI Builder — Lesson Activities & Questions
 
-## 2) Render.com
-- **Environment:** Python 3.10 or 3.11
-- **Build command:** `pip install -r requirements.txt`
-- **Start command:** `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
-- **Instance type:** Starter is fine
-- **Health check path:** `/`
+This Streamlit app helps instructors at the Academy of Defense Industries (ADI) generate lesson activities, MCQs, and revision prompts aligned with Bloom's Taxonomy.
 
-If you see a fullscreen modal saying *"Bad message format — Tried to use SessionInfo before it was initialized"*, it usually means the server threw an exception **before Streamlit finished initializing**.
-Check the Render logs; typical fixes:
-- Make sure your Python version matches the wheel for PyMuPDF (or temporarily remove PyMuPDF if PDFs aren’t required yet).
-- Use the provided `requirements.txt` to pin versions.
-- Ensure `app.py` imports succeed on boot (no missing packages).
+## 🚀 Features
+- Upload lesson materials (PDF, DOCX, PPTX)
+- Select verbs by week and cognitive level
+- Generate editable MCQs, skills, and revision prompts
+- Export to TXT and DOCX
+- ADI branding and hover effects
+- Reset session button
+- Placeholder for future AI-powered question generation
 
-## 3) Local (quick test)
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+## 🧠 AI Integration Roadmap
+- Extract content from uploaded files
+- Use NLP to identify key concepts
+- Send structured prompts to GPT API
+- Display editable AI-generated questions
 
-## 4) Tips
-- If PDFs aren't critical right now, comment out the PyMuPDF import in `app.py` and redeploy (the app gracefully degrades).
-- If you add more libraries, pin them in `requirements.txt` to avoid platform build issues.
+## ⚙️ Deployment on Render.com
+1. Push this repo to GitHub
+2. Create a new **Web Service** on Render
+3. Use `render.yaml` for configuration
+4. Build command: `pip install -r requirements.txt`
+5. Start command: `streamlit run app.py`
+6. Add environment variable for `OPENAI_API_KEY` (future use)
+
+## 📦 Requirements
+See `requirements.txt` for dependencies.
+
+## 📂 Folder Structure
