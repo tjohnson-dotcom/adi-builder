@@ -1,4 +1,4 @@
-# app.py — clean & stable (no JS, no warnings)
+adi_header()
 
 import streamlit as st
 from datetime import date
