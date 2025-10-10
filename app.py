@@ -1,4 +1,4 @@
-# app.py — ADI Builder (clean, professional UI)
+# app.py — ADI Builder (clean UI + pills + green dashed uploaders + logo uploader)
 
 import base64
 import csv
@@ -22,48 +22,54 @@ st.markdown(f"""
   .adi-topbar {{
     background:{ADI_GREEN}; color:white; padding:.6rem .9rem;
     border-radius:0 0 12px 12px; display:flex; gap:10px; align-items:center;
-    margin-bottom:.8rem;
+    margin-bottom:.8rem; min-height:48px;
   }}
-  .adi-topbar img {{ height:30px; }}
-  .adi-topbar h1 {{ font-size:1.05rem; margin:0; line-height:1.2; }}
+  .adi-topbar img {{ height:34px; }}
+  .adi-topbar h1 {{ font-size:1.08rem; margin:0; line-height:1.2; }}
 
   .adi-card {{ background:{STONE}; border:1px solid #e7e5e4; border-radius:12px; padding:12px; }}
   .muted {{ color:{MUTED}; }}
 
   .tight > div {{ margin-bottom:.35rem; }}
   .stButton > button {{ border-radius:10px; }}
-
   [data-baseweb="segmented-control"] [aria-selected="true"] {{
     background:{ADI_GREEN} !important; color:white !important;
   }}
 
-  /* Stronger field labels for a professional feel */
+  /* Stronger labels */
   label:has(+ div [role="listbox"]),
   label:has(+ div input[type="number"]),
   label:has(+ div input[type="text"]) {{
     font-weight: 600 !important; color: #374151 !important;
   }}
+
+  /* Pills */
+  .pill {{ display:inline-block; padding:2px 10px; border-radius:999px; font-size:.85rem;
+          line-height:1.6; white-space:nowrap; margin-left:6px; }}
+  .pill-green {{ background:{ADI_GREEN}; color:#fff; }}
+  .pill-slate {{ background:#e5e7eb; color:#111827; }}
+
+  /* GREEN DASHED DROPZONES (both uploaders) */
+  div[data-testid="stFileUploaderDropzone"] {{
+    border:2px dashed {ADI_GREEN} !important;
+    background:#f6faf7 !important;
+    border-radius:12px !important;
+  }}
+  div[data-testid="stFileUploaderDropzone"] p {{
+    color:#0f3d22 !important;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- Header ----------------
-def _b64(path: Path) -> str | None:
+# ---------------- Helpers ----------------
+def _b64_bytes(b: bytes) -> str:
+    return base64.b64encode(b).decode("utf-8")
+
+def _b64_file(path: Path) -> str | None:
     try:
-        return base64.b64encode(path.read_bytes()).decode("utf-8")
+        return _b64_bytes(path.read_bytes())
     except Exception:
         return None
-
-def header(title="ADI Builder — Lesson Activities & Questions", logo="assets/adi-logo.png"):
-    img_html = ""
-    p = Path(logo)
-    if p.exists():
-        b64 = _b64(p)
-        if b64:
-            img_html = "<img src=\"data:image/png;base64," + b64 + "\"/>"
-    html = "<div class='adi-topbar'>" + img_html + "<h1>" + title + "</h1></div>"
-    st.markdown(html, unsafe_allow_html=True)
-
-header()
 
 # ---------------- Session ----------------
 def init_state():
@@ -76,14 +82,16 @@ def init_state():
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
-    # verbs UI state
-    ss.setdefault("bloom_level", "Low")       # Low / Medium / High
-    ss.setdefault("verbs_selected", [])       # strings of verbs for current level
+    ss.setdefault("bloom_level", "Low")         # Low / Medium / High
+    ss.setdefault("verbs_selected", [])
     ss.setdefault("generated_items", [])
+    # Courses + logo
+    ss.setdefault("COURSES", None)              # list[(code,label)]
+    ss.setdefault("logo_b64", None)             # user-uploaded or from assets
 init_state()
 
-# ---------------- Data: courses / cohorts / instructors ----------------
-def load_courses() -> list[tuple[str,str]]:
+# ---------------- Data: load courses ----------------
+def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
     csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
     if csvp.exists():
@@ -102,7 +110,7 @@ def load_courses() -> list[tuple[str,str]]:
                 items.append((code, label))
     if items:
         return items
-    # Fallback sample to keep app running
+    # fallback
     return [
         ("GE4-EPM","Defense Technology Practices"),
         ("GE4-IPM","Integrated Project & Materials Mgmt"),
@@ -112,26 +120,78 @@ def load_courses() -> list[tuple[str,str]]:
         ("CT4-TFL","Thermofluids"),
     ]
 
-COURSES = load_courses()
-code_to_label = dict(COURSES)
-codes = [c for c,_ in COURSES]
-if not st.session_state.course_code and codes:
-    st.session_state.course_code = codes[0]
+if st.session_state.COURSES is None:
+    st.session_state.COURSES = load_courses_from_assets()
 
-# Cohorts (clean single list)
+def set_courses(new_list: list[tuple[str,str]]):
+    st.session_state.COURSES = new_list
+
+def course_codes() -> list[str]:
+    return [c for c,_ in st.session_state.COURSES]
+
+def code_to_label() -> dict:
+    return dict(st.session_state.COURSES)
+
+# ---------------- Logo handling ----------------
+def resolve_logo_b64() -> str | None:
+    """Prefer uploaded logo, otherwise assets/adi-logo.png if present."""
+    if st.session_state.logo_b64:
+        return st.session_state.logo_b64
+    p = Path("assets/adi-logo.png")
+    return _b64_file(p)
+
+# ---------------- Header (with live logo) ----------------
+def header():
+    b64 = resolve_logo_b64()
+    img_html = f"<img src=\"data:image/png;base64,{b64}\"/>" if b64 else ""
+    st.markdown("<div class='adi-topbar'>" + img_html + "<h1>ADI Builder — Lesson Activities & Questions</h1></div>", unsafe_allow_html=True)
+
+header()
+
+# ---------------- Optional upload controls (green dashed) ----------------
+with st.expander("Brand & lists (optional)", expanded=False):
+    c1, c2 = st.columns(2)
+    with c1:
+        st.caption("**Upload logo** (PNG/JPG/SVG). Once uploaded, the banner updates immediately.")
+        logo_up = st.file_uploader("Drag & drop logo here", type=["png","jpg","jpeg","svg"])
+        if logo_up is not None:
+            try:
+                st.session_state.logo_b64 = _b64_bytes(logo_up.getvalue())
+                st.success("Logo updated.")
+            except Exception as e:
+                st.error(f"Logo not loaded: {e}")
+    with c2:
+        st.caption("Upload **courses.csv** with headers `code,label` to refresh the course list.")
+        csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_csv")
+        if csv_up is not None:
+            try:
+                reader = csv.DictReader(StringIO(csv_up.getvalue().decode("utf-8")))
+                new_courses = []
+                for r in reader:
+                    code = (r.get("code") or "").strip()
+                    label = (r.get("label") or "").strip()
+                    if code and label:
+                        new_courses.append((code, label))
+                if new_courses:
+                    set_courses(new_courses)
+                    st.success(f"Loaded {len(new_courses)} courses.")
+                else:
+                    st.warning("No valid rows found. Expecting headers `code,label`.")
+            except Exception as e:
+                st.error(f"Could not parse CSV: {e}")
+
+# ---------------- Static lists ----------------
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
 ]
 
-# Instructors (your names)
 INSTRUCTORS = [
     "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen","Dari","Ghamza",
     "Michail","Meshari","Mohammed Alwuthaylah","Myra","Meshal","Ibrahim","Khalil","Salem",
     "Rana","Daniel","Ahmed Albader"
 ]
 
-# Bloom verbs
 VERBS = {
     "Low":    ["define","identify","list","recall","describe","classify","match"],
     "Medium": ["apply","solve","calculate","compare","analyze","demonstrate","explain"],
@@ -143,12 +203,10 @@ def bloom_from_week(week: int) -> str:
 
 # --- Safe callbacks ---
 def sync_bloom_from_week():
-    """Auto-apply recommended Bloom when Week changes."""
     st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
 
 def update_verbs_on_bloom_change():
-    """Keep only valid verbs when Bloom level changes."""
     allowed = set(VERBS[st.session_state.bloom_level])
     st.session_state.verbs_selected = [v for v in st.session_state.verbs_selected if v in allowed]
 
@@ -159,6 +217,11 @@ def clear_verbs():
     st.session_state.verbs_selected = []
 
 # ---------------- Setup Row ----------------
+codes = course_codes()
+labels = code_to_label()
+if not st.session_state.course_code and codes:
+    st.session_state.course_code = codes[0]
+
 st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 
 r1c = st.columns([2, 1.8, .8, .8, 1.6])
@@ -166,8 +229,12 @@ with r1c[0]:
     st.selectbox("Course (code)", options=codes,
                  index=codes.index(st.session_state.course_code) if st.session_state.course_code in codes else 0,
                  key="course_code")
-    st.caption(f"<span class='muted'>{code_to_label.get(st.session_state.course_code,'')}</span>",
-               unsafe_allow_html=True)
+    long_name = labels.get(st.session_state.course_code, "")
+    st.markdown(
+        f"<span class='muted'>{long_name}</span>"
+        f"<span class='pill pill-green'>{st.session_state.course_code}</span>",
+        unsafe_allow_html=True
+    )
 
 with r1c[1]:
     st.selectbox("Class / Cohort", COHORTS,
@@ -175,16 +242,8 @@ with r1c[1]:
                        if st.session_state.class_cohort in COHORTS else 0,
                  key="class_cohort",
                  help="Type to search (e.g., D2-M03) or pick from the list.")
-    st.markdown(
-        f"""
-        <div style="margin-top:4px">
-          <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:{ADI_GREEN};color:#fff;font-size:.85rem;">
-            {st.session_state.class_cohort}
-          </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"<span class='pill pill-green'>{st.session_state.class_cohort}</span>",
+                unsafe_allow_html=True)
 
 with r1c[2]:
     st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
@@ -194,8 +253,9 @@ with r1c[3]:
                     key="week", on_change=sync_bloom_from_week)
 
 with r1c[4]:
-    # Widget uses Session State value; no index arg → no yellow warning
     st.selectbox("Instructor", INSTRUCTORS, key="instructor")
+    st.markdown(f"<span class='pill pill-slate'>{st.session_state.instructor}</span>",
+                unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
@@ -213,7 +273,7 @@ st.caption(
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
-    # ---- Verbs (calm & predictable) ----
+    # ---- Verbs ----
     a1, a2, a3, a4 = st.columns([.9, .9, .9, 1.6])
     with a1:
         st.selectbox("Bloom level", ["Low","Medium","High"],
@@ -323,7 +383,7 @@ else:
         f"""
         <div class="adi-card" style="max-width:860px;">
           <h2 style="margin:0 0 .3rem 0; color:{ADI_GREEN}">{ss.course_code} — Lesson {ss.lesson} (Week {ss.week})</h2>
-          <div class="muted">{code_to_label.get(ss.course_code,'')}</div>
+          <div class="muted">{code_to_label().get(ss.course_code,'')}</div>
           <div class="muted"><strong>Instructor:</strong> {ss.instructor} &nbsp;|&nbsp;
                <strong>Class:</strong> {ss.class_cohort} &nbsp;|&nbsp;
                <strong>Bloom:</strong> {bloom_from_week(int(ss.week))}</div>
