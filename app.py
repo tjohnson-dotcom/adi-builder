@@ -1,323 +1,428 @@
-# ------------------------------
+# -------------------------------
 # ADI Builder — Lesson Activities & Questions
-# "palette-chips + sticky-tab" build
-# ------------------------------
-import streamlit as st
-from datetime import date
-from urllib.parse import urlencode
+# Clean / safe build: palette-chips + sticky-tab + hover + dashed-uploader
+# Streamlit 1.36+ compatible
+# -------------------------------
 
-# ---------- 1) PAGE CONFIG (ONLY ONCE) ----------
+import io
+import datetime as dt
+from typing import List, Dict
+
+import streamlit as st
+
+# ---------- ONE-TIME PAGE CONFIG (must be first) ----------
 st.set_page_config(
     page_title="ADI Builder — Lesson Activities & Questions",
     page_icon="🧭",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
-# ---------- 2) CONSTANTS ----------
-LOW_WEEKS = range(1, 5)        # 1..4
-MED_WEEKS = range(5, 10)       # 5..9
-HIGH_WEEKS = range(10, 15)     # 10..14
+# ---------- SHORTCUTS ----------
+ss = st.session_state
 
-LOW_VERBS = ["define", "identify", "list"]
-MED_VERBS = ["apply", "demonstrate", "solve"]
-HIGH_VERBS = ["evaluate", "synthesize", "design"]
-
-# Your known data
+# ---------- DATA (replace with your real sources as needed) ----------
 COURSES = [
     "GE4-IPM — Integrated Project & Materials Management in Defense Technology",
-    "GE4-EPM — Defense Technology Practices: Experimental, Quality & Inspection",
+    "GE4-EPM — Defense Technology Practices: Experimentation, QM & Inspection",
     "GE4-MRO — Military Vehicle & Aircraft MRO: Principles & Applications",
     "CT4-COM — Computation for Chemical Technologists",
     "CT4-EMG — Explosives Manufacturing",
     "CT4-TFL — Thermofluids",
     "MT4-CMG — Composite Manufacturing",
-    "MT4-CAD — Computer-Aided Design",
+    "MT4-CAD — Computer Aided Design",
     "MT4-MAE — Machine Elements",
     "EE4-MFC — Electrical Materials",
     "EE4-PMG — PCB Manufacturing",
     "EE4-PCT — Power Circuits & Transmission",
 ]
-COHORTS = [
-    "D1-C01", "D1-E01", "D1-E02",
-    "D1-M01", "D1-M02", "D1-M03", "D1-M04", "D1-M05",
-    "D2-C01", "D2-M01", "D2-M02", "D2-M03", "D2-M04", "D2-M05", "D2-M06"
-]
+COHORTS = [f"D{i}-C0{j}" for i in (1, 2) for j in range(1, 7)]  # D1-C01 ... D2-C06
 INSTRUCTORS = [
-    "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen Tariq","Dari",
-    "Ghamza Labeeb","Michail","Meshari","Mohammed Alwuthaylah","Myra","Meshal Algurabi",
-    "Ibrahim Alrawaili","Khalil","Salem","Chetan","Yasser","Ahmed Albader","Muath","Sultan",
-    "Dr. Mashael","Noura Aldossari","Daniel"
+    "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen Tariq",
+    "Dari","Ghamza Labeeb","Michail","Meshari","Mohammed Alwuthaylah","Myra",
+    "Meshal Algurabi","Ibrahim Alrawaili","Khalil","Salem","Chetan","Yasser",
+    "Ahmed Albader","Muath","Sultan","Dr. Mashael","Noura Aldossari","Daniel"
 ]
 
-# ---------- 3) STATE INIT (NO ASSIGNMENTS AFTER WIDGET CREATION) ----------
-ss = st.session_state
-def init_state():
-    ss.setdefault("course", COURSES[0])
-    ss.setdefault("cohort", COHORTS[0])
-    ss.setdefault("instructor", "Daniel")
-    ss.setdefault("date", date.today().isoformat())
-    ss.setdefault("lesson", 1)
-    ss.setdefault("week", 1)
-    ss.setdefault("topic", "")
-    ss.setdefault("low_verbs", LOW_VERBS.copy())
-    ss.setdefault("med_verbs", MED_VERBS.copy())
-    ss.setdefault("high_verbs", HIGH_VERBS.copy())
-    ss.setdefault("how_many", 10)
-    ss.setdefault("include_answer_key", True)
-    ss.setdefault("active_tab", "mcq")
-    ss.setdefault("mcqs", [])   # holds generated MCQs for preview
-init_state()
+LOW_VERBS    = ["define", "identify", "list", "recall", "describe", "label"]
+MEDIUM_VERBS = ["apply", "demonstrate", "solve", "classify", "compare", "illustrate"]
+HIGH_VERBS   = ["evaluate", "synthesize", "design", "justify", "critique", "create"]
 
-# ---------- 4) HELPERS ----------
-def set_query_params_from_state():
-    st.query_params.update({
-        "course": ss.course,
-        "cohort": ss.cohort,
-        "inst": ss.instructor,
-        "d": ss.date,
-        "lesson": str(ss.lesson),
-        "week": str(ss.week),
-        "tab": ss.active_tab
-    })
+# Palette (stay within Streamlit chip look, but color surroundings)
+PAL = {
+    "green_dark":  "#153a27",  # header/bars
+    "green":       "#245a34",
+    "green_soft":  "#cfe8d9",
+    "amber_soft":  "#f8e6c9",
+    "blue_soft":   "#dfe6ff",
+    "chip_text":   "#ffffff",
+}
 
-def restore_state_from_query():
+# ---------- DEFAULT SESSION STATE ----------
+def set_default(key, value):
+    if key not in ss:
+        ss[key] = value
+
+set_default("course", COURSES[0])
+set_default("cohort", COHORTS[0])
+set_default("instructor", INSTRUCTORS[-1])  # Daniel
+set_default("date", dt.date.today().isoformat())
+set_default("lesson", 1)
+set_default("week", 1)
+
+# verbs selected
+set_default("verbs_low",    ["define", "identify", "list"])
+set_default("verbs_med",    ["apply", "demonstrate", "solve"])
+set_default("verbs_high",   ["evaluate", "synthesize", "design"])
+
+# MCQ state
+set_default("how_many", 10)
+set_default("include_answer_key", True)
+set_default("topic", "")
+set_default("mcqs", [])  # list of dicts
+
+# Tabs sticky via query param
+def get_active_tab() -> str:
     qp = st.query_params
-    if "course" in qp and qp["course"] in COURSES:
-        ss.course = qp["course"]
-    if "cohort" in qp and qp["cohort"] in COHORTS:
-        ss.cohort = qp["cohort"]
-    if "inst" in qp and qp["inst"] in INSTRUCTORS:
-        ss.instructor = qp["inst"]
-    if "d" in qp:
-        ss.date = qp["d"]
-    if "lesson" in qp and qp["lesson"].isdigit():
-        ss.lesson = int(qp["lesson"])
-    if "week" in qp and qp["week"].isdigit():
-        ss.week = int(qp["week"])
-    if "tab" in qp:
-        ss.active_tab = qp["tab"]
+    return qp.get("tab", "mcq")
 
-restore_state_from_query()
+def set_active_tab(tab_name: str):
+    qp = st.query_params
+    qp["tab"] = tab_name
+    st.query_params.update(qp)
 
-def band_class():
-    """Return which band should be 'active' based on week selection."""
-    w = ss.week
-    if w in LOW_WEEKS:   return "low"
-    if w in MED_WEEKS:   return "med"
-    return "high"
+set_default("active_tab", get_active_tab())  # initialize once
 
-def render_band(title, verbs, state_key, band_name, help_txt):
-    """Title strip + chips for a Bloom band. Adds 'active' tint by week."""
-    active = (band_class() == band_name)
-    band_css = f"band {'active' if active else ''}"
-    st.markdown(f'<div class="{band_css}"><strong>{title}</strong></div>', unsafe_allow_html=True)
-    # default only matters first render; afterwards Streamlit controls the value
-    default_list = ss.get(state_key, verbs)
-    st.multiselect(
-        help_txt,
-        options=verbs,
-        default=default_list,
-        key=state_key
-    )
-
-def generate_mcqs_stub():
-    """Lightweight local stub so UI proves end-to-end without backend calls."""
-    ss.mcqs = []
-    for i in range(ss.how_many):
-        qn = f"Q{i+1}"
-        stem = f"Explain the role of inspection in quality management. (Generated {i+1})"
-        options = ["To verify conformance", "To set company policy", "To hire staff", "To control budgets"]
-        ans_idx = 0  # A
-        ss.mcqs.append({"id": qn, "stem": stem, "options": options, "answer": ans_idx})
-
-# ---------- 5) STYLES ----------
-st.markdown("""
+# ---------- STYLES ----------
+st.markdown(
+    f"""
 <style>
-/* overall spacing so banner isn't covered */
-section[data-testid="stSidebar"] { z-index: 100; }
-.block-container { padding-top: 0.8rem !important; }
+/* Top bar */
+.adi-header {{
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: {PAL["green_dark"]};
+  color: #fff;
+  font-weight: 600;
+}}
 
-/* top banner bar */
-.header-bar {
-  background:#153a27; color:#ffffff; padding:10px 14px; border-radius:8px;
-  margin-bottom:10px; font-weight:600; letter-spacing:.2px;
-}
-/* dashed uploader */
-div[data-testid="stFileUploaderDropzone"] {
-  border:2px dashed #245a34 !important;
-  border-radius:10px !important;
-  background: #f7fbf8 !important;
-}
-div[data-testid="stFileUploaderDropzone"]:hover {
-  box-shadow: 0 0 0 3px #245a34 inset !important;
-}
+/* Uploader dashed box + hover */
+div[data-testid="stFileUploaderDropzone"] {{
+  border: 2px dashed {PAL["green"]} !important;
+  border-radius: 10px !important;
+  background: #f8faf9;
+}}
+div[data-testid="stFileUploaderDropzone"]:hover {{
+  box-shadow: 0 0 0 3px {PAL["green_soft"]} inset !important;
+}}
 
-/* bands */
-.band {
-  border:1px solid #245a34;
-  border-radius:8px; padding:8px 10px; margin:6px 0 4px 0;
-  background:#ffffff;
-  color:#153a27;
-}
-.band.active { background:#e8f3ed; }
-
-/* chips */
-span[data-baseweb="tag"] {
-  background:#245a34 !important;
-  color:#fff !important;
-  border-radius:999px !important;
-  padding:2px 10px !important;
-}
-
-/* Make interactive bits feel clickable */
+/* Pointer + hover rings on interactive widgets */
 div[data-testid="stFileUploaderDropzone"],
 div[data-testid="stSelectbox"] button,
 div[data-testid="stMultiSelect"] button,
-button[kind],
-button { cursor: pointer !important; }
-
-/* hover feedback */
+button[kind], button {{
+  cursor: pointer !important;
+}}
 div[data-testid="stSelectbox"] button:hover,
-div[data-testid="stMultiSelect"] button:hover {
-  box-shadow: 0 0 0 2px #245a34 inset !important;
-}
+div[data-testid="stMultiSelect"] button:hover {{
+  box-shadow: 0 0 0 2px {PAL["green"]} inset !important;
+}}
+:focus-visible {{
+  outline: 2px solid {PAL["green"]} !important;
+  outline-offset: 2px;
+}}
 
-/* keyboard focus ring */
-:focus-visible { outline: 2px solid #245a34 !important; outline-offset: 2px; }
+/* Verb bands */
+.band {{ 
+  padding: 6px 10px; 
+  border: 2px solid {PAL["green"]}; 
+  border-radius: 8px;
+  margin: 8px 0 0 0;
+  color: #111827;
+}}
+.band.low    {{ background: {PAL["green_soft"]}; }}
+.band.medium {{ background: {PAL["amber_soft"]}; }}
+.band.high   {{ background: {PAL["blue_soft"]}; }}
+.band.active {{ border-width: 3px; }}
 
-/* tabs (our simulated tab buttons) */
-.tabbar { display:flex; gap:12px; margin:14px 0 6px 0; }
-.tabbtn {
-  background:#fff; border:1px solid #c9d5ce; color:#153a27;
-  padding:6px 10px; border-radius:10px;
-}
-.tabbtn.active { background:#245a34; color:#fff; border-color:#245a34; }
+/* Tabs underline color match green */
+.css-1r6slb0 a, .stTabs [data-baseweb="tab"] {{
+  color: #111827;
+}}
+.stTabs [aria-selected="true"] {{
+  border-color: {PAL["green"]} !important;
+}}
 
-/* small build tag */
-.buildtag { color:#6b7a73; font-size:12px; margin-top:6px; }
+/* Generate button style */
+button.adi {{
+  background: {PAL["green"]} !important;
+  color: #fff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+}}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-# ---------- 6) HEADER ----------
-st.markdown('<div class="header-bar">ADI Builder — Lesson Activities & Questions</div>', unsafe_allow_html=True)
+# ---------- HEADER ----------
+col_logo, col_title, _ = st.columns([0.14, 0.66, 0.2])
+with col_logo:
+    # Avoid use_container_width for older versions
+    st.image("adi_logo.png", width=120)
+with col_title:
+    st.markdown('<div class="adi-header">ADI Builder — Lesson Activities & Questions</div>',
+                unsafe_allow_html=True)
 
-# ---------- 7) SIDEBAR: Upload + Course controls ----------
-with st.sidebar:
-    st.image("adi_logo.png", width=160)  # no use_container_width to avoid older Streamlit error
+st.write("")  # spacer
 
-    up = st.file_uploader("Drag and drop file here", type=["txt","docx","pptx","pdf"])
-    if up is not None:
-        st.success(f"✅ Uploaded: **{up.name}**")
+# ---------- LAYOUT ----------
+left, right = st.columns([0.22, 0.78])
 
-    st.toggle("Deep scan source (slower, better coverage)", value=False)
+# ---------- LEFT SIDEBAR (controls) ----------
+with left:
+    st.subheader("Upload (optional)")
+    st.file_uploader(
+        "Drag and drop file here",
+        type=["txt", "docx", "pptx", "pdf"],
+        accept_multiple_files=False,
+        key="uploader",
+        label_visibility="collapsed",
+    )
+    st.checkbox("Deep scan source (slower, better coverage)", value=False, key="deep_scan")
 
-    st.markdown("### Course details")
-    ss.course = st.selectbox("Course name", COURSES, index=COURSES.index(ss.course))
-    ss.cohort = st.selectbox("Class / Cohort", COHORTS, index=COHORTS.index(ss.cohort))
-    ss.instructor = st.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index(ss.instructor))
-    ss.date = st.text_input("Date", ss.date)
+    st.subheader("Course details")
+
+    st.selectbox("Course name", COURSES, index=COURSES.index(ss.course), key="course")
+    st.selectbox("Class / Cohort", COHORTS, index=COHORTS.index(ss.cohort), key="cohort")
+    st.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index(ss.instructor), key="instructor")
+
+    st.text_input("Date", ss.date, key="date")
 
     colL, colW = st.columns(2)
     with colL:
-        ss.lesson = st.number_input("Lesson", min_value=1, max_value=14, step=1, value=int(ss.lesson))
+        st.number_input("Lesson", min_value=1, max_value=14, step=1, value=int(ss.lesson), key="lesson")
     with colW:
-        ss.week = st.number_input("Week", min_value=1, max_value=14, step=1, value=int(ss.week))
+        st.number_input("Week", min_value=1, max_value=14, step=1, value=int(ss.week), key="week")
 
-# Reflect sidebar choices to query params (keeps Week persistent across reload)
-set_query_params_from_state()
+# ---------- RIGHT MAIN ----------
+with right:
+    # Topic
+    st.text_area("Topic / Outcome (optional)",
+                 value=ss.topic,
+                 key="topic",
+                 placeholder="e.g., Integrated Project and …")
 
-# ---------- 8) MAIN LAYOUT ----------
-st.text_area(
-    "Topic / Outcome (optional)",
-    placeholder="e.g., Integrated Project and …",
-    key="topic"
-)
+    # Verb bands (function that safely renders and sets keys only once)
+    def band(title: str, verbs: List[str], key: str, level: str):
+        selected = ss.get(key, [])
+        # Mark band active visually if any selections are present
+        active_class = "active" if selected else ""
+        st.markdown(f'<div class="band {level} {active_class}"><strong>{title}</strong></div>',
+                    unsafe_allow_html=True)
+        st.multiselect(
+            " ",  # no extra label; rely on band heading above
+            options=verbs,
+            default=selected,
+            key=key,
+            label_visibility="collapsed",
+        )
 
-# Bands
-render_band("Low (Weeks 1–4) — Remember / Understand", LOW_VERBS, "low_verbs", "low", "Low verbs")
-render_band("Medium (Weeks 5–9) — Apply / Analyse", MED_VERBS, "med_verbs", "med", "Medium verbs")
-render_band("High (Weeks 10–14) — Evaluate / Create", HIGH_VERBS, "high_verbs", "high", "High verbs")
+    band("Low (Weeks 1–4) — Remember / Understand", LOW_VERBS, "verbs_low", "low")
+    band("Medium (Weeks 5–9) — Apply / Analyse",    MEDIUM_VERBS, "verbs_med", "medium")
+    band("High (Weeks 10–14) — Evaluate / Create",  HIGH_VERBS, "verbs_high", "high")
 
-# ---------- 9) TABS (MCQs / Skills / Revision / Print) ----------
-st.markdown('<div class="tabbar">', unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns([1,1,1,1])
-with c1:
-    if st.button("Knowledge MCQs (Editable)", key="tab_m", use_container_width=True):
-        ss.active_tab = "mcq"; set_query_params_from_state()
-with c2:
-    if st.button("Skills Activities", key="tab_s", use_container_width=True):
-        ss.active_tab = "skills"; set_query_params_from_state()
-with c3:
-    if st.button("Revision", key="tab_r", use_container_width=True):
-        ss.active_tab = "revision"; set_query_params_from_state()
-with c4:
-    if st.button("Print Summary", key="tab_p", use_container_width=True):
-        ss.active_tab = "print"; set_query_params_from_state()
-st.markdown('</div>', unsafe_allow_html=True)
+    # Tabs with sticky behavior
+    tabs = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
+    tab_names = ["mcq", "skills", "revision", "print"]
 
-# paint which tab is active
-tab_map = {"mcq":"tab_m","skills":"tab_s","revision":"tab_r","print":"tab_p"}
-st.markdown(f"""
-<script>
-for (const id of ["tab_m","tab_s","tab_r","tab_p"]) {{
-  const btn = window.parent.document.querySelector('button[data-testid="baseButton-secondary"][aria-label="{id}"]');
-}}
-</script>
-""", unsafe_allow_html=True)
-# (In Streamlit, toggling “active” class on buttons from Python is awkward;
-# the visual ‘active’ is handled by the build tag below to indicate current tab.)
+    # ensure our desired active tab shows first (informational, not strictly required)
+    # we won't re-run to force position; we just store query param when clicked.
+    def on_tab_click(which: str):
+        ss.active_tab = which
+        set_active_tab(which)
 
-st.caption(f"Active tab: **{ss.active_tab}**")
+    # ---- MCQ TAB ----
+    with tabs[0]:
+        if ss.active_tab != "mcq":
+            on_tab_click("mcq")
 
-# ---------- 10) TAB CONTENT ----------
-if ss.active_tab == "mcq":
-    st.subheader("Knowledge MCQs (ADI Policy)")
+        st.caption("ADI policy: 1–3 per lesson • 5–9 Medium • 10–14 High")
+        st.selectbox(
+            "How many MCQs?",
+            [5, 10, 12, 15, 20],
+            index=[5, 10, 12, 15, 20].index(ss.how_many) if ss.how_many in [5, 10, 12, 15, 20] else 1,
+            key="how_many",
+        )
+        st.checkbox("Answer key", value=ss.include_answer_key, key="include_answer_key")
 
-    cc1, cc2 = st.columns([3,1])
-    with cc1:
-        ss.how_many = st.selectbox("How many MCQs?", [5,10,12,15,20], index=[5,10,12,15,20].index(ss.how_many) if ss.how_many in [5,10,12,15,20] else 1, key="how_many")
-    with cc2:
-        ss.include_answer_key = st.checkbox("Answer key", value=ss.include_answer_key, key="include_answer_key")
+        st.write("")
+        if st.button("Generate from verbs/topic", key="gen_mcq", type="primary"):
+            ss.mcqs = generate_mcqs_stub(
+                topic=ss.topic,
+                low=ss.verbs_low, med=ss.verbs_med, high=ss.verbs_high,
+                n=ss.how_many
+            )
 
-    if st.button("Generate from verbs/topic", key="gen_mcq_btn"):
-        generate_mcqs_stub()
-        st.success(f"Generated {len(ss.mcqs)} MCQs.")
+        # Render editable MCQs
+        if not ss.mcqs:
+            st.info("No questions yet. Click **Generate from verbs/topic**.")
+        else:
+            for i, q in enumerate(ss.mcqs, start=1):
+                with st.expander(f"Q{i}", expanded=True):
+                    st.text_area("Question", value=q["question"], key=f"q_{i}_text")
+                    colA, colB = st.columns(2)
+                    with colA:
+                        st.text_input("A", value=q["A"], key=f"q_{i}_A")
+                        st.text_input("B", value=q["B"], key=f"q_{i}_B")
+                    with colB:
+                        st.text_input("C", value=q["C"], key=f"q_{i}_C")
+                        st.text_input("D", value=q["D"], key=f"q_{i}_D")
+                    st.radio("Correct answer", ["A", "B", "C", "D"],
+                             index=["A","B","C","D"].index(q["answer"]),
+                             key=f"q_{i}_ans")
 
-    # Preview first question (if any) to prove flow works
-    if ss.mcqs:
-        q = ss.mcqs[0]
-        st.write("### Q1")
-        st.text_area("Question", value=q["stem"], key="q1_stem")
-        cols = st.columns(2)
-        with cols[0]:
-            st.text_input("A", value=q["options"][0], key="q1_A")
-            st.text_input("B", value=q["options"][1], key="q1_B")
-        with cols[1]:
-            st.text_input("C", value=q["options"][2], key="q1_C")
-            st.text_input("D", value=q["options"][3], key="q1_D")
-        st.radio("Correct answer", ["A","B","C","D"], index=q["answer"], key="q1_correct")
+            # Update state back from widget values (safe; different keys)
+            for i, q in enumerate(ss.mcqs, start=1):
+                q["question"] = ss.get(f"q_{i}_text", q["question"])
+                for opt in ["A","B","C","D"]:
+                    q[opt] = ss.get(f"q_{i}_{opt}", q[opt])
+                q["answer"] = ss.get(f"q_{i}_ans", q["answer"])
 
-elif ss.active_tab == "skills":
-    st.subheader("Skills Activities")
-    c1, c2, c3 = st.columns(3)
-    n_acts = c1.selectbox("How many activities?", [1,2,3], index=2)
-    mins   = c2.selectbox("Minutes per activity", [5,10,15,20,25,30,40,45,50,60], index=1)
-    gsize  = c3.selectbox("Group size", ["Solo (1)","Pairs (2)","Triads (3)","Teams (4)"], index=0)
-    st.info("This tab will use your selected verbs + topic to create classroom activities. (Hook your real generator here.)")
+            st.write("")
+            dl_col1, dl_col2, dl_col3 = st.columns([0.25,0.25,0.5])
+            with dl_col1:
+                st.download_button("⬇️ Download DOCX (All MCQs)",
+                                   data=export_docx(ss.mcqs, ss.include_answer_key),
+                                   file_name=f"ADI_MCQ__{slug(ss.course)}__{slug(ss.topic or 'Topic')}__{ss.cohort}__W{ss.week}__Q{len(ss.mcqs)}.docx")
+            with dl_col2:
+                st.download_button("⬇️ Download TXT (All MCQs)",
+                                   data=export_txt(ss.mcqs, ss.include_answer_key),
+                                   file_name=f"ADI_MCQ__{slug(ss.course)}__{slug(ss.topic or 'Topic')}__{ss.cohort}__W{ss.week}__Q{len(ss.mcqs)}.txt")
 
-elif ss.active_tab == "revision":
-    st.subheader("Revision")
-    st.info("Revision materials builder coming next. (Safe placeholder.)")
+    # ---- SKILLS TAB ----
+    with tabs[1]:
+        if ss.active_tab != "skills":
+            on_tab_click("skills")
 
-else:  # print
-    st.subheader("Print Summary")
-    st.write("**Course:**", ss.course)
-    st.write("**Cohort:**", ss.cohort, " • **Instructor:**", ss.instructor)
-    st.write("**Lesson/Week:**", ss.lesson, "/", ss.week)
-    st.write("**Topic:**", ss.topic if ss.topic.strip() else "—")
-    st.write("**Low verbs:**", ", ".join(ss.low_verbs))
-    st.write("**Medium verbs:**", ", ".join(ss.med_verbs))
-    st.write("**High verbs:**", ", ".join(ss.high_verbs))
+        st.caption("Pick **1, 2 or 3** per lesson. Time per activity **5–60 mins**. Group size: **Solo / Pairs / Triads / 4**.")
+        colN, colT, colG = st.columns([0.25, 0.25, 0.5])
+        with colN:
+            n_acts = st.selectbox("How many activities?", [1,2,3], index=0, key="skills_n")
+        with colT:
+            mins = st.selectbox("Minutes per activity", list(range(5,65,5)), index=1, key="skills_mins")
+        with colG:
+            group = st.selectbox("Group size", ["Solo (1)","Pairs (2)","Triads (3)","4"], index=0, key="skills_group")
 
-st.markdown('<div class="buildtag">Build: 2025-10-10 • palette-chips + sticky-tab</div>', unsafe_allow_html=True)
+        if st.button("Generate Activities", key="gen_skills", help="Draft activities from verbs & topic", use_container_width=False):
+            st.session_state["skills"] = generate_skills_stub(
+                ss.topic, ss.verbs_low, ss.verbs_med, ss.verbs_high, n_acts, mins, group
+            )
+
+        skills = ss.get("skills", [])
+        if not skills:
+            st.info("No activities yet. Click **Generate Activities**.")
+        else:
+            for i, act in enumerate(skills, start=1):
+                with st.expander(f"Activity {i}", expanded=True):
+                    st.markdown(f"**Goal:** {act['goal']}")
+                    st.markdown(f"**Instructions:** {act['steps']}")
+                    st.markdown(f"**Time:** {act['minutes']} min &nbsp;&nbsp; **Group:** {act['group']}")
+
+    # ---- REVISION TAB ----
+    with tabs[2]:
+        if ss.active_tab != "revision":
+            on_tab_click("revision")
+        st.info("Revision section — coming next.")
+
+    # ---- PRINT SUMMARY TAB ----
+    with tabs[3]:
+        if ss.active_tab != "print":
+            on_tab_click("print")
+        st.write("### Print Summary")
+        st.write(f"**Course:** {ss.course}")
+        st.write(f"**Cohort:** {ss.cohort}")
+        st.write(f"**Instructor:** {ss.instructor}")
+        st.write(f"**Date:** {ss.date} &nbsp;&nbsp; **Lesson:** {ss.lesson} &nbsp;&nbsp; **Week:** {ss.week}")
+        st.write(f"**Topic:** {ss.topic or '—'}")
+        st.write("**Verbs**")
+        st.write(f"- Low: {', '.join(ss.verbs_low) or '—'}")
+        st.write(f"- Medium: {', '.join(ss.verbs_med) or '—'}")
+        st.write(f"- High: {', '.join(ss.verbs_high) or '—'}")
+
+# ---------- HELPERS ----------
+def slug(s: str) -> str:
+    return "-".join("".join(ch for ch in s if ch.isalnum() or ch in " -_")\
+                    .strip().split())
+
+def generate_mcq_from_verb(verb: str, topic: str, idx: int) -> Dict:
+    """Tiny starter: makes simple, sensible question stems without LLM."""
+    base = topic.strip() or "the lesson"
+    q = {
+        "question": f"{idx}. Using **{verb}**, what is the correct statement about {base}?",
+        "A": f"A statement related to {base} ({verb}).",
+        "B": f"Another statement related to {base}.",
+        "C": f"A distractor about {base}.",
+        "D": f"Another distractor about {base}.",
+        "answer": "A",
+    }
+    return q
+
+def generate_mcqs_stub(topic: str, low: List[str], med: List[str], high: List[str], n: int) -> List[Dict]:
+    pool = (high or []) + (med or []) + (low or [])
+    if not pool:
+        pool = ["understand"]
+    out = []
+    for i in range(1, n+1):
+        v = pool[(i-1) % len(pool)]
+        out.append(generate_mcq_from_verb(v, topic, i))
+    return out
+
+def generate_skills_stub(topic: str, low: List[str], med: List[str], high: List[str],
+                         n: int, minutes: int, group: str) -> List[Dict]:
+    verbs = (med or []) + (high or []) + (low or [])
+    if not verbs:
+        verbs = ["apply"]
+    acts = []
+    for i in range(n):
+        v = verbs[i % len(verbs)]
+        acts.append({
+            "goal": f"Students will **{v}** key ideas from {topic or 'the lesson'}.",
+            "steps": f"1) In {group}, brainstorm examples.\n2) Share briefly.\n3) Capture a one-minute reflection.",
+            "minutes": minutes,
+            "group": group,
+        })
+    return acts
+
+def export_txt(mcqs: List[Dict], include_key: bool) -> bytes:
+    buf = io.StringIO()
+    for i, q in enumerate(mcqs, start=1):
+        buf.write(f"Q{i}. {q['question']}\n")
+        buf.write(f"A) {q['A']}\nB) {q['B']}\nC) {q['C']}\nD) {q['D']}\n")
+        if include_key:
+            buf.write(f"Answer: {q['answer']}\n")
+        buf.write("\n")
+    return buf.getvalue().encode("utf-8")
+
+def export_docx(mcqs: List[Dict], include_key: bool) -> bytes:
+    """Lightweight DOCX export using python-docx if available; fallback to TXT."""
+    try:
+        from docx import Document
+    except Exception:
+        return export_txt(mcqs, include_key)
+
+    doc = Document()
+    doc.add_heading("ADI — Knowledge MCQs", level=1)
+    for i, q in enumerate(mcqs, start=1):
+        doc.add_paragraph(f"Q{i}. {q['question']}")
+        doc.add_paragraph(f"A) {q['A']}")
+        doc.add_paragraph(f"B) {q['B']}")
+        doc.add_paragraph(f"C) {q['C']}")
+        doc.add_paragraph(f"D) {q['D']}")
+        if include_key:
+            doc.add_paragraph(f"Answer: {q['answer']}")
+        doc.add_paragraph("")
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
