@@ -1,4 +1,4 @@
-# app.py — ADI Builder (clean)
+# app.py — ADI Builder (enhanced 1–4)
 
 import io
 import random
@@ -43,11 +43,71 @@ INSTRUCTORS = [
     "Rana","Daniel","Ahmed Albader"
 ]
 
+# --- Feature 1: Cohort → Instructor mapping (auto-fill) ---
+COHORT_TO_INSTRUCTOR = {
+    "D1-C01": "Daniel",
+    "D1-E01": "Ben",
+    "D1-E02": "Gerhard",
+    "D1-M01": "Faiz Lazam",
+    "D1-M02": "Nerdeen",
+    "D1-M03": "Dari",
+    "D1-M04": "Ghamza",
+    "D1-M05": "Michail",
+    "D2-C01": "Meshari",
+    "D2-M01": "Mohammed Alwuthaylah",
+    "D2-M02": "Myra",
+    "D2-M03": "Meshal",
+    "D2-M04": "Ibrahim",
+    "D2-M05": "Rana",
+    "D2-M06": "Ahmed Albader",
+}
+
 # ---------- Bloom policy ----------
 LOW_VERBS  = ["remember", "list", "define", "identify", "state", "recognize"]
 MED_VERBS  = ["apply", "analyze", "explain", "compare", "classify", "illustrate"]
 HIGH_VERBS = ["evaluate", "create", "design", "critique", "synthesize", "hypothesize"]
 
+# --- Feature 3: Course templates (quick-load) ---
+COURSE_TEMPLATES = {
+    "GE4-EPM": {
+        "topics": [
+            "Quality management plans", "Inspection methods", "Experiment design basics",
+        ],
+        "verbs": {"Low": "identify", "Medium": "apply", "High": "evaluate"},
+    },
+    "GE4-IPM": {
+        "topics": [
+            "Materials lifecycle", "Inventory strategies", "Procurement workflow",
+        ],
+        "verbs": {"Low": "define", "Medium": "analyze", "High": "design"},
+    },
+    "GE4-MRO": {
+        "topics": [
+            "Aircraft MRO phases", "Maintenance records", "Reliability metrics",
+        ],
+        "verbs": {"Low": "list", "Medium": "classify", "High": "evaluate"},
+    },
+    "CT4-COM": {
+        "topics": [
+            "Numerical methods", "Error analysis", "Units & conversions",
+        ],
+        "verbs": {"Low": "recognize", "Medium": "apply", "High": "critique"},
+    },
+    "CT4-EMG": {
+        "topics": [
+            "Safety protocols", "Process flow", "Material sensitivity",
+        ],
+        "verbs": {"Low": "identify", "Medium": "compare", "High": "evaluate"},
+    },
+    "CT4-TFL": {
+        "topics": [
+            "Fluid properties", "Continuity & momentum", "Heat transfer modes",
+        ],
+        "verbs": {"Low": "define", "Medium": "apply", "High": "design"},
+    },
+}
+
+# ---------- Helpers ----------
 def bloom_for_week(week: int) -> str:
     if 1 <= week <= 4: return "Low"
     if 5 <= week <= 9: return "Medium"
@@ -74,6 +134,7 @@ def inject_css():
     .thin-hr { border:0; height:1px; background:#ececec; margin:.8rem 0; }
     .stButton>button { border-radius:.6rem; font-weight:700; }
     .stButton>button[kind=primary] { background:var(--adi); color:#fff; border-color:var(--adi); }
+    .summary-card { background:#fff; border:1px solid #e6e6e6; border-radius:1rem; padding:1rem; }
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -163,9 +224,37 @@ def export_word(mcqs: List[Dict], meta: Dict) -> bytes:
     doc.save(bio)
     return bio.getvalue()
 
+# --- Feature 4: Print summary (1-page-ish Word/TXT) ---
+def export_summary(meta: Dict, topics: List[str]) -> bytes:
+    if Document is None:
+        buf = io.StringIO()
+        buf.write("ADI Lesson Summary\n\n")
+        buf.write(f"Course: {meta.get('course','')}\n")
+        buf.write(f"Cohort: {meta.get('cohort','')}\n")
+        buf.write(f"Instructor: {meta.get('instructor','')}\n")
+        buf.write(f"Date: {meta.get('date','')}\n")
+        buf.write(f"Lesson: {meta.get('lesson','')}  Week: {meta.get('week','')}\n\n")
+        if topics:
+            buf.write("Topics:\n")
+            for t in topics: buf.write(f" - {t}\n")
+        return buf.getvalue().encode("utf-8")
+    doc = Document()
+    doc.styles["Normal"].font.name = "Arial"; doc.styles["Normal"].font.size = Pt(11)
+    doc.add_heading("ADI Lesson Summary", level=1)
+    doc.add_paragraph(f"Course: {meta.get('course','')}")
+    doc.add_paragraph(f"Cohort: {meta.get('cohort','')}")
+    doc.add_paragraph(f"Instructor: {meta.get('instructor','')}")
+    doc.add_paragraph(f"Date: {meta.get('date','')}  |  Lesson: {meta.get('lesson','')}  |  Week: {meta.get('week','')}")
+    if topics:
+        doc.add_heading("Topics", level=2)
+        for t in topics:
+            doc.add_paragraph(f"• {t}")
+    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+
 # ---------- State ----------
 if "topics" not in st.session_state: st.session_state.topics = []
 if "mcqs" not in st.session_state: st.session_state.mcqs = []
+if "instructor_locked" not in st.session_state: st.session_state.instructor_locked = False
 
 # ---------- Sidebar ----------
 with st.sidebar:
@@ -177,7 +266,18 @@ with st.sidebar:
     course_ix = st.selectbox("Course name", list(range(len(COURSES))),
                              format_func=lambda i: f"{COURSES[i]['code']} — {COURSES[i]['name']}")
     cohort = st.selectbox("Class / Cohort", COHORTS, index=0)
-    instructor = st.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index("Daniel") if "Daniel" in INSTRUCTORS else 0)
+
+    # Feature 1: auto-fill instructor from cohort (toggle)
+    auto_assign = st.checkbox("Auto-assign instructor from cohort", value=True)
+
+    # choose instructor; we may update it after cohort selection
+    default_instructor_index = INSTRUCTORS.index("Daniel") if "Daniel" in INSTRUCTORS else 0
+    if auto_assign and cohort in COHORT_TO_INSTRUCTOR:
+        auto_name = COHORT_TO_INSTRUCTOR[cohort]
+        if auto_name in INSTRUCTORS:
+            default_instructor_index = INSTRUCTORS.index(auto_name)
+    instructor = st.selectbox("Instructor name", INSTRUCTORS, index=default_instructor_index)
+
     date = st.date_input("Date", value=datetime.now())
     c1, c2 = st.columns(2)
     with c1:
@@ -196,12 +296,30 @@ with left:
 
     st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High")
     recommended = bloom_for_week(int(week))
-    st.write(f"**Recommended Bloom for Week {int(week)}:**  "
-             f"<span class='badge'>{recommended}</span>", unsafe_allow_html=True)
+
+    # Feature 2: Bloom color cues on badge
+    bloom_bg = {"Low": "#e6f1e7", "Medium": "#f7efd9", "High": "#e8f0fb"}.get(recommended, "#eef2f1")
+    st.write(
+        f"**Recommended Bloom for Week {int(week)}:**  "
+        f"<span class='badge' style='background:{bloom_bg}'>{recommended}</span>",
+        unsafe_allow_html=True,
+    )
 
     tab1, tab2, tab3, tab4 = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
 
     with tab1:
+        # Feature 3: Quick-load template (course-specific)
+        colA, colB = st.columns([1,1])
+        with colA:
+            if st.button("Quick‑load course template"):
+                ccode = COURSES[course_ix]["code"]
+                templ = COURSE_TEMPLATES.get(ccode)
+                if templ:
+                    st.session_state.topics = templ.get("topics", [])
+                    st.success(f"Loaded {len(st.session_state.topics)} topics from {ccode} template.")
+        with colB:
+            st.caption("Loads suggested topics + default verbs for this course.")
+
         # Get topics (from PPTX or manual)
         if uploaded and Presentation is not None and st.button("Extract topics from uploaded PPTX"):
             topics = extract_topics(uploaded)
@@ -221,6 +339,13 @@ with left:
 
         n_q = st.selectbox("How many MCQs?", [5, 10, 12, 15, 20], index=1)
         answer_key = st.checkbox("Include answer key", value=True)
+
+        # Determine verb hint from template when available
+        ccode = COURSES[course_ix]["code"]
+        templ = COURSE_TEMPLATES.get(ccode, {})
+        default_verb = templ.get("verbs", {}).get(recommended)
+        if default_verb:
+            st.caption(f"Suggested verb for {ccode} at {recommended}: **{default_verb}**")
 
         if st.button("Generate MCQs", type="primary"):
             base = picked if picked else ([topic] if topic.strip() else [])
@@ -268,7 +393,23 @@ with left:
         st.caption("Revision pack builder coming soon (printable).")
 
     with tab4:
-        st.caption("Print-friendly summary coming soon.")
+        st.markdown("### Print Summary")
+        meta = {
+            "course": f"{COURSES[course_ix]['code']} — {COURSES[course_ix]['name']}",
+            "cohort": cohort,
+            "instructor": instructor,
+            "date": date.strftime("%Y/%m/%d"),
+            "lesson": int(lesson),
+            "week": int(week),
+        }
+        topics_for_summary = st.session_state.get("topics", [])
+        st.markdown("<div class='summary-card'>This generates a one-page summary with course details and topics.</div>", unsafe_allow_html=True)
+        if st.button("Download Print Summary"):
+            summary = export_summary(meta, topics_for_summary)
+            sname = f"ADI_Summary_{COURSES[course_ix]['code']}_W{int(week)}_{datetime.now().strftime('%Y%m%d_%H%M')}.{('docx' if Document else 'txt')}"
+            st.download_button("Download Summary", data=summary, file_name=sname,
+                               mime=("application/vnd.openxmlformats-officedocument.wordprocessingml.document" if Document else "text/plain"),
+                               key="dl_summary")
 
 with right:
     st.subheader("Course quick-pick")
