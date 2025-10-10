@@ -1,4 +1,4 @@
-# app.py — ADI Builder (clean UI + pills + green dashed uploaders + logo uploader)
+# app.py — ADI Builder (pills for course/class/instructor/lesson/week + robust green dropzones)
 
 import base64
 import csv
@@ -49,13 +49,16 @@ st.markdown(f"""
   .pill-green {{ background:{ADI_GREEN}; color:#fff; }}
   .pill-slate {{ background:#e5e7eb; color:#111827; }}
 
-  /* GREEN DASHED DROPZONES (both uploaders) */
-  div[data-testid="stFileUploaderDropzone"] {{
+  /* GREEN DASHED DROPZONES (robust selectors for different Streamlit builds) */
+  [data-testid="stFileUploaderDropzone"],
+  div[aria-label="File dropzone"],
+  div:has(> input[type="file"]) {{
     border:2px dashed {ADI_GREEN} !important;
     background:#f6faf7 !important;
     border-radius:12px !important;
   }}
-  div[data-testid="stFileUploaderDropzone"] p {{
+  [data-testid="stFileUploaderDropzone"] p,
+  div[aria-label="File dropzone"] p {{
     color:#0f3d22 !important;
   }}
 </style>
@@ -82,12 +85,11 @@ def init_state():
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
-    ss.setdefault("bloom_level", "Low")         # Low / Medium / High
+    ss.setdefault("bloom_level", "Low")       # Low / Medium / High
     ss.setdefault("verbs_selected", [])
     ss.setdefault("generated_items", [])
-    # Courses + logo
-    ss.setdefault("COURSES", None)              # list[(code,label)]
-    ss.setdefault("logo_b64", None)             # user-uploaded or from assets
+    ss.setdefault("COURSES", None)            # list[(code,label)]
+    ss.setdefault("logo_b64", None)           # uploaded or assets logo
 init_state()
 
 # ---------------- Data: load courses ----------------
@@ -134,13 +136,11 @@ def code_to_label() -> dict:
 
 # ---------------- Logo handling ----------------
 def resolve_logo_b64() -> str | None:
-    """Prefer uploaded logo, otherwise assets/adi-logo.png if present."""
     if st.session_state.logo_b64:
         return st.session_state.logo_b64
-    p = Path("assets/adi-logo.png")
-    return _b64_file(p)
+    return _b64_file(Path("assets/adi-logo.png"))
 
-# ---------------- Header (with live logo) ----------------
+# ---------------- Header ----------------
 def header():
     b64 = resolve_logo_b64()
     img_html = f"<img src=\"data:image/png;base64,{b64}\"/>" if b64 else ""
@@ -148,18 +148,15 @@ def header():
 
 header()
 
-# ---------------- Optional upload controls (green dashed) ----------------
+# ---------------- Optional upload controls ----------------
 with st.expander("Brand & lists (optional)", expanded=False):
     c1, c2 = st.columns(2)
     with c1:
-        st.caption("**Upload logo** (PNG/JPG/SVG). Once uploaded, the banner updates immediately.")
+        st.caption("**Upload logo** (PNG/JPG/SVG). The banner updates immediately.")
         logo_up = st.file_uploader("Drag & drop logo here", type=["png","jpg","jpeg","svg"])
         if logo_up is not None:
-            try:
-                st.session_state.logo_b64 = _b64_bytes(logo_up.getvalue())
-                st.success("Logo updated.")
-            except Exception as e:
-                st.error(f"Logo not loaded: {e}")
+            st.session_state.logo_b64 = _b64_bytes(logo_up.getvalue())
+            st.success("Logo updated.")
     with c2:
         st.caption("Upload **courses.csv** with headers `code,label` to refresh the course list.")
         csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_csv")
@@ -201,7 +198,7 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# --- Safe callbacks ---
+# --- callbacks ---
 def sync_bloom_from_week():
     st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
@@ -247,14 +244,19 @@ with r1c[1]:
 
 with r1c[2]:
     st.number_input("Lesson", min_value=1, max_value=20, step=1, key="lesson")
+    st.markdown(f"<span class='pill pill-green'>L{int(st.session_state.lesson)}</span>",
+                unsafe_allow_html=True)
 
 with r1c[3]:
     st.number_input("Week", min_value=1, max_value=14, step=1,
                     key="week", on_change=sync_bloom_from_week)
+    st.markdown(f"<span class='pill pill-green'>W{int(st.session_state.week)}</span>",
+                unsafe_allow_html=True)
 
 with r1c[4]:
     st.selectbox("Instructor", INSTRUCTORS, key="instructor")
-    st.markdown(f"<span class='pill pill-slate'>{st.session_state.instructor}</span>",
+    # instructor now also green to match the others
+    st.markdown(f"<span class='pill pill-green'>{st.session_state.instructor}</span>",
                 unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
