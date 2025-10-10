@@ -1,4 +1,7 @@
 # app.py — ADI Builder (clean UI, sticky banner + logo, single branding uploader, pills, segmented Bloom)
+# Drop this file into your app root. Optional assets:
+# - assets/adi-logo.png (used if no logo is uploaded at runtime)
+# - assets/courses.csv or assets/courses.json (optional override for course list)
 
 import base64
 import csv
@@ -7,6 +10,7 @@ from io import StringIO, BytesIO
 from pathlib import Path
 
 import streamlit as st
+
 
 # =========================
 # Page & Theme
@@ -78,8 +82,21 @@ st.markdown(f"""
   div[aria-label="File dropzone"] p {{
     color:#0f3d22 !important; margin-bottom:0 !important;
   }}
+
+  /* Upload confirmation visuals */
+  .upload-chip {{
+    display:inline-flex; align-items:center; gap:.4rem;
+    padding:2px 10px; border-radius:999px;
+    background:{ADI_GREEN}; color:#fff; font-size:.85rem; font-weight:600;
+  }}
+  .upload-chip svg {{ width:14px; height:14px; display:block; }}
+  .upload-note {{
+    border-left:4px solid {ADI_GREEN}; background:#f4fbf6;
+    padding:.5rem .75rem; border-radius:8px; color:#0f3d22; margin-top:.5rem;
+  }}
 </style>
 """, unsafe_allow_html=True)
+
 
 # =========================
 # Helpers
@@ -92,6 +109,7 @@ def b64_file(path: Path) -> str | None:
         return b64_bytes(path.read_bytes())
     except Exception:
         return None
+
 
 # =========================
 # Session
@@ -111,10 +129,13 @@ def init_state():
     ss.setdefault("generated_items", [])
     ss.setdefault("COURSES", None)            # list[(code,label)]
     ss.setdefault("logo_b64", None)           # uploaded or assets logo
+    ss.setdefault("logo_uploaded", False)
+    ss.setdefault("logo_file_info", {})
 init_state()
 
+
 # =========================
-# Data: courses
+# Data: courses (optional assets override)
 # =========================
 def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
@@ -154,6 +175,7 @@ def course_codes() -> list[str]:
 def code_to_label() -> dict:
     return dict(st.session_state.COURSES)
 
+
 # =========================
 # Logo & Banner
 # =========================
@@ -168,16 +190,38 @@ def render_topbar(logo_b64: str | None):
 
 render_topbar(resolve_logo_b64())
 
+
 # =========================
 # Branding (logo only)
 # =========================
 with st.expander("Branding (optional)", expanded=False):
     st.caption("Upload a **logo** (PNG/JPG/SVG). The banner updates immediately.")
-    logo_up = st.file_uploader("Drag & drop logo here", type=["png","jpg","jpeg","svg"])
+    logo_up = st.file_uploader("Drag & drop logo here", type=["png","jpg","jpeg","svg"], key="logo_upl")
+
     if logo_up is not None:
         st.session_state.logo_b64 = b64_bytes(logo_up.getvalue())
+        st.session_state.logo_file_info = {"name": logo_up.name, "size": logo_up.size}
+        st.session_state.logo_uploaded = True
         render_topbar(st.session_state.logo_b64)
-        st.success("Logo updated.")
+
+    if st.session_state.get("logo_uploaded"):
+        info = st.session_state.get("logo_file_info", {})
+        name = info.get("name", "logo")
+        size_kb = round((info.get("size", 0) or 0) / 1024)
+        st.markdown(
+            f"""
+            <span class="upload-chip">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Uploaded: {name} ({size_kb} KB)
+            </span>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div class='upload-note'>Your logo is now active in the top banner.</div>",
+            unsafe_allow_html=True,
+        )
+
 
 # =========================
 # Static lists
@@ -196,8 +240,10 @@ VERBS = {
     "Medium": ["apply","solve","calculate","compare","analyze","demonstrate","explain"],
     "High":   ["evaluate","synthesize","design","justify","critique","optimize","create"]
 }
+
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
+
 
 # =========================
 # Callbacks
@@ -216,6 +262,7 @@ def select_all_verbs():
 def clear_verbs():
     st.session_state.verbs_selected = []
 
+
 # =========================
 # Setup Row
 # =========================
@@ -232,7 +279,10 @@ with r1c[0]:
                  index=codes.index(st.session_state.course_code) if st.session_state.course_code in codes else 0,
                  key="course_code")
     long_name = labels.get(st.session_state.course_code, "")
-    st.markdown(f"<span class='muted'>{long_name}</span><span class='pill pill-green'>{st.session_state.course_code}</span>", unsafe_allow_html=True)
+    st.markdown(
+        f"<span class='muted'>{long_name}</span><span class='pill pill-green'>{st.session_state.course_code}</span>",
+        unsafe_allow_html=True
+    )
 
 with r1c[1]:
     st.selectbox("Class / Cohort", COHORTS,
@@ -254,6 +304,7 @@ with r1c[4]:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+
 # =========================
 # Authoring
 # =========================
@@ -261,14 +312,16 @@ st.markdown("### Authoring")
 st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 
 st.text_input("Topic / Outcome (optional)", key="topic_outcome", placeholder="e.g., Integrated Project and …")
-st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  Recommended Bloom: **" + bloom_from_week(int(st.session_state.week)) + "**")
+st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  Recommended Bloom: **" +
+           bloom_from_week(int(st.session_state.week)) + "**")
 
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
 if st.session_state.mode != "Print Summary":
     a1, a2, a3, a4 = st.columns([1.2, .9, .9, 1.8])
     with a1:
-        st.segmented_control("Bloom level", ["Low", "Medium", "High"], key="bloom_level", on_change=update_verbs_on_bloom_change)
+        st.segmented_control("Bloom level", ["Low", "Medium", "High"],
+                             key="bloom_level", on_change=update_verbs_on_bloom_change)
     with a2:
         st.button("Select all", on_click=select_all_verbs)
     with a3:
@@ -277,7 +330,8 @@ if st.session_state.mode != "Print Summary":
         st.button("Use recommended for this week", on_click=sync_bloom_from_week)
 
     verbs_for_level = VERBS[st.session_state.bloom_level]
-    st.multiselect(f"Learning verbs (selected {len(st.session_state.verbs_selected)})", options=verbs_for_level, key="verbs_selected")
+    st.multiselect(f"Learning verbs (selected {len(st.session_state.verbs_selected)})",
+                   options=verbs_for_level, key="verbs_selected")
 
     st.text_area("Topics (one per line)", key="topics_text", height=110,
                  placeholder="e.g.\n- Welding safety checks\n- NDT techniques (PT, MT, UT)\n- Inspection documentation flow")
@@ -309,18 +363,30 @@ if st.session_state.mode != "Print Summary":
                 c,d = st.columns(2)
                 q["options"][2] = c.text_input("Option C", value=q["options"][2], key=f"oc-{idx}")
                 q["options"][3] = d.text_input("Option D", value=q["options"][3], key=f"od-{idx}")
-                q["answer"] = st.selectbox("Correct", ["A","B","C","D"], index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
+                q["answer"] = st.selectbox("Correct", ["A","B","C","D"],
+                                           index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
 
-        txt = "\n\n".join([f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) + (f"\nAnswer: {q['answer']}" if include_key else "") for n,q in enumerate(st.session_state.generated_items)])
-        st.download_button("Export (TXT)", data=txt,
-                           file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt")
+        # TXT export
+        txt = "\n\n".join(
+            [f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) +
+             (f"\nAnswer: {q['answer']}" if include_key else "")
+             for n,q in enumerate(st.session_state.generated_items)]
+        )
+        st.download_button(
+            "Export (TXT)", data=txt,
+            file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt"
+        )
 
+        # DOCX export (optional)
         def as_docx(items) -> bytes | None:
             try:
                 from docx import Document
                 from docx.shared import Pt
                 doc = Document()
-                doc.add_heading(f"{st.session_state.course_code} — Lesson {st.session_state.lesson} (Week {st.session_state.week})", level=1)
+                doc.add_heading(
+                    f"{st.session_state.course_code} — Lesson {st.session_state.lesson} (Week {st.session_state.week})",
+                    level=1
+                )
                 doc.add_paragraph()
                 for i, q in enumerate(items, start=1):
                     doc.add_paragraph(f"Q{i}. {q['stem']}")
@@ -338,13 +404,16 @@ if st.session_state.mode != "Print Summary":
 
         docx_bytes = as_docx(st.session_state.generated_items)
         if docx_bytes:
-            st.download_button("Export (Word .docx)", data=docx_bytes,
-                               file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.docx",
-                               mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            st.download_button(
+                "Export (Word .docx)", data=docx_bytes,
+                file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
         else:
             st.caption("Install `python-docx` for Word export (TXT is always available).")
 
 else:
+    # Print Summary mode
     ss = st.session_state
     topics_list = [t for t in ss.topics_text.splitlines() if t.strip()] or ["(add topics in other modes)"]
     st.markdown(
