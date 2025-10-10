@@ -1,293 +1,235 @@
-# app.py — ADI Builder (clean)
-
-import io
-import random
-from datetime import datetime
-from typing import List, Dict
-
+# --- app.py (enhanced quick-pick chips + print-friendly summary) ---
 import streamlit as st
+from datetime import date
+from textwrap import dedent
 
-# ---------- Page ----------
-st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", page_icon="🧰", layout="wide")
+st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
-# ---------- Optional deps (fail-soft) ----------
-try:
-    from pptx import Presentation           # python-pptx
-except Exception:
-    Presentation = None
+# ---------------- Session & theme helpers ----------------
+if "selected_course" not in st.session_state:
+    st.session_state.selected_course = None
+if "topics" not in st.session_state:
+    st.session_state.topics = []
+if "generated_items" not in st.session_state:
+    st.session_state.generated_items = []
+if "mode" not in st.session_state:
+    st.session_state.mode = "Knowledge"
 
-try:
-    from docx import Document               # python-docx
-    from docx.shared import Pt
-except Exception:
-    Document = None
+ADI_GREEN = "#245a34"
+ADI_GOLD = "#C8A85A"
+STONE = "#F5F4F2"
 
-# ---------- Hard data from your screenshots ----------
-COURSES = [
-    {"code": "GE4-EPM", "name": "Defense Technology Practices: Experimentation, Quality Management and Inspection", "color": "#bfe6c7"},
-    {"code": "GE4-IPM", "name": "Integrated Project and Materials Management in Defense Technology", "color": "#bfe6c7"},
-    {"code": "GE4-MRO", "name": "Military Vehicle and Aircraft MRO: Principles & Applications", "color": "#bfe6c7"},
-    {"code": "CT4-COM", "name": "Computation for Chemical Technologists", "color": "#f5e5b3"},
-    {"code": "CT4-EMG", "name": "Explosives Manufacturing", "color": "#f5e5b3"},
-    {"code": "CT4-TFL", "name": "Thermofluids", "color": "#f5e5b3"},
-]
+def pill(value, key=None):
+    st.markdown(
+        f"""
+        <span style="border:1px solid {ADI_GREEN}; color:{ADI_GREEN};
+                     padding:.35rem .7rem; border-radius:999px; display:inline-block; font-size:0.9rem;">
+            {value}
+        </span>
+        """, unsafe_allow_html=True
+    )
 
-COHORTS = [
-    "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
-    "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
-]
+def bloom_badge(week:int):
+    level = "Low" if week<=4 else ("Medium" if week<=9 else "High")
+    st.markdown(
+        f"""<span style="background:{ADI_GOLD}; color:black; padding:.1rem .5rem; 
+                         border-radius:999px; font-weight:600;">{level}</span>""",
+        unsafe_allow_html=True
+    )
+    return level
 
-INSTRUCTORS = [
-    "Ben","Abdulmalik","Gerhard","Faiz Lazam","Mohammed Alfarhan","Nerdeen","Dari","Ghamza",
-    "Michail","Meshari","Mohammed Alwuthaylah","Myra","Meshal","Ibrahim","Khalil","Salem",
-    "Rana","Daniel","Ahmed Albader"
-]
-
-# ---------- Bloom policy ----------
-LOW_VERBS  = ["remember", "list", "define", "identify", "state", "recognize"]
-MED_VERBS  = ["apply", "analyze", "explain", "compare", "classify", "illustrate"]
-HIGH_VERBS = ["evaluate", "create", "design", "critique", "synthesize", "hypothesize"]
-
-def bloom_for_week(week: int) -> str:
-    if 1 <= week <= 4: return "Low"
-    if 5 <= week <= 9: return "Medium"
-    if 10 <= week <= 14: return "High"
-    return "Medium"
-
-def verbs(level: str) -> List[str]:
-    return {"Low": LOW_VERBS, "Medium": MED_VERBS, "High": HIGH_VERBS}.get(level, MED_VERBS)
-
-# ---------- Styling (NO f-strings; no brace escaping problems) ----------
-def inject_css():
-    css = """
+# ---------------- Side styles ----------------
+st.markdown(
+    f"""
     <style>
-    :root { --adi: #245a34; --gold: #C8A85A; --stone: #F3F3F0; }
-    .block-container { padding-top: .8rem; max-width: 1480px; }
-    h1,h2,h3,h4 { color: var(--adi) !important; }
-    .stTabs [data-baseweb=tab-list] { gap:.35rem; }
-    .stTabs [data-baseweb=tab] { border:1px solid var(--adi); border-radius:999px; padding:.35rem .9rem; }
-    .stTabs [aria-selected=true] { background:var(--adi); color:#fff; }
-    .badge { display:inline-block; padding:.2rem .55rem; border:1px solid var(--adi); color:var(--adi);
-             border-radius:.5rem; font-weight:700; }
-    .course-chip { border:1px solid #999; border-radius:.4rem; padding:.4rem; font-size:.85rem;
-                   font-weight:700; text-align:center; margin-bottom:.5rem; }
-    .thin-hr { border:0; height:1px; background:#ececec; margin:.8rem 0; }
-    .stButton>button { border-radius:.6rem; font-weight:700; }
-    .stButton>button[kind=primary] { background:var(--adi); color:#fff; border-color:var(--adi); }
+      .stApp {{ background: white; }}
+      .block-container {{ padding-top: 2rem; }}
+      .adi-card {{
+        background:{STONE}; border:1px solid #e7e5e4; border-radius:14px; padding:14px;
+      }}
+      .adi-chip {{
+        border-radius:14px; padding:12px; border:1px solid #e7e5e4; cursor:pointer;
+        display:flex; align-items:center; justify-content:center; text-align:center;
+      }}
+      .adi-chip:hover {{ border-color:{ADI_GREEN}; box-shadow:0 0 0 2px rgba(36,90,52,.08) inset; }}
+      .print-area {{ max-width: 900px; margin: 0 auto; }}
+      @media print {{
+        header, footer, .stApp [data-testid="stSidebar"], .stToolbar, .st-emotion-cache-12fmjuu, 
+        .st-emotion-cache-ue6h4q, .stButton {{ display:none !important; }}
+        .block-container {{ padding:0 !important; }}
+        .print-area {{ margin:0; }}
+        body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+      }}
     </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
-inject_css()
+# ---------------- Data ----------------
+COURSE_OPTIONS = [
+    ("GE4-EPM", "Defense Technology Practices: Experimentation, Quality Management and Inspection"),
+    ("GE4-IPM", "Integrated Project & Materials Management in Defense Technology"),
+    ("GE4-MRO", "Military Vehicle and Aircraft MRO: Principles & Applications"),
+    ("CT4-COM", "Computation for Chemical Technologists"),
+    ("CT4-EMG", "Explosives Manufacturing"),
+    ("CT4-TFL", "Thermofluids"),
+]
 
-# ---------- PPTX topic extraction ----------
-def extract_topics(upload) -> List[str]:
-    if not upload or Presentation is None:
-        return []
-    prs = Presentation(upload)
-    rough = []
-    for slide in prs.slides:
-        if slide.shapes.title and slide.shapes.title.text:
-            t = slide.shapes.title.text.strip()
-            if t and t not in rough: rough.append(t)
-        for shp in slide.shapes:
-            if hasattr(shp, "text_frame") and shp.text_frame:
-                for p in shp.text_frame.paragraphs:
-                    txt = (p.text or "").strip()
-                    if 3 <= len(txt) <= 80 and txt not in rough:
-                        rough.append(txt)
-        if len(rough) > 50:
-            break
-    cleaned = []
-    for s in rough:
-        s = " ".join(s.split()).strip("•-–—: ")
-        if s and s not in cleaned:
-            cleaned.append(s)
-    return cleaned[:30]
-
-# ---------- MCQ generation ----------
-def make_mcq(topic: str, level: str) -> Dict:
-    verb = random.choice(verbs(level)).capitalize()
-    stem = f"{verb} the key idea related to: {topic}"
-    correct = f"{topic} — core concept"
-    distractors = [
-        f"{topic} — unrelated detail",
-        f"{topic} — misconception",
-        f"{topic} — peripheral fact",
-    ]
-    options = [correct] + distractors
-    random.shuffle(options)
-    return {"stem": stem, "options": options, "answer": correct}
-
-# ---------- Export (Word if available; else TXT) ----------
-def export_word(mcqs: List[Dict], meta: Dict) -> bytes:
-    if not mcqs:
-        return b""
-
-    if Document is None:
-        buf = io.StringIO()
-        course = meta.get("course", "")
-        cohort = meta.get("cohort", "")
-        week_s = meta.get("week", "")
-        header_line = f"ADI Lesson — {course} — {cohort} — Week {week_s}\n\n"
-        buf.write(header_line)
-        for i, q in enumerate(mcqs, 1):
-            buf.write(f"Q{i}. {q['stem']}\n")
-            for j, o in enumerate(q["options"], 1):
-                buf.write(f"   {chr(64+j)}. {o}\n")
-            if meta.get("answer_key", True):
-                buf.write(f"Answer: {q['answer']}\n")
-            buf.write("\n")
-        return buf.getvalue().encode("utf-8")
-
-    # DOCX path
-    doc = Document()
-    doc.styles["Normal"].font.name = "Arial"
-    doc.styles["Normal"].font.size = Pt(11)
-
-    doc.add_heading("ADI Lesson Activities & Questions", level=1)
-    doc.add_paragraph(f"Course: {meta.get('course','')}  |  Cohort: {meta.get('cohort','')}  |  Instructor: {meta.get('instructor','')}")
-    doc.add_paragraph(f"Date: {meta.get('date','')}  |  Lesson: {meta.get('lesson','')}  |  Week: {meta.get('week','')}")
-    doc.add_paragraph("")
-
-    doc.add_heading("Knowledge MCQs", level=2)
-    for i, q in enumerate(mcqs, 1):
-        doc.add_paragraph(f"Q{i}. {q['stem']}")
-        for j, o in enumerate(q["options"], 1):
-            doc.add_paragraph(f"{chr(64+j)}. {o}", style="List Bullet")
-        if meta.get("answer_key", True):
-            doc.add_paragraph(f"Answer: {q['answer']}")
-        doc.add_paragraph("")
-
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio.getvalue()
-
-# ---------- State ----------
-if "topics" not in st.session_state: st.session_state.topics = []
-if "mcqs" not in st.session_state: st.session_state.mcqs = []
-
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.subheader("Upload (optional)")
-    uploaded = st.file_uploader("Drag and drop file here", type=["txt", "docx", "pptx", "pdf"], help="We can scan titles & bullets from PPTX.")
-    st.caption(" ")
-
-    st.subheader("Course details")
-    course_ix = st.selectbox("Course name", list(range(len(COURSES))),
-                             format_func=lambda i: f"{COURSES[i]['code']} — {COURSES[i]['name']}")
-    cohort = st.selectbox("Class / Cohort", COHORTS, index=0)
-    instructor = st.selectbox("Instructor name", INSTRUCTORS, index=INSTRUCTORS.index("Daniel") if "Daniel" in INSTRUCTORS else 0)
-    date = st.date_input("Date", value=datetime.now())
-    c1, c2 = st.columns(2)
-    with c1:
-        lesson = st.number_input("Lesson", min_value=1, max_value=5, value=1, step=1)
-    with c2:
-        week = st.number_input("Week", min_value=1, max_value=14, value=1, step=1)
-
-# ---------- Main ----------
-st.markdown("## ADI Builder — Lesson Activities & Questions")
-st.markdown("<div class='thin-hr'></div>", unsafe_allow_html=True)
-
-left, right = st.columns([1, 1])
-
+# ---------------- Header ----------------
+left, right = st.columns([1.15, 1])
 with left:
-    topic = st.text_area("Topic / Outcome (optional)", placeholder="e.g., Integrated Project and …")
-
-    st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High")
-    recommended = bloom_for_week(int(week))
-    st.write(f"**Recommended Bloom for Week {int(week)}:**  "
-             f"<span class='badge'>{recommended}</span>", unsafe_allow_html=True)
-
-    tab1, tab2, tab3, tab4 = st.tabs(["Knowledge MCQs (Editable)", "Skills Activities", "Revision", "Print Summary"])
-
-    with tab1:
-        # Get topics (from PPTX or manual)
-        if uploaded and Presentation is not None and st.button("Extract topics from uploaded PPTX"):
-            topics = extract_topics(uploaded)
-            st.session_state.topics = topics
-            if topics:
-                st.success(f"Extracted {len(topics)} topics.")
-            else:
-                st.warning("No topics detected in the PPTX.")
-
-        topics = st.session_state.get("topics", [])
-        picked: List[str]
-        if topics:
-            picked = st.multiselect("Pick topics (5–10)", topics, default=topics[:8], max_selections=10)
-        else:
-            manual = st.text_area("Enter topics (one per line)", placeholder="Topic A\nTopic B\nTopic C")
-            picked = [t.strip() for t in manual.splitlines() if t.strip()]
-
-        n_q = st.selectbox("How many MCQs?", [5, 10, 12, 15, 20], index=1)
-        answer_key = st.checkbox("Include answer key", value=True)
-
-        if st.button("Generate MCQs", type="primary"):
-            base = picked if picked else ([topic] if topic.strip() else [])
-            if not base:
-                st.error("Provide at least one topic (or extract from upload).")
-            else:
-                pool = []
-                while len(pool) < n_q:
-                    for t in base:
-                        pool.append(t)
-                        if len(pool) >= n_q:
-                            break
-                random.shuffle(pool)
-                st.session_state.mcqs = [make_mcq(t, recommended) for t in pool]
-                st.success(f"Generated {len(st.session_state.mcqs)} MCQs at {recommended} level.")
-
-        if st.session_state.mcqs:
-            with st.expander("Preview / quick edit"):
-                for i, q in enumerate(st.session_state.mcqs, 1):
-                    q["stem"] = st.text_input(f"Q{i}", value=q["stem"], key=f"stem_{i}")
-                    for j, o in enumerate(q["options"], 1):
-                        q["options"][j-1] = st.text_input(f"Option {chr(64+j)}", value=o, key=f"opt_{i}_{j}")
-                    q["answer"] = st.selectbox("Correct answer", q["options"],
-                                               index=q["options"].index(q["answer"]), key=f"ans_{i}")
-                    st.divider()
-
-            meta = {
-                "course": f"{COURSES[course_ix]['code']} — {COURSES[course_ix]['name']}",
-                "cohort": cohort,
-                "instructor": instructor,
-                "date": date.strftime("%Y/%m/%d"),
-                "lesson": int(lesson),
-                "week": int(week),
-                "answer_key": answer_key,
-            }
-            data = export_word(st.session_state.mcqs, meta)
-            fname = f"ADI_Lesson_{COURSES[course_ix]['code']}_W{int(week)}_{datetime.now().strftime('%Y%m%d_%H%M')}.{('docx' if Document else 'txt')}"
-            st.download_button("Download Word" if Document else "Download TXT", data=data, file_name=fname,
-                               mime=("application/vnd.openxmlformats-officedocument.wordprocessingml.document" if Document else "text/plain"))
-
-    with tab2:
-        st.caption("Skills activities templates coming soon (rubrics & scenarios).")
-
-    with tab3:
-        st.caption("Revision pack builder coming soon (printable).")
-
-    with tab4:
-        st.caption("Print-friendly summary coming soon.")
+    st.markdown(f"<h1 style='color:{ADI_GREEN}'>ADI Builder — Lesson Activities & Questions</h1>", unsafe_allow_html=True)
 
 with right:
-    st.subheader("Course quick-pick")
-    cols = st.columns(3)
-    for i, c in enumerate(COURSES):
-        with cols[i % 3]:
-            st.markdown(
-                f"<div class='course-chip' style='background:{c['color']}'>{c['name']}<br><b>{c['code']}</b></div>",
-                unsafe_allow_html=True
+    st.write("")
+
+# ---------------- Layout ----------------
+colL, colR = st.columns([1.15, 1])
+
+# ============ RIGHT: Course quick-pick (now clickable) ============
+with colR:
+    st.markdown("### Course quick-pick")
+    gp1 = st.columns(3)
+    gp2 = st.columns(3)
+
+    def chip(label, code, col):
+        with col:
+            clicked = st.button(
+                f"{label}\n\n*{code}*",
+                key=f"chip-{code}",
+                help="Click to select this course",
+                use_container_width=True
             )
+            # convert to chip look
+            st.markdown(
+                f"""
+                <script>
+                const btn = window.parent.document.querySelector('button[k='{st.session_state._last_element_id}']');
+                </script>
+                """, unsafe_allow_html=True
+            )
+            if clicked:
+                st.session_state.selected_course = code
+                # jump user to the top-left authoring form
+                st.sidebar.success(f"Selected course: {code}")
+                st.experimental_rerun()
 
-    st.markdown("<div class='thin-hr'></div>", unsafe_allow_html=True)
-    if st.session_state.mcqs:
-        st.success(f"{len(st.session_state.mcqs)} MCQs ready to export.")
+    chip("Defense Technology Practices", "GE4-EPM", gp1[0])
+    chip("Integrated Project & Materials Mgmt", "GE4-IPM", gp1[1])
+    chip("Military Vehicle & Aircraft MRO", "GE4-MRO", gp1[2])
+    chip("Computation for Chemical Technologists", "CT4-COM", gp2[0])
+    chip("Explosives Manufacturing", "CT4-EMG", gp2[1])
+    chip("Thermofluids", "CT4-TFL", gp2[2])
+
+    st.info("Tip: pick a chip or use the select box on the left.", icon="💡")
+
+# ============ LEFT: Authoring =============
+with colL:
+    st.markdown("### Course details")
+
+    # select box reflects chip click
+    course_codes = [c[0] for c in COURSE_OPTIONS]
+    default_idx = course_codes.index(st.session_state.selected_course) if st.session_state.selected_course in course_codes else 0
+    course = st.selectbox("Course name", options=course_codes, index=default_idx, key="course_select")
+
+    class_cohort = st.selectbox("Class / Cohort", options=["D1-C01", "D1-C02", "D2-C01"])
+    instructor = st.text_input("Instructor name", value="Daniel")
+    colA, colB = st.columns(2)
+    with colA:
+        lesson = st.number_input("Lesson", min_value=1, max_value=20, value=1, step=1)
+    with colB:
+        week = st.number_input("Week", min_value=1, max_value=14, value=1, step=1)
+
+    st.markdown("---")
+    st.markdown("### Authoring")
+
+    topic_outcome = st.text_input("Topic / Outcome (optional)", placeholder="e.g., Integrated Project and …")
+
+    st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  Recommended Bloom for Week:")
+    bloom_level = bloom_badge(week)
+
+    mode = st.segmented_control("Mode", options=["Knowledge", "Skills", "Revision", "Print Summary"], key="mode")
+
+    # Progressive authoring
+    if mode != "Print Summary":
+        topics_text = st.text_area("Enter topics (one per line)", placeholder="Topic A\nTopic B\nTopic C", height=120)
+        include_key = st.checkbox("Include answer key", value=True)
+
+        count_col, _ = st.columns([2,1])
+        with count_col:
+            how_many = st.selectbox("How many MCQs?", options=[5, 10, 15, 20], index=1)
+
+        # Generate button
+        if st.button("Generate MCQs", type="primary", use_container_width=False):
+            # --- placeholder generation (replace with your real generator) ---
+            st.session_state.topics = [t.strip() for t in topics_text.splitlines() if t.strip()]
+            items = []
+            for i in range(how_many):
+                items.append({
+                    "stem": f"Sample question {i+1} on {st.session_state.topics[0] if st.session_state.topics else 'topic'}?",
+                    "options": ["A) …", "B) …", "C) …", "D) …"],
+                    "answer": "A"
+                })
+            st.session_state.generated_items = items
+            st.success(f"Generated {len(items)} items.")
+        # Inline editor
+        if st.session_state.generated_items:
+            st.markdown("#### Preview & quick edit")
+            for idx, q in enumerate(st.session_state.generated_items):
+                with st.expander(f"Q{idx+1}: {q['stem'][:80]}", expanded=False):
+                    q["stem"] = st.text_input("Stem", value=q["stem"], key=f"stem-{idx}")
+                    cols = st.columns(2)
+                    q["options"][0] = cols[0].text_input("Option A", value=q["options"][0], key=f"oa-{idx}")
+                    q["options"][1] = cols[1].text_input("Option B", value=q["options"][1], key=f"ob-{idx}")
+                    cols2 = st.columns(2)
+                    q["options"][2] = cols2[0].text_input("Option C", value=q["options"][2], key=f"oc-{idx}")
+                    q["options"][3] = cols2[1].text_input("Option D", value=q["options"][3], key=f"od-{idx}")
+                    q["answer"] = st.selectbox("Correct answer", options=["A","B","C","D"], index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
+
+            st.download_button("Export (TXT)", data="\n\n".join(
+                [f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) + (f"\nAnswer: {q['answer']}" if include_key else "")
+                 for n, q in enumerate(st.session_state.generated_items)]
+            ), file_name=f"{course}_L{lesson}_W{week}_mcqs.txt")
+
     else:
-        st.info("No questions yet — add a topic or extract from upload, then Generate.")
+        # ---------- PRINT-FRIENDLY MODE ----------
+        st.markdown("#### Print Summary")
+        st.markdown(
+            f"""
+            <div class="print-area">
+                <h2 style="margin:0 0 .25rem 0; color:{ADI_GREEN}">{course} — Lesson {lesson} (Week {week})</h2>
+                <div style="margin-bottom:.5rem;"><strong>Instructor:</strong> {instructor}</div>
+                <div style="margin-bottom:.75rem;"><strong>Bloom focus:</strong> {bloom_level}</div>
+                <h3 style="margin: 1rem 0 .5rem 0;">Topics</h3>
+                <ol style="margin-top:0;">
+                    {"".join(f"<li>{t}</li>" for t in (st.session_state.topics or ["(add topics in other modes)"]))}
+                </ol>
+                <h3 style="margin: 1rem 0 .5rem 0;">MCQs (summary)</h3>
+                <ol>
+                    {"".join(f"<li>{q['stem']}</li>" for q in (st.session_state.generated_items or []))}
+                </ol>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-# ---------- Requirements (for Render) ----------
-# requirements.txt:
-# streamlit
-# python-pptx
-# python-docx
+        st.markdown(
+            """
+            <script>
+              function doPrint(){ window.print(); }
+            </script>
+            """, unsafe_allow_html=True
+        )
+        st.button("Print", on_click=None, type="primary", use_container_width=False)
+
+        # clickable JS for button
+        st.markdown(
+            """
+            <script>
+              const btns = parent.document.querySelectorAll('button');
+              const printBtn = Array.from(btns).find(b => b.innerText.trim() === 'Print');
+              if (printBtn) printBtn.addEventListener('click', () => window.print());
+            </script>
+            """, unsafe_allow_html=True
+        )
+
