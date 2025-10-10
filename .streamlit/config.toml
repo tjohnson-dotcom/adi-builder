@@ -2,3 +2,9 @@
 headless = true
 enableCORS = false
 address = "0.0.0.0"
+
+[theme]
+primaryColor = "#245a34"                # ADI green (buttons, accents)
+backgroundColor = "#FFFFFF"             # page
+secondaryBackgroundColor = "#F5F4F2"    # “stone” cards/panels
+textColor = "#1f2937"                   # near-black text
