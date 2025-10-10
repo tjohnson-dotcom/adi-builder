@@ -1,20 +1,13 @@
-# app.py — ADI Builder (clean UI, sticky banner + logo, single branding uploader, pills, segmented Bloom)
-# Drop this file into your app root. Optional assets:
-# - assets/adi-logo.png (used if no logo is uploaded at runtime)
-# - assets/courses.csv or assets/courses.json (optional override for course list)
+# app.py — ADI Builder (clean UI, sticky banner + logo, friendly upload validation)
 
 import base64
 import csv
 import json
 from io import StringIO, BytesIO
 from pathlib import Path
-
 import streamlit as st
 
-
-# =========================
-# Page & Theme
-# =========================
+# ============ Page & Theme ============
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
 ADI_GREEN = "#245a34"
@@ -83,7 +76,7 @@ st.markdown(f"""
     color:#0f3d22 !important; margin-bottom:0 !important;
   }}
 
-  /* Upload confirmation visuals */
+  /* Upload confirmation / warning */
   .upload-chip {{
     display:inline-flex; align-items:center; gap:.4rem;
     padding:2px 10px; border-radius:999px;
@@ -94,13 +87,14 @@ st.markdown(f"""
     border-left:4px solid {ADI_GREEN}; background:#f4fbf6;
     padding:.5rem .75rem; border-radius:8px; color:#0f3d22; margin-top:.5rem;
   }}
+  .upload-warn {{
+    border-left:4px solid #b45309; background:#fff7ed;
+    padding:.5rem .75rem; border-radius:8px; color:#7c2d12; margin-top:.5rem;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
-
-# =========================
-# Helpers
-# =========================
+# ============ Helpers ============
 def b64_bytes(b: bytes) -> str:
     return base64.b64encode(b).decode("utf-8")
 
@@ -110,10 +104,7 @@ def b64_file(path: Path) -> str | None:
     except Exception:
         return None
 
-
-# =========================
-# Session
-# =========================
+# ============ Session ============
 def init_state():
     ss = st.session_state
     ss.setdefault("course_code", "")
@@ -124,19 +115,17 @@ def init_state():
     ss.setdefault("topic_outcome", "")
     ss.setdefault("mode", "Knowledge")
     ss.setdefault("topics_text", "Topic A\nTopic B\nTopic C")
-    ss.setdefault("bloom_level", "Low")       # Low / Medium / High
+    ss.setdefault("bloom_level", "Low")
     ss.setdefault("verbs_selected", [])
     ss.setdefault("generated_items", [])
-    ss.setdefault("COURSES", None)            # list[(code,label)]
-    ss.setdefault("logo_b64", None)           # uploaded or assets logo
+    ss.setdefault("COURSES", None)
+    ss.setdefault("logo_b64", None)
     ss.setdefault("logo_uploaded", False)
     ss.setdefault("logo_file_info", {})
+    ss.setdefault("logo_warning", "")  # friendly warning text
 init_state()
 
-
-# =========================
-# Data: courses (optional assets override)
-# =========================
+# ============ Data: courses (optional assets override) ============
 def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
     csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
@@ -175,10 +164,7 @@ def course_codes() -> list[str]:
 def code_to_label() -> dict:
     return dict(st.session_state.COURSES)
 
-
-# =========================
-# Logo & Banner
-# =========================
+# ============ Logo & Banner ============
 def resolve_logo_b64() -> str | None:
     if st.session_state.logo_b64:
         return st.session_state.logo_b64
@@ -186,23 +172,40 @@ def resolve_logo_b64() -> str | None:
 
 def render_topbar(logo_b64: str | None):
     logo_html = f'<img src="data:image/png;base64,{logo_b64}"/>' if logo_b64 else '<div class="adi-badge">A</div>'
-    st.markdown(f'<div class="adi-topbar">{logo_html}<h1 class="adi-title">ADI Builder — Lesson Activities & Questions</h1></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="adi-topbar">{logo_html}<h1 class="adi-title">ADI Builder — Lesson Activities & Questions</h1></div>',
+        unsafe_allow_html=True
+    )
 
 render_topbar(resolve_logo_b64())
 
-
-# =========================
-# Branding (logo only)
-# =========================
+# ============ Branding (logo only, friendly validation) ============
 with st.expander("Branding (optional)", expanded=False):
     st.caption("Upload a **logo** (PNG/JPG/SVG). The banner updates immediately.")
-    logo_up = st.file_uploader("Drag & drop logo here", type=["png","jpg","jpeg","svg"], key="logo_upl")
+
+    # No 'type' filter: we validate ourselves, so we can show a friendly message and avoid red system error.
+    logo_up = st.file_uploader("Drag & drop logo here", key="logo_upl")
+
+    allowed_ext = {"png", "jpg", "jpeg", "svg"}
+    st.session_state.logo_warning = ""  # reset on render
 
     if logo_up is not None:
-        st.session_state.logo_b64 = b64_bytes(logo_up.getvalue())
-        st.session_state.logo_file_info = {"name": logo_up.name, "size": logo_up.size}
-        st.session_state.logo_uploaded = True
-        render_topbar(st.session_state.logo_b64)
+        ext = Path(logo_up.name).suffix.lower().lstrip(".")
+        if ext in allowed_ext:
+            st.session_state.logo_b64 = b64_bytes(logo_up.getvalue())
+            st.session_state.logo_file_info = {"name": logo_up.name, "size": logo_up.size}
+            st.session_state.logo_uploaded = True
+            render_topbar(st.session_state.logo_b64)
+        else:
+            st.session_state.logo_uploaded = False
+            st.session_state.logo_warning = (
+                f"Only PNG, JPG or SVG are supported for the banner logo. "
+                f"You uploaded **.{ext}**."
+            )
+
+    # Friendly messages
+    if st.session_state.logo_warning:
+        st.markdown(f"<div class='upload-warn'>⚠️ {st.session_state.logo_warning}</div>", unsafe_allow_html=True)
 
     if st.session_state.get("logo_uploaded"):
         info = st.session_state.get("logo_file_info", {})
@@ -211,21 +214,16 @@ with st.expander("Branding (optional)", expanded=False):
         st.markdown(
             f"""
             <span class="upload-chip">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/></svg>
               Uploaded: {name} ({size_kb} KB)
             </span>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown(
-            "<div class='upload-note'>Your logo is now active in the top banner.</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='upload-note'>Your logo is now active in the top banner.</div>", unsafe_allow_html=True)
 
-
-# =========================
-# Static lists
-# =========================
+# ============ Static lists ============
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
@@ -244,10 +242,7 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-
-# =========================
-# Callbacks
-# =========================
+# ============ Callbacks ============
 def sync_bloom_from_week():
     st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
     st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
@@ -262,10 +257,7 @@ def select_all_verbs():
 def clear_verbs():
     st.session_state.verbs_selected = []
 
-
-# =========================
-# Setup Row
-# =========================
+# ============ Setup Row ============
 codes = course_codes()
 labels = code_to_label()
 if not st.session_state.course_code and codes:
@@ -304,16 +296,15 @@ with r1c[4]:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-
-# =========================
-# Authoring
-# =========================
+# ============ Authoring ============
 st.markdown("### Authoring")
 st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 
 st.text_input("Topic / Outcome (optional)", key="topic_outcome", placeholder="e.g., Integrated Project and …")
-st.caption("ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  Recommended Bloom: **" +
-           bloom_from_week(int(st.session_state.week)) + "**")
+st.caption(
+    "ADI policy: Weeks 1–4 Low • 5–9 Medium • 10–14 High  |  "
+    f"Recommended Bloom: **{bloom_from_week(int(st.session_state.week))}**"
+)
 
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
