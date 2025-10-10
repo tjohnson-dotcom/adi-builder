@@ -96,14 +96,52 @@ def make_mcq(topic:str, level:str)->Dict:
     return {"stem":stem,"options":opts,"answer":correct}
 
 
-def export_word(mcqs:List[Dict], meta:Dict)->bytes:
-    if not mcqs: return b""
+def export_word(mcqs: List[Dict], meta: Dict) -> bytes:
+    if not mcqs:
+        return b""
+
+    # --- TXT fallback if python-docx isn't installed ---
     if Document is None:
         buf = io.StringIO()
         course = meta.get("course", "")
         cohort = meta.get("cohort", "")
         week_s = meta.get("week", "")
-        header_line = f"ADI Lesson — {course} — {cohort} — Week {week_s}
+        header_line = f"ADI Lesson — {course} — {cohort} — Week {week_s}\n\n"
+        buf.write(header_line)
+
+        for i, q in enumerate(mcqs, 1):
+            buf.write(f"Q{i}. {q['stem']}\n")
+            for j, o in enumerate(q["options"], 1):
+                buf.write(f"   {chr(64+j)}. {o}\n")
+            if meta.get("answer_key", True):
+                buf.write(f"Answer: {q['answer']}\n")
+            buf.write("\n")
+
+        return buf.getvalue().encode("utf-8")
+
+    # --- DOCX path ---
+    doc = Document()
+    doc.styles['Normal'].font.name = 'Arial'
+    doc.styles['Normal'].font.size = Pt(11)
+
+    doc.add_heading('ADI Lesson Activities & Questions', level=1)
+    doc.add_paragraph(f"Course: {meta.get('course','')}  |  Cohort: {meta.get('cohort','')}  |  Instructor: {meta.get('instructor','')}")
+    doc.add_paragraph(f"Date: {meta.get('date','')}  |  Lesson: {meta.get('lesson','')}  |  Week: {meta.get('week','')}")
+    doc.add_paragraph("")
+
+    doc.add_heading('Knowledge MCQs', level=2)
+    for i, q in enumerate(mcqs, 1):
+        doc.add_paragraph(f"Q{i}. {q['stem']}")
+        for j, o in enumerate(q["options"], 1):
+            doc.add_paragraph(f"{chr(64+j)}. {o}", style='List Bullet')
+        if meta.get("answer_key", True):
+            doc.add_paragraph(f"Answer: {q['answer']}")
+        doc.add_paragraph("")
+
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+}
 
 "
         buf.write(header_line)
