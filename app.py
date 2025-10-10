@@ -4,6 +4,80 @@ import streamlit as st
 from datetime import date
 
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
+# --- ADI brand system (colors, header, components) ---
+
+from pathlib import Path
+from PIL import Image
+
+ADI_GREEN = "#245a34"
+ADI_GOLD  = "#C8A85A"
+STONE     = "#F5F4F2"
+DARK_TEXT = "#1f2937"
+
+# Global style (keeps Streamlit controls green; adds nicer cards/tabs/chips)
+st.markdown(f"""
+<style>
+  .block-container {{ padding-top: 0.75rem; }}
+  /* Header bar */
+  .adi-topbar {{
+    background:{ADI_GREEN}; color:white; padding:.75rem 1rem; border-radius: 0 0 12px 12px;
+    display:flex; gap:14px; align-items:center; margin-bottom: 1rem;
+  }}
+  .adi-topbar img {{ height: 36px; }}
+  .adi-topbar h1 {{ font-size: 1.25rem; margin:0; line-height:1.2; }}
+
+  /* Cards / panels */
+  .adi-card {{ background:{STONE}; border:1px solid #e7e5e4; border-radius:14px; padding:14px; }}
+
+  /* Pills / chips */
+  .adi-chip button {{
+    width:100%; background:white; color:{DARK_TEXT}; border:1px solid #e7e5e4; border-radius:14px; padding:14px 10px;
+  }}
+  .adi-chip button:hover {{ border-color:{ADI_GREEN}; box-shadow:0 0 0 2px rgba(36,90,52,.08) inset; }}
+  .adi-chip-selected {{ background:{ADI_GREEN}; color:white; border:1px solid {ADI_GREEN}; border-radius:14px; padding:14px 10px; text-align:center; }}
+  .adi-chip-selected small {{ display:block; color:{ADI_GOLD}; opacity:.95; font-style:italic; }}
+
+  /* Segmented control (tabs) */
+  [data-baseweb="segmented-control"] div[role="tablist"] > div {{
+    border-radius:999px !important;
+    border:1px solid #e7e5e4 !important;
+    background:white !important;
+  }}
+  [data-baseweb="segmented-control"] div[role="tab"] {{
+    color:{DARK_TEXT} !important;
+  }}
+  [data-baseweb="segmented-control"] [aria-selected="true"] {{
+    background:{ADI_GREEN} !important; color:white !important;
+  }}
+
+  /* Buttons pick up theme.primaryColor; keep slight rounding */
+  .stButton > button {{ border-radius:10px; }}
+</style>
+""", unsafe_allow_html=True)
+
+def adi_header(title="ADI Builder — Lesson Activities & Questions", logo_path="assets/adi-logo.png"):
+    logo_html = ""
+    p = Path(logo_path)
+    if p.exists():
+        try:
+            img = Image.open(p)
+            st.image(img, width=44)
+            # When an image is rendered by st.image, we can’t place it inline with HTML easily;
+            # Instead, render a single HTML header bar:
+        except Exception:
+            pass
+    # Build a clean HTML bar (renders whether or not the image exists)
+    img_tag = f"<img src='file://{p.resolve()}' alt='ADI'/>" if p.exists() else ""
+    st.markdown(
+        f"""
+        <div class="adi-topbar">
+            {img_tag}
+            <h1>{title}</h1>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # ------------ Theme constants ------------
 ADI_GREEN = "#245a34"
