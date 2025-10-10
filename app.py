@@ -1,4 +1,5 @@
-# app.py — ADI Builder (clean UI, sticky banner + logo, friendly upload validation)
+# app.py — ADI Builder (banner logo + inline dropzone when needed, branding expander,
+# courses.csv uploader with template, friendly validations, polished UI)
 
 import base64
 import csv
@@ -7,7 +8,9 @@ from io import StringIO, BytesIO
 from pathlib import Path
 import streamlit as st
 
-# ============ Page & Theme ============
+# =========================
+# Page & Theme
+# =========================
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
 ADI_GREEN = "#245a34"
@@ -57,7 +60,11 @@ st.markdown(f"""
           line-height:1.6; white-space:nowrap; margin-left:6px; }}
   .pill-green {{ background:{ADI_GREEN}; color:#fff; }}
 
-  /* GREEN dashed dropzone (logo) */
+  /* GREEN dashed dropzones */
+  .dropzone-visible {{
+    border:2.5px dashed {ADI_GREEN}; background:#f6faf7;
+    border-radius:12px; padding:.6rem .6rem;
+  }}
   [data-testid="stFileUploaderDropzone"],
   div[aria-label="File dropzone"],
   div:has(> input[type="file"]) {{
@@ -91,10 +98,17 @@ st.markdown(f"""
     border-left:4px solid #b45309; background:#fff7ed;
     padding:.5rem .75rem; border-radius:8px; color:#7c2d12; margin-top:.5rem;
   }}
+
+  .soft-tip {{
+    border-left:4px solid #eab308; background:#fffbeb;
+    padding:.5rem .75rem; border-radius:8px; color:#713f12; margin:.6rem 0 0 0;
+  }}
 </style>
 """, unsafe_allow_html=True)
 
-# ============ Helpers ============
+# =========================
+# Helpers
+# =========================
 def b64_bytes(b: bytes) -> str:
     return base64.b64encode(b).decode("utf-8")
 
@@ -104,7 +118,26 @@ def b64_file(path: Path) -> str | None:
     except Exception:
         return None
 
-# ============ Session ============
+def make_courses_template() -> bytes:
+    rows = [
+        ("GE4-EPM","Defense Technology Practices"),
+        ("GE4-IPM","Integrated Project & Materials Mgmt"),
+        ("GE4-MRO","Military Vehicle & Aircraft MRO"),
+        ("CT4-COM","Computation for Chemical Technologists"),
+        ("CT4-EMG","Explosives Manufacturing"),
+        ("CT4-TFL","Thermofluids"),
+        # Add more rows here as needed…
+    ]
+    s = StringIO()
+    w = csv.writer(s)
+    w.writerow(["code","label"])
+    for r in rows:
+        w.writerow(r)
+    return s.getvalue().encode("utf-8")
+
+# =========================
+# Session
+# =========================
 def init_state():
     ss = st.session_state
     ss.setdefault("course_code", "")
@@ -122,10 +155,14 @@ def init_state():
     ss.setdefault("logo_b64", None)
     ss.setdefault("logo_uploaded", False)
     ss.setdefault("logo_file_info", {})
-    ss.setdefault("logo_warning", "")  # friendly warning text
+    ss.setdefault("logo_warning", "")
+    ss.setdefault("courses_uploaded", False)
+    ss.setdefault("courses_file_info", {})
 init_state()
 
-# ============ Data: courses (optional assets override) ============
+# =========================
+# Data: courses (assets override or fallback)
+# =========================
 def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
     csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
@@ -145,7 +182,7 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
                 items.append((code, label))
     if items:
         return items
-    # fallback
+    # fallback small set
     return [
         ("GE4-EPM","Defense Technology Practices"),
         ("GE4-IPM","Integrated Project & Materials Mgmt"),
@@ -158,13 +195,18 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
 if st.session_state.COURSES is None:
     st.session_state.COURSES = load_courses_from_assets()
 
+def set_courses(new_list: list[tuple[str,str]]):
+    st.session_state.COURSES = new_list
+
 def course_codes() -> list[str]:
     return [c for c,_ in st.session_state.COURSES]
 
 def code_to_label() -> dict:
     return dict(st.session_state.COURSES)
 
-# ============ Logo & Banner ============
+# =========================
+# Logo & Banner
+# =========================
 def resolve_logo_b64() -> str | None:
     if st.session_state.logo_b64:
         return st.session_state.logo_b64
@@ -179,31 +221,58 @@ def render_topbar(logo_b64: str | None):
 
 render_topbar(resolve_logo_b64())
 
-# ============ Branding (logo only, friendly validation) ============
-with st.expander("Branding (optional)", expanded=False):
+# =========================
+# Inline logo prompt (only if no logo at all)
+# =========================
+no_logo_anywhere = resolve_logo_b64() is None
+if no_logo_anywhere:
+    st.markdown("#### Add your logo")
+    st.caption("Drop a PNG, JPG, or SVG to brand the top banner.")
+    with st.container(border=False):
+        st.markdown("<div class='dropzone-visible'>", unsafe_allow_html=True)
+        logo_inline = st.file_uploader("Drag & drop logo here", key="logo_inline")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if logo_inline is not None:
+            ext = Path(logo_inline.name).suffix.lower().lstrip(".")
+            allowed_ext = {"png", "jpg", "jpeg", "svg"}
+            if ext in allowed_ext:
+                st.session_state.logo_b64 = base64.b64encode(logo_inline.getvalue()).decode("utf-8")
+                st.session_state.logo_file_info = {"name": logo_inline.name, "size": logo_inline.size}
+                st.session_state.logo_uploaded = True
+                render_topbar(st.session_state.logo_b64)
+                no_logo_anywhere = False
+            else:
+                st.markdown(
+                    f"<div class='upload-warn'>⚠️ Only PNG, JPG or SVG are supported for the banner logo. "
+                    f"You uploaded **.{ext}**.</div>",
+                    unsafe_allow_html=True,
+                )
+
+# =========================
+# Branding & Lists (expander)
+# =========================
+with st.expander("Branding & lists (optional)", expanded=False):
+    # --- Logo uploader (same validation; kept for later changes) ---
+    st.subheader("Logo", divider="gray")
     st.caption("Upload a **logo** (PNG/JPG/SVG). The banner updates immediately.")
+    logo_up = st.file_uploader("Drag & drop logo here", key="logo_upl")  # no 'type' for friendly warn
 
-    # No 'type' filter: we validate ourselves, so we can show a friendly message and avoid red system error.
-    logo_up = st.file_uploader("Drag & drop logo here", key="logo_upl")
-
-    allowed_ext = {"png", "jpg", "jpeg", "svg"}
-    st.session_state.logo_warning = ""  # reset on render
-
+    st.session_state.logo_warning = ""
     if logo_up is not None:
         ext = Path(logo_up.name).suffix.lower().lstrip(".")
+        allowed_ext = {"png", "jpg", "jpeg", "svg"}
         if ext in allowed_ext:
-            st.session_state.logo_b64 = b64_bytes(logo_up.getvalue())
+            st.session_state.logo_b64 = base64.b64encode(logo_up.getvalue()).decode("utf-8")
             st.session_state.logo_file_info = {"name": logo_up.name, "size": logo_up.size}
             st.session_state.logo_uploaded = True
             render_topbar(st.session_state.logo_b64)
         else:
             st.session_state.logo_uploaded = False
             st.session_state.logo_warning = (
-                f"Only PNG, JPG or SVG are supported for the banner logo. "
-                f"You uploaded **.{ext}**."
+                f"Only PNG, JPG or SVG are supported for the banner logo. You uploaded **.{ext}**."
             )
 
-    # Friendly messages
     if st.session_state.logo_warning:
         st.markdown(f"<div class='upload-warn'>⚠️ {st.session_state.logo_warning}</div>", unsafe_allow_html=True)
 
@@ -223,7 +292,56 @@ with st.expander("Branding (optional)", expanded=False):
         )
         st.markdown("<div class='upload-note'>Your logo is now active in the top banner.</div>", unsafe_allow_html=True)
 
-# ============ Static lists ============
+    # --- Courses CSV (optional; solves “courses missing”) ---
+    st.subheader("Courses list", divider="gray")
+    st.caption("Upload **courses.csv** with headers `code,label` to add/replace courses (no redeploy).")
+    csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_upl")
+    c1, c2 = st.columns([1,2])
+    with c1:
+        st.download_button("Download CSV template", data=make_courses_template(),
+                           file_name="courses_template.csv", type="secondary")
+    with c2:
+        st.caption("Tip: Put your full list in `/assets/courses.csv` to load automatically on start.")
+
+    if csv_up is not None:
+        try:
+            reader = csv.DictReader(StringIO(csv_up.getvalue().decode("utf-8")))
+            new_courses = []
+            for r in reader:
+                code = (r.get("code") or "").strip()
+                label = (r.get("label") or "").strip()
+                if code and label:
+                    new_courses.append((code, label))
+            if new_courses:
+                set_courses(new_courses)
+                st.session_state.courses_uploaded = True
+                st.session_state.courses_file_info = {"name": csv_up.name, "count": len(new_courses)}
+            else:
+                st.session_state.courses_uploaded = False
+                st.warning("No valid rows found. Expecting headers `code,label`.")
+        except Exception as e:
+            st.session_state.courses_uploaded = False
+            st.error(f"Could not parse CSV: {e}")
+
+    if st.session_state.get("courses_uploaded"):
+        info = st.session_state.get("courses_file_info", {})
+        name = info.get("name", "courses.csv")
+        count = info.get("count", 0)
+        st.markdown(
+            f"""
+            <span class="upload-chip">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Uploaded: {name} — {count} course(s)
+            </span>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div class='upload-note'>Course dropdown updated with your CSV.</div>", unsafe_allow_html=True)
+
+# =========================
+# Static lists
+# =========================
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
@@ -238,38 +356,36 @@ VERBS = {
     "Medium": ["apply","solve","calculate","compare","analyze","demonstrate","explain"],
     "High":   ["evaluate","synthesize","design","justify","critique","optimize","create"]
 }
-
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# ============ Callbacks ============
-def sync_bloom_from_week():
-    st.session_state.bloom_level = bloom_from_week(int(st.session_state.week))
-    st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
-
-def update_verbs_on_bloom_change():
-    allowed = set(VERBS[st.session_state.bloom_level])
-    st.session_state.verbs_selected = [v for v in st.session_state.verbs_selected if v in allowed]
-
-def select_all_verbs():
-    st.session_state.verbs_selected = VERBS[st.session_state.bloom_level][:]
-
-def clear_verbs():
-    st.session_state.verbs_selected = []
-
-# ============ Setup Row ============
+# =========================
+# Setup Row
+# =========================
 codes = course_codes()
 labels = code_to_label()
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
+# If we only have the default tiny set, show a helpful nudge
+if len(codes) <= 6:
+    st.markdown("<div class='soft-tip'>Showing default courses. "
+                "Upload a <strong>courses.csv</strong> in the Branding & lists panel to add the rest.</div>",
+                unsafe_allow_html=True)
+
 st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 r1c = st.columns([2, 1.8, .8, .8, 1.6])
 
 with r1c[0]:
-    st.selectbox("Course (code)", options=codes,
-                 index=codes.index(st.session_state.course_code) if st.session_state.course_code in codes else 0,
-                 key="course_code")
+    # show "CODE — Label" in the dropdown
+    display = [f"{c} — {labels.get(c,'')}" for c in codes]
+    try:
+        idx = codes.index(st.session_state.course_code)
+    except ValueError:
+        idx = 0
+    sel = st.selectbox("Course (code)", options=list(range(len(codes))),
+                       format_func=lambda i: display[i], index=idx, key="course_idx")
+    st.session_state.course_code = codes[sel]
     long_name = labels.get(st.session_state.course_code, "")
     st.markdown(
         f"<span class='muted'>{long_name}</span><span class='pill pill-green'>{st.session_state.course_code}</span>",
@@ -287,7 +403,11 @@ with r1c[2]:
     st.markdown(f"<span class='pill pill-green'>L{int(st.session_state.lesson)}</span>", unsafe_allow_html=True)
 
 with r1c[3]:
-    st.number_input("Week", min_value=1, max_value=14, step=1, key="week", on_change=sync_bloom_from_week)
+    st.number_input("Week", min_value=1, max_value=14, step=1, key="week",
+                    on_change=lambda: st.session_state.update(
+                        {"bloom_level": bloom_from_week(int(st.session_state.week)),
+                         "verbs_selected": VERBS[bloom_from_week(int(st.session_state.week))][:]}
+                    ))
     st.markdown(f"<span class='pill pill-green'>W{int(st.session_state.week)}</span>", unsafe_allow_html=True)
 
 with r1c[4]:
@@ -296,7 +416,9 @@ with r1c[4]:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ============ Authoring ============
+# =========================
+# Authoring
+# =========================
 st.markdown("### Authoring")
 st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 
@@ -308,17 +430,25 @@ st.caption(
 
 st.segmented_control("Mode", ["Knowledge","Skills","Revision","Print Summary"], key="mode")
 
+def update_verbs_on_bloom_change():
+    allowed = set(VERBS[st.session_state.bloom_level])
+    st.session_state.verbs_selected = [v for v in st.session_state.verbs_selected if v in allowed]
+
 if st.session_state.mode != "Print Summary":
     a1, a2, a3, a4 = st.columns([1.2, .9, .9, 1.8])
     with a1:
         st.segmented_control("Bloom level", ["Low", "Medium", "High"],
                              key="bloom_level", on_change=update_verbs_on_bloom_change)
     with a2:
-        st.button("Select all", on_click=select_all_verbs)
+        st.button("Select all", on_click=lambda: st.session_state.update(
+            {"verbs_selected": VERBS[st.session_state.bloom_level][:]}))
     with a3:
-        st.button("Clear", on_click=clear_verbs)
+        st.button("Clear", on_click=lambda: st.session_state.update({"verbs_selected": []}))
     with a4:
-        st.button("Use recommended for this week", on_click=sync_bloom_from_week)
+        st.button("Use recommended for this week", on_click=lambda: st.session_state.update(
+            {"bloom_level": bloom_from_week(int(st.session_state.week)),
+             "verbs_selected": VERBS[bloom_from_week(int(st.session_state.week))][:]}
+        ))
 
     verbs_for_level = VERBS[st.session_state.bloom_level]
     st.multiselect(f"Learning verbs (selected {len(st.session_state.verbs_selected)})",
@@ -357,7 +487,6 @@ if st.session_state.mode != "Print Summary":
                 q["answer"] = st.selectbox("Correct", ["A","B","C","D"],
                                            index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
 
-        # TXT export
         txt = "\n\n".join(
             [f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) +
              (f"\nAnswer: {q['answer']}" if include_key else "")
@@ -368,7 +497,6 @@ if st.session_state.mode != "Print Summary":
             file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt"
         )
 
-        # DOCX export (optional)
         def as_docx(items) -> bytes | None:
             try:
                 from docx import Document
@@ -404,7 +532,6 @@ if st.session_state.mode != "Print Summary":
             st.caption("Install `python-docx` for Word export (TXT is always available).")
 
 else:
-    # Print Summary mode
     ss = st.session_state
     topics_list = [t for t in ss.topics_text.splitlines() if t.strip()] or ["(add topics in other modes)"]
     st.markdown(
