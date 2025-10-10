@@ -1,6 +1,6 @@
 import streamlit as st
 
-# Custom CSS with hover effects
+# Custom CSS with hover effects and tooltips
 st.markdown("""
 <style>
 .adi-header { background: #004d40; color: #fff; padding: 15px; font-size: 24px; font-weight: bold; }
