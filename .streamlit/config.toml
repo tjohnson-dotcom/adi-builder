@@ -1,6 +1,4 @@
-[theme]
-primaryColor = "#004d40"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F9F9F9"
-textColor = "#000000"
-font = "sans serif"
+[server]
+headless = true
+enableCORS = false
+port = 8501
