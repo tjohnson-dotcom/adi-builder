@@ -1,21 +1,27 @@
-# app.py — ADI Builder (banner logo + inline dropzone when needed, branding expander,
-# courses.csv uploader with template, friendly validations, polished UI)
+# app.py — ADI Builder (clean UI; assets-managed courses; inline logo prompt; friendly upload)
+# Optional assets:
+#   assets/adi-logo.png
+#   assets/courses.csv   (code,label)  OR  assets/courses.json  ([{"code": "...", "label": "..."}])
+HIDE_BROWSE_BUTTON = True
 
 import base64
 import csv
 import json
 from io import StringIO, BytesIO
 from pathlib import Path
+
 import streamlit as st
 
-# =========================
-# Page & Theme
-# =========================
+
+# ============ Page & Theme ============
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
 ADI_GREEN = "#245a34"
 STONE     = "#F5F4F2"
 MUTED     = "#6b7280"
+
+# Set to True to hide the "Browse files" button (drag & drop only)
+HIDE_BROWSE_BUTTON = False
 
 st.markdown(f"""
 <style>
@@ -60,7 +66,7 @@ st.markdown(f"""
           line-height:1.6; white-space:nowrap; margin-left:6px; }}
   .pill-green {{ background:{ADI_GREEN}; color:#fff; }}
 
-  /* GREEN dashed dropzones */
+  /* Visible dashed dropzone */
   .dropzone-visible {{
     border:2.5px dashed {ADI_GREEN}; background:#f6faf7;
     border-radius:12px; padding:.6rem .6rem;
@@ -83,7 +89,7 @@ st.markdown(f"""
     color:#0f3d22 !important; margin-bottom:0 !important;
   }}
 
-  /* Upload confirmation / warning */
+  /* Upload chips / notes */
   .upload-chip {{
     display:inline-flex; align-items:center; gap:.4rem;
     padding:2px 10px; border-radius:999px;
@@ -98,7 +104,6 @@ st.markdown(f"""
     border-left:4px solid #b45309; background:#fff7ed;
     padding:.5rem .75rem; border-radius:8px; color:#7c2d12; margin-top:.5rem;
   }}
-
   .soft-tip {{
     border-left:4px solid #eab308; background:#fffbeb;
     padding:.5rem .75rem; border-radius:8px; color:#713f12; margin:.6rem 0 0 0;
@@ -106,9 +111,14 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# Helpers
-# =========================
+if HIDE_BROWSE_BUTTON:
+    st.markdown("""
+    <style>
+      [data-testid="stFileUploader"] button { display: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ============ Helpers ============
 def b64_bytes(b: bytes) -> str:
     return base64.b64encode(b).decode("utf-8")
 
@@ -126,18 +136,13 @@ def make_courses_template() -> bytes:
         ("CT4-COM","Computation for Chemical Technologists"),
         ("CT4-EMG","Explosives Manufacturing"),
         ("CT4-TFL","Thermofluids"),
-        # Add more rows here as needed…
     ]
-    s = StringIO()
-    w = csv.writer(s)
+    s = StringIO(); w = csv.writer(s)
     w.writerow(["code","label"])
-    for r in rows:
-        w.writerow(r)
+    for r in rows: w.writerow(r)
     return s.getvalue().encode("utf-8")
 
-# =========================
-# Session
-# =========================
+# ============ Session ============
 def init_state():
     ss = st.session_state
     ss.setdefault("course_code", "")
@@ -160,9 +165,7 @@ def init_state():
     ss.setdefault("courses_file_info", {})
 init_state()
 
-# =========================
-# Data: courses (assets override or fallback)
-# =========================
+# ============ Courses (assets override or fallback) ============
 def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
     csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
@@ -182,7 +185,6 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
                 items.append((code, label))
     if items:
         return items
-    # fallback small set
     return [
         ("GE4-EPM","Defense Technology Practices"),
         ("GE4-IPM","Integrated Project & Materials Mgmt"),
@@ -195,6 +197,8 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
 if st.session_state.COURSES is None:
     st.session_state.COURSES = load_courses_from_assets()
 
+HAS_ASSET_COURSES = Path("assets/courses.csv").exists() or Path("assets/courses.json").exists()
+
 def set_courses(new_list: list[tuple[str,str]]):
     st.session_state.COURSES = new_list
 
@@ -204,9 +208,7 @@ def course_codes() -> list[str]:
 def code_to_label() -> dict:
     return dict(st.session_state.COURSES)
 
-# =========================
-# Logo & Banner
-# =========================
+# ============ Logo & Banner ============
 def resolve_logo_b64() -> str | None:
     if st.session_state.logo_b64:
         return st.session_state.logo_b64
@@ -221,43 +223,37 @@ def render_topbar(logo_b64: str | None):
 
 render_topbar(resolve_logo_b64())
 
-# =========================
-# Inline logo prompt (only if no logo at all)
-# =========================
+# ============ Inline logo prompt (if no logo anywhere) ============
 no_logo_anywhere = resolve_logo_b64() is None
 if no_logo_anywhere:
     st.markdown("#### Add your logo")
     st.caption("Drop a PNG, JPG, or SVG to brand the top banner.")
-    with st.container(border=False):
-        st.markdown("<div class='dropzone-visible'>", unsafe_allow_html=True)
-        logo_inline = st.file_uploader("Drag & drop logo here", key="logo_inline")
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<div class='dropzone-visible'>", unsafe_allow_html=True)
+    logo_inline = st.file_uploader("Drag & drop logo here", key="logo_inline")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        if logo_inline is not None:
-            ext = Path(logo_inline.name).suffix.lower().lstrip(".")
-            allowed_ext = {"png", "jpg", "jpeg", "svg"}
-            if ext in allowed_ext:
-                st.session_state.logo_b64 = base64.b64encode(logo_inline.getvalue()).decode("utf-8")
-                st.session_state.logo_file_info = {"name": logo_inline.name, "size": logo_inline.size}
-                st.session_state.logo_uploaded = True
-                render_topbar(st.session_state.logo_b64)
-                no_logo_anywhere = False
-            else:
-                st.markdown(
-                    f"<div class='upload-warn'>⚠️ Only PNG, JPG or SVG are supported for the banner logo. "
-                    f"You uploaded **.{ext}**.</div>",
-                    unsafe_allow_html=True,
-                )
+    if logo_inline is not None:
+        ext = Path(logo_inline.name).suffix.lower().lstrip(".")
+        allowed_ext = {"png", "jpg", "jpeg", "svg"}
+        if ext in allowed_ext:
+            st.session_state.logo_b64 = base64.b64encode(logo_inline.getvalue()).decode("utf-8")
+            st.session_state.logo_file_info = {"name": logo_inline.name, "size": logo_inline.size}
+            st.session_state.logo_uploaded = True
+            render_topbar(st.session_state.logo_b64)
+            no_logo_anywhere = False
+        else:
+            st.markdown(
+                f"<div class='upload-warn'>⚠️ Only PNG, JPG or SVG are supported for the banner logo. "
+                f"You uploaded **.{ext}**.</div>",
+                unsafe_allow_html=True,
+            )
 
-# =========================
-# Branding & Lists (expander)
-# =========================
+# ============ Branding & lists (expander) ============
 with st.expander("Branding & lists (optional)", expanded=False):
-    # --- Logo uploader (same validation; kept for later changes) ---
+    # Logo uploader
     st.subheader("Logo", divider="gray")
     st.caption("Upload a **logo** (PNG/JPG/SVG). The banner updates immediately.")
-    logo_up = st.file_uploader("Drag & drop logo here", key="logo_upl")  # no 'type' for friendly warn
-
+    logo_up = st.file_uploader("Drag & drop logo here", key="logo_upl")
     st.session_state.logo_warning = ""
     if logo_up is not None:
         ext = Path(logo_up.name).suffix.lower().lstrip(".")
@@ -269,13 +265,9 @@ with st.expander("Branding & lists (optional)", expanded=False):
             render_topbar(st.session_state.logo_b64)
         else:
             st.session_state.logo_uploaded = False
-            st.session_state.logo_warning = (
-                f"Only PNG, JPG or SVG are supported for the banner logo. You uploaded **.{ext}**."
-            )
-
+            st.session_state.logo_warning = f"Only PNG, JPG or SVG are supported for the banner logo. You uploaded **.{ext}**."
     if st.session_state.logo_warning:
         st.markdown(f"<div class='upload-warn'>⚠️ {st.session_state.logo_warning}</div>", unsafe_allow_html=True)
-
     if st.session_state.get("logo_uploaded"):
         info = st.session_state.get("logo_file_info", {})
         name = info.get("name", "logo")
@@ -292,56 +284,56 @@ with st.expander("Branding & lists (optional)", expanded=False):
         )
         st.markdown("<div class='upload-note'>Your logo is now active in the top banner.</div>", unsafe_allow_html=True)
 
-    # --- Courses CSV (optional; solves “courses missing”) ---
+    # Courses section: show uploader only if NOT assets-managed
     st.subheader("Courses list", divider="gray")
-    st.caption("Upload **courses.csv** with headers `code,label` to add/replace courses (no redeploy).")
-    csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_upl")
-    c1, c2 = st.columns([1,2])
-    with c1:
-        st.download_button("Download CSV template", data=make_courses_template(),
-                           file_name="courses_template.csv", type="secondary")
-    with c2:
-        st.caption("Tip: Put your full list in `/assets/courses.csv` to load automatically on start.")
-
-    if csv_up is not None:
-        try:
-            reader = csv.DictReader(StringIO(csv_up.getvalue().decode("utf-8")))
-            new_courses = []
-            for r in reader:
-                code = (r.get("code") or "").strip()
-                label = (r.get("label") or "").strip()
-                if code and label:
-                    new_courses.append((code, label))
-            if new_courses:
-                set_courses(new_courses)
-                st.session_state.courses_uploaded = True
-                st.session_state.courses_file_info = {"name": csv_up.name, "count": len(new_courses)}
-            else:
+    if not HAS_ASSET_COURSES:
+        st.caption("Upload **courses.csv** with headers `code,label` to add/replace courses (no redeploy).")
+        csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_upl")
+        c1, c2 = st.columns([1,2])
+        with c1:
+            st.download_button("Download CSV template", data=make_courses_template(),
+                               file_name="courses_template.csv", type="secondary")
+        with c2:
+            st.caption("Tip: Put your full list in `/assets/courses.csv` to load automatically on start.")
+        if csv_up is not None:
+            try:
+                reader = csv.DictReader(StringIO(csv_up.getvalue().decode("utf-8")))
+                new_courses = []
+                for r in reader:
+                    code = (r.get("code") or "").strip()
+                    label = (r.get("label") or "").strip()
+                    if code and label:
+                        new_courses.append((code, label))
+                if new_courses:
+                    set_courses(new_courses)
+                    st.session_state.courses_uploaded = True
+                    st.session_state.courses_file_info = {"name": csv_up.name, "count": len(new_courses)}
+                else:
+                    st.session_state.courses_uploaded = False
+                    st.warning("No valid rows found. Expecting headers `code,label`.")
+            except Exception as e:
                 st.session_state.courses_uploaded = False
-                st.warning("No valid rows found. Expecting headers `code,label`.")
-        except Exception as e:
-            st.session_state.courses_uploaded = False
-            st.error(f"Could not parse CSV: {e}")
+                st.error(f"Could not parse CSV: {e}")
+        if st.session_state.get("courses_uploaded"):
+            info = st.session_state.get("courses_file_info", {})
+            name = info.get("name", "courses.csv")
+            count = info.get("count", 0)
+            st.markdown(
+                f"""
+                <span class="upload-chip">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Uploaded: {name} — {count} course(s)
+                </span>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div class='upload-note'>Course dropdown updated with your CSV.</div>", unsafe_allow_html=True)
+    else:
+        st.caption("Courses are managed in <code>/assets/courses.csv</code>. Edit there to update.",
+                   unsafe_allow_html=True)
 
-    if st.session_state.get("courses_uploaded"):
-        info = st.session_state.get("courses_file_info", {})
-        name = info.get("name", "courses.csv")
-        count = info.get("count", 0)
-        st.markdown(
-            f"""
-            <span class="upload-chip">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7L9 18l-5-5" stroke="white" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Uploaded: {name} — {count} course(s)
-            </span>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div class='upload-note'>Course dropdown updated with your CSV.</div>", unsafe_allow_html=True)
-
-# =========================
-# Static lists
-# =========================
+# ============ Static Lists ============
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
@@ -359,25 +351,24 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# =========================
-# Setup Row
-# =========================
+# ============ Setup Row ============
 codes = course_codes()
 labels = code_to_label()
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# If we only have the default tiny set, show a helpful nudge
-if len(codes) <= 6:
-    st.markdown("<div class='soft-tip'>Showing default courses. "
-                "Upload a <strong>courses.csv</strong> in the Branding & lists panel to add the rest.</div>",
-                unsafe_allow_html=True)
+# Yellow tip only when truly on fallback and not (assets or uploaded)
+if len(codes) <= 6 and not (HAS_ASSET_COURSES or st.session_state.get("courses_uploaded")):
+    st.markdown(
+        "<div class='soft-tip'>Showing default courses. "
+        "Upload a <strong>courses.csv</strong> in the Branding &amp; lists panel to add the rest.</div>",
+        unsafe_allow_html=True
+    )
 
 st.markdown("<div class='adi-card'>", unsafe_allow_html=True)
 r1c = st.columns([2, 1.8, .8, .8, 1.6])
 
 with r1c[0]:
-    # show "CODE — Label" in the dropdown
     display = [f"{c} — {labels.get(c,'')}" for c in codes]
     try:
         idx = codes.index(st.session_state.course_code)
@@ -403,11 +394,11 @@ with r1c[2]:
     st.markdown(f"<span class='pill pill-green'>L{int(st.session_state.lesson)}</span>", unsafe_allow_html=True)
 
 with r1c[3]:
-    st.number_input("Week", min_value=1, max_value=14, step=1, key="week",
-                    on_change=lambda: st.session_state.update(
-                        {"bloom_level": bloom_from_week(int(st.session_state.week)),
-                         "verbs_selected": VERBS[bloom_from_week(int(st.session_state.week))][:]}
-                    ))
+    def on_week_change():
+        new_bloom = bloom_from_week(int(st.session_state.week))
+        st.session_state.bloom_level = new_bloom
+        st.session_state.verbs_selected = VERBS[new_bloom][:]
+    st.number_input("Week", min_value=1, max_value=14, step=1, key="week", on_change=on_week_change)
     st.markdown(f"<span class='pill pill-green'>W{int(st.session_state.week)}</span>", unsafe_allow_html=True)
 
 with r1c[4]:
@@ -416,9 +407,7 @@ with r1c[4]:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# =========================
-# Authoring
-# =========================
+# ============ Authoring ============
 st.markdown("### Authoring")
 st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 
@@ -552,3 +541,4 @@ else:
     )
 
 st.markdown("</div>", unsafe_allow_html=True)
+
