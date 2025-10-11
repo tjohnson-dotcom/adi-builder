@@ -1,25 +1,27 @@
-code,label
-GE4-EPM	Defense Technology Practices: Experimentation, Quality Management and Inspection
-GE4-IPM	Integrated Project and Materials Management in Defense Technology
-GE4-MRO	Military Vehicle and Aircraft MRO: Principles & Applications
-CT4-COM	Computation for Chemical Technologists
-CT4-EMG	Explosives Manufacturing
-CT4-TFL	Thermofluids
-MT4-CMG	Composite Manufacturing
-MT4-CAD	Computer Aided Design
-MT4-MAE	Machine Elements
-EE4-MFC	Electrical Materials
-EE4-PMG	PCB Manufacturing
-EE4-PCT	Power Circuits & Transmission
-MT5-MPD	Mechanical Product Dissection
-MT5-AST	Assembly Technology
-MT5-AVM	Aviation Maintenance
-MT5-HYP	Hydraulics and Pneumatics
-MT5-CAD	Computer Aided Design and Additive Manufacturing
-MT5-CNC	Industrial Machining
-CT5-TCE	Thermochemistry of Explosives
-CT5-SET	Separation Technologies 1
-CT5-POT	Explosives Plant Operations and Troubleshooting
-CT5-COT	Coating Technologies 
-CT5-LAB	Chemical Technology Laboratory Techniques 
-CT5-CPT	Chemical Process Technology
+# inside load_courses_from_assets(), at the very end:
+return [
+    ("GE4-EPM","Defense Technology Practices: Experimentation, Quality Management and Inspection"),
+    ("GE4-IPM","Integrated Project and Materials Management in Defense Technology"),
+    ("GE4-MRO","Military Vehicle and Aircraft MRO: Principles & Applications"),
+    ("CT4-COM","Computation for Chemical Technologists"),
+    ("CT4-EMG","Explosives Manufacturing"),
+    ("CT4-TFL","Thermofluids"),
+    ("MT4-CMG","Composite Manufacturing"),
+    ("MT4-CAD","Computer Aided Design"),
+    ("MT4-MAE","Machine Elements"),
+    ("EE4-MFC","Electrical Materials"),
+    ("EE4-PMG","PCB Manufacturing"),
+    ("EE4-PCI","Power Circuits & Transmission"),
+    ("MT5-MPD","Mechanical Product Dissection"),
+    ("MT5-AST","Assembly Technology"),
+    ("MT5-AVM","Aviation Maintenance"),
+    ("MT5-HYP","Hydraulics and Pneumatics"),
+    ("MT5-CAD","Computer Aided Design and Additive Manufacturing"),
+    ("MT5-CNC","Industrial Machining"),
+    ("CT5-TCE","Thermochemistry of Explosives"),
+    ("CT5-SET","Separation Technologies 1"),
+    ("CT5-POT","Explosives Plant Operations and Troubleshooting"),
+    ("CT5-COT","Coating Technologies"),
+    ("CT5-LAB","Chemical Technology Laboratory Techniques"),
+    ("CT5-CPT","Chemical Process Technology"),
+]
