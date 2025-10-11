@@ -12,6 +12,10 @@ from pathlib import Path
 
 import streamlit as st
 
+from pathlib import Path
+
+BASE_DIR   = Path(__file__).resolve().parent
+ASSETS_DIR = BASE_DIR / "assets"
 
 # ============ Page & Theme ============
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
