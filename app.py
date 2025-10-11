@@ -1,8 +1,7 @@
 # app.py — ADI Builder (clean UI; assets-managed courses; inline logo prompt; friendly upload)
-# Optional assets:
+# Optional assets next to this file:
 #   assets/adi-logo.png
 #   assets/courses.csv   (code,label)  OR  assets/courses.json  ([{"code": "...", "label": "..."}])
-HIDE_BROWSE_BUTTON = True
 
 import base64
 import csv
@@ -12,19 +11,22 @@ from pathlib import Path
 
 import streamlit as st
 
-from pathlib import Path
-
+# =========================
+# Absolute paths to /assets
+# =========================
 BASE_DIR   = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 
-# ============ Page & Theme ============
+# =========================
+# Page & Theme
+# =========================
 st.set_page_config(page_title="ADI Builder — Lesson Activities & Questions", layout="wide")
 
 ADI_GREEN = "#245a34"
 STONE     = "#F5F4F2"
 MUTED     = "#6b7280"
 
-# Set to True to hide the "Browse files" button (drag & drop only)
+# Set True to hide the "Browse files" button (drag & drop only)
 HIDE_BROWSE_BUTTON = False
 
 st.markdown(f"""
@@ -122,7 +124,9 @@ if HIDE_BROWSE_BUTTON:
     </style>
     """, unsafe_allow_html=True)
 
-# ============ Helpers ============
+# =========================
+# Helpers
+# =========================
 def b64_bytes(b: bytes) -> str:
     return base64.b64encode(b).decode("utf-8")
 
@@ -146,7 +150,9 @@ def make_courses_template() -> bytes:
     for r in rows: w.writerow(r)
     return s.getvalue().encode("utf-8")
 
-# ============ Session ============
+# =========================
+# Session
+# =========================
 def init_state():
     ss = st.session_state
     ss.setdefault("course_code", "")
@@ -169,10 +175,14 @@ def init_state():
     ss.setdefault("courses_file_info", {})
 init_state()
 
-# ============ Courses (assets override or fallback) ============
+# =========================
+# Courses (assets override or fallback)
+# =========================
 def load_courses_from_assets() -> list[tuple[str,str]]:
     items: list[tuple[str,str]] = []
-    csvp, jsp = Path("assets/courses.csv"), Path("assets/courses.json")
+    csvp = ASSETS_DIR / "courses.csv"
+    jsp  = ASSETS_DIR / "courses.json"
+
     if csvp.exists():
         with csvp.open("r", encoding="utf-8") as f:
             for r in csv.DictReader(f):
@@ -187,8 +197,11 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
             label = (r.get("label") or "").strip()
             if code and label:
                 items.append((code, label))
+
     if items:
         return items
+
+    # Fallback small list
     return [
         ("GE4-EPM","Defense Technology Practices"),
         ("GE4-IPM","Integrated Project & Materials Mgmt"),
@@ -201,7 +214,7 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
 if st.session_state.COURSES is None:
     st.session_state.COURSES = load_courses_from_assets()
 
-HAS_ASSET_COURSES = Path("assets/courses.csv").exists() or Path("assets/courses.json").exists()
+HAS_ASSET_COURSES = (ASSETS_DIR / "courses.csv").exists() or (ASSETS_DIR / "courses.json").exists()
 
 def set_courses(new_list: list[tuple[str,str]]):
     st.session_state.COURSES = new_list
@@ -212,11 +225,13 @@ def course_codes() -> list[str]:
 def code_to_label() -> dict:
     return dict(st.session_state.COURSES)
 
-# ============ Logo & Banner ============
+# =========================
+# Logo & Banner
+# =========================
 def resolve_logo_b64() -> str | None:
     if st.session_state.logo_b64:
         return st.session_state.logo_b64
-    return b64_file(Path("assets/adi-logo.png"))
+    return b64_file(ASSETS_DIR / "adi-logo.png")
 
 def render_topbar(logo_b64: str | None):
     logo_html = f'<img src="data:image/png;base64,{logo_b64}"/>' if logo_b64 else '<div class="adi-badge">A</div>'
@@ -227,7 +242,9 @@ def render_topbar(logo_b64: str | None):
 
 render_topbar(resolve_logo_b64())
 
-# ============ Inline logo prompt (if no logo anywhere) ============
+# =========================
+# Inline logo prompt (only if no logo yet)
+# =========================
 no_logo_anywhere = resolve_logo_b64() is None
 if no_logo_anywhere:
     st.markdown("#### Add your logo")
@@ -252,7 +269,9 @@ if no_logo_anywhere:
                 unsafe_allow_html=True,
             )
 
-# ============ Branding & lists (expander) ============
+# =========================
+# Branding & lists (expander)
+# =========================
 with st.expander("Branding & lists (optional)", expanded=False):
     # Logo uploader
     st.subheader("Logo", divider="gray")
@@ -288,9 +307,9 @@ with st.expander("Branding & lists (optional)", expanded=False):
         )
         st.markdown("<div class='upload-note'>Your logo is now active in the top banner.</div>", unsafe_allow_html=True)
 
-    # Courses section: show uploader only if NOT assets-managed
+    # Courses list: show uploader only if NOT assets-managed
     st.subheader("Courses list", divider="gray")
-    if not HAS_ASSET_COURSES:
+    if not ((ASSETS_DIR / "courses.csv").exists() or (ASSETS_DIR / "courses.json").exists()):
         st.caption("Upload **courses.csv** with headers `code,label` to add/replace courses (no redeploy).")
         csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_upl")
         c1, c2 = st.columns([1,2])
@@ -320,8 +339,7 @@ with st.expander("Branding & lists (optional)", expanded=False):
                 st.error(f"Could not parse CSV: {e}")
         if st.session_state.get("courses_uploaded"):
             info = st.session_state.get("courses_file_info", {})
-            name = info.get("name", "courses.csv")
-            count = info.get("count", 0)
+            name = info.get("name", "courses.csv"); count = info.get("count", 0)
             st.markdown(
                 f"""
                 <span class="upload-chip">
@@ -337,7 +355,9 @@ with st.expander("Branding & lists (optional)", expanded=False):
         st.caption("Courses are managed in <code>/assets/courses.csv</code>. Edit there to update.",
                    unsafe_allow_html=True)
 
-# ============ Static Lists ============
+# =========================
+# Static lists
+# =========================
 COHORTS = [
     "D1-C01","D1-E01","D1-E02","D1-M01","D1-M02","D1-M03","D1-M04","D1-M05",
     "D2-C01","D2-M01","D2-M02","D2-M03","D2-M04","D2-M05","D2-M06"
@@ -355,14 +375,17 @@ VERBS = {
 def bloom_from_week(week: int) -> str:
     return "Low" if week <= 4 else ("Medium" if week <= 9 else "High")
 
-# ============ Setup Row ============
+# =========================
+# Setup Row
+# =========================
 codes = course_codes()
 labels = code_to_label()
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# Yellow tip only when truly on fallback and not (assets or uploaded)
-if len(codes) <= 6 and not (HAS_ASSET_COURSES or st.session_state.get("courses_uploaded")):
+# Yellow tip only when truly on fallback (tiny list) and not assets/CSV uploaded
+if len(codes) <= 6 and not (((ASSETS_DIR / "courses.csv").exists() or (ASSETS_DIR / "courses.json").exists())
+                            or st.session_state.get("courses_uploaded")):
     st.markdown(
         "<div class='soft-tip'>Showing default courses. "
         "Upload a <strong>courses.csv</strong> in the Branding &amp; lists panel to add the rest.</div>",
@@ -411,7 +434,9 @@ with r1c[4]:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ============ Authoring ============
+# =========================
+# Authoring
+# =========================
 st.markdown("### Authoring")
 st.markdown("<div class='adi-card tight'>", unsafe_allow_html=True)
 
@@ -480,6 +505,7 @@ if st.session_state.mode != "Print Summary":
                 q["answer"] = st.selectbox("Correct", ["A","B","C","D"],
                                            index=["A","B","C","D"].index(q["answer"]), key=f"ans-{idx}")
 
+        # TXT export
         txt = "\n\n".join(
             [f"Q{n+1}. {q['stem']}\n" + "\n".join(q["options"]) +
              (f"\nAnswer: {q['answer']}" if include_key else "")
@@ -490,6 +516,7 @@ if st.session_state.mode != "Print Summary":
             file_name=f"{st.session_state.course_code}_L{st.session_state.lesson}_W{st.session_state.week}_mcqs.txt"
         )
 
+        # DOCX export
         def as_docx(items) -> bytes | None:
             try:
                 from docx import Document
@@ -525,6 +552,7 @@ if st.session_state.mode != "Print Summary":
             st.caption("Install `python-docx` for Word export (TXT is always available).")
 
 else:
+    # Print Summary
     ss = st.session_state
     topics_list = [t for t in ss.topics_text.splitlines() if t.strip()] or ["(add topics in other modes)"]
     st.markdown(
