@@ -1,8 +1,7 @@
-# app.py — ADI Builder (robust assets path, clean UI, logo, courses, verbs, MCQs)
-# Place `assets/` next to this file OR one/two levels above. You can also set ASSETS_DIR env var.
-#   assets/
-#     ├─ adi-logo.png     (optional)
-#     └─ courses.csv      (code,label)  OR courses.json ([{"code":"..","label":".."}])
+# app.py — ADI Builder (robust assets path, full baked list fallback, clean UI)
+# Optional assets next to or above this file:
+#   assets/adi-logo.png
+#   assets/courses.csv  (code,label)  OR  assets/courses.json ([{"code":"..","label":".."}])
 
 import os
 import base64
@@ -26,7 +25,7 @@ def resolve_assets_dir() -> Path:
         if p.exists():
             return p
 
-    # 2) Try beside app.py, then up one, then up two
+    # 2) Try common locations
     candidates = [
         BASE_DIR / "assets",
         BASE_DIR.parent / "assets",
@@ -51,8 +50,11 @@ ADI_GREEN = "#245a34"
 STONE     = "#F5F4F2"
 MUTED     = "#6b7280"
 
-# Set True to hide the "Browse files" buttons in uploaders (drag&drop only)
+# Set True to hide the "Browse files" buttons
 HIDE_BROWSE_BUTTON = False
+
+# Set True to show the yellow “default courses” tip when only fallback is used
+SHOW_YELLOW_TIP = False
 
 st.markdown(f"""
 <style>
@@ -161,18 +163,39 @@ def b64_file(path: Path) -> str | None:
     except Exception:
         return None
 
+# FULL LIST used for the CSV template and as fallback
+FULL_COURSES_LIST = [
+    ("GE4-EPM","Defense Technology Practices: Experimentation, Quality Management and Inspection"),
+    ("GE4-IPM","Integrated Project and Materials Management in Defense Technology"),
+    ("GE4-MRO","Military Vehicle and Aircraft MRO: Principles & Applications"),
+    ("CT4-COM","Computation for Chemical Technologists"),
+    ("CT4-EMG","Explosives Manufacturing"),
+    ("CT4-TFL","Thermofluids"),
+    ("MT4-CMG","Composite Manufacturing"),
+    ("MT4-CAD","Computer Aided Design"),
+    ("MT4-MAE","Machine Elements"),
+    ("EE4-MFC","Electrical Materials"),
+    ("EE4-PMG","PCB Manufacturing"),
+    ("EE4-PCI","Power Circuits & Transmission"),
+    ("MT5-MPD","Mechanical Product Dissection"),
+    ("MT5-AST","Assembly Technology"),
+    ("MT5-AVM","Aviation Maintenance"),
+    ("MT5-HYP","Hydraulics and Pneumatics"),
+    ("MT5-CAD","Computer Aided Design and Additive Manufacturing"),
+    ("MT5-CNC","Industrial Machining"),
+    ("CT5-TCE","Thermochemistry of Explosives"),
+    ("CT5-SET","Separation Technologies 1"),
+    ("CT5-POT","Explosives Plant Operations and Troubleshooting"),
+    ("CT5-COT","Coating Technologies"),
+    ("CT5-LAB","Chemical Technology Laboratory Techniques"),
+    ("CT5-CPT","Chemical Process Technology"),
+]
+
 def make_courses_template() -> bytes:
-    rows = [
-        ("GE4-EPM","Defense Technology Practices"),
-        ("GE4-IPM","Integrated Project & Materials Mgmt"),
-        ("GE4-MRO","Military Vehicle & Aircraft MRO"),
-        ("CT4-COM","Computation for Chemical Technologists"),
-        ("CT4-EMG","Explosives Manufacturing"),
-        ("CT4-TFL","Thermofluids"),
-    ]
     s = StringIO(); w = csv.writer(s)
     w.writerow(["code","label"])
-    for r in rows: w.writerow(r)
+    for r in FULL_COURSES_LIST:
+        w.writerow(r)
     return s.getvalue().encode("utf-8")
 
 # =========================
@@ -226,15 +249,8 @@ def load_courses_from_assets() -> list[tuple[str,str]]:
     if items:
         return items
 
-    # Fallback small list
-    return [
-        ("GE4-EPM","Defense Technology Practices"),
-        ("GE4-IPM","Integrated Project & Materials Mgmt"),
-        ("GE4-MRO","Military Vehicle & Aircraft MRO"),
-        ("CT4-COM","Computation for Chemical Technologists"),
-        ("CT4-EMG","Explosives Manufacturing"),
-        ("CT4-TFL","Thermofluids"),
-    ]
+    # FULL baked fallback list
+    return FULL_COURSES_LIST[:]
 
 if st.session_state.COURSES is None:
     st.session_state.COURSES = load_courses_from_assets()
@@ -408,8 +424,8 @@ labels = code_to_label()
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# Yellow tip only when truly on fallback and not assets/CSV uploaded
-if len(codes) <= 6 and not (HAS_ASSET_COURSES or st.session_state.get("courses_uploaded")):
+# Yellow tip (disabled by default now that we have a full baked list)
+if SHOW_YELLOW_TIP and len(codes) <= 6 and not (HAS_ASSET_COURSES or st.session_state.get("courses_uploaded")):
     st.markdown(
         "<div class='soft-tip'>Showing default courses. "
         "Upload a <strong>courses.csv</strong> in the Branding &amp; lists panel to add the rest.</div>",
