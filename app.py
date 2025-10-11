@@ -1,8 +1,10 @@
-# app.py — ADI Builder (clean UI; assets-managed courses; inline logo prompt; friendly upload)
-# Optional assets next to this file:
-#   assets/adi-logo.png
-#   assets/courses.csv   (code,label)  OR  assets/courses.json  ([{"code": "...", "label": "..."}])
+# app.py — ADI Builder (robust assets path, clean UI, logo, courses, verbs, MCQs)
+# Place `assets/` next to this file OR one/two levels above. You can also set ASSETS_DIR env var.
+#   assets/
+#     ├─ adi-logo.png     (optional)
+#     └─ courses.csv      (code,label)  OR courses.json ([{"code":"..","label":".."}])
 
+import os
 import base64
 import csv
 import json
@@ -12,10 +14,33 @@ from pathlib import Path
 import streamlit as st
 
 # =========================
-# Absolute paths to /assets
+# Robust assets directory
 # =========================
-BASE_DIR   = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
+BASE_DIR = Path(__file__).resolve().parent
+
+def resolve_assets_dir() -> Path:
+    # 1) Env var wins if valid
+    env = os.getenv("ASSETS_DIR")
+    if env:
+        p = Path(env).expanduser().resolve()
+        if p.exists():
+            return p
+
+    # 2) Try beside app.py, then up one, then up two
+    candidates = [
+        BASE_DIR / "assets",
+        BASE_DIR.parent / "assets",
+        BASE_DIR.parent.parent / "assets",
+        Path.cwd() / "assets",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c.resolve()
+
+    # 3) Fallback to beside app.py (even if missing) to keep paths consistent
+    return (BASE_DIR / "assets").resolve()
+
+ASSETS_DIR = resolve_assets_dir()
 
 # =========================
 # Page & Theme
@@ -26,7 +51,7 @@ ADI_GREEN = "#245a34"
 STONE     = "#F5F4F2"
 MUTED     = "#6b7280"
 
-# Set True to hide the "Browse files" button (drag & drop only)
+# Set True to hide the "Browse files" buttons in uploaders (drag&drop only)
 HIDE_BROWSE_BUTTON = False
 
 st.markdown(f"""
@@ -309,7 +334,7 @@ with st.expander("Branding & lists (optional)", expanded=False):
 
     # Courses list: show uploader only if NOT assets-managed
     st.subheader("Courses list", divider="gray")
-    if not ((ASSETS_DIR / "courses.csv").exists() or (ASSETS_DIR / "courses.json").exists()):
+    if not HAS_ASSET_COURSES:
         st.caption("Upload **courses.csv** with headers `code,label` to add/replace courses (no redeploy).")
         csv_up = st.file_uploader("Drag & drop courses.csv here", type=["csv"], key="courses_upl")
         c1, c2 = st.columns([1,2])
@@ -383,9 +408,8 @@ labels = code_to_label()
 if not st.session_state.course_code and codes:
     st.session_state.course_code = codes[0]
 
-# Yellow tip only when truly on fallback (tiny list) and not assets/CSV uploaded
-if len(codes) <= 6 and not (((ASSETS_DIR / "courses.csv").exists() or (ASSETS_DIR / "courses.json").exists())
-                            or st.session_state.get("courses_uploaded")):
+# Yellow tip only when truly on fallback and not assets/CSV uploaded
+if len(codes) <= 6 and not (HAS_ASSET_COURSES or st.session_state.get("courses_uploaded")):
     st.markdown(
         "<div class='soft-tip'>Showing default courses. "
         "Upload a <strong>courses.csv</strong> in the Branding &amp; lists panel to add the rest.</div>",
